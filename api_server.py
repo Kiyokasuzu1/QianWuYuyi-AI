@@ -74,7 +74,39 @@ def chat_completions():
 def health():
     return jsonify({"status": "ok"})
 
+# ==================== 主动消息端点 ====================
+@app.route('/initiative', methods=['POST'])
+def initiative():
+    try:
+        data = request.get_json() or {}
+        user_id = data.get('user_id', 'default')
+        global orchestrator
+        if orchestrator is None:
+            init_orchestrator()
+        orchestrator.target_user_id = user_id
+        # 尝试调用 generate_initiative，如果不存在则降级使用 process
+        try:
+            msg = orchestrator.generate_initiative(user_id)
+        except AttributeError:
+            # 如果 generate_initiative 不存在，用 process 模拟
+            prompt = "你现在有什么想主动对我说的吗？如果有，请直接说；如果没有，请只回复一个空格。"
+            msg = orchestrator.process(prompt)
+            # 如果回复是空格或很短，视为无话
+            if msg and len(msg.strip()) <= 1:
+                msg = ""
+        if msg and msg.strip():
+            return jsonify({"has_message": True, "content": msg.strip()})
+        else:
+            return jsonify({"has_message": False, "content": ""})
+    except Exception as e:
+        logger.error(f"主动消息生成失败: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/v1/models', methods=['GET'])
+def list_models():
+    return jsonify({"data": [{"id": "yuyi", "object": "model"}]})
+
 if __name__ == '__main__':
-    # 初始化 Orchestrator
+    # 初始化 Orchestrator（启动时加载模型）
     init_orchestrator()
     app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
