@@ -39,6 +39,15 @@ from src.events.events import (
 )
 from src.audit.record import record_audit_log
 
+# P2.1.3 Permission Gate: 身份反解 + 状态修改权限判定（纯函数，无全局状态）
+from src.security.identity import resolve_identity
+from src.security.permission import (
+    can_modify_memory,
+    can_modify_emotion,
+    can_modify_personality,
+    can_trigger_growth,
+)
+
 # Phase A.1: Historical Experience Recovery
 # 仅在初始化阶段使用，不影响运行时 process() 流程
 from src.recovery.experience_loader import ExperienceLoader
@@ -1084,6 +1093,15 @@ class Orchestrator:
         else:
             self.target_user_id = str(user_id)
 
+        # P2.1.3: 身份权限门——基于入口传入的 user_id 反解 Identity，计算本请求的
+        # 状态修改权限（局部变量贯穿本方法，不引入全局状态；模块签名零改动）。
+        _request_identity = resolve_identity(self.target_user_id)
+        if _request_identity.is_sandbox:
+            logger.info(
+                "[P2.1.3] 沙盒身份（user_id=%s, source=%s）→ 状态修改权限全部拒绝",
+                self.target_user_id, _request_identity.source,
+            )
+
         # Step 2: 检索记忆（Phase 2.5-B scope 授权装配）
         chat_memories = self._collect_chat_memories(self.target_user_id, query=user_message)
 
@@ -1175,7 +1193,21 @@ class Orchestrator:
         # P0-1: MemoryNormalizer — 写入前规整 content，避免 PollutionGuard 以 content_too_long 拒绝
         memory_record = None
         try:
-            if self.target_user_id:
+            if self.target_user_id and not can_modify_memory(_request_identity):
+                # P2.1.3 Memory Gate：sandbox/未知身份拒绝写入长期记忆（读取不受影响）
+                logger.info(
+                    "[P2.1.3] 记忆写入拒绝（user_id=%s, permission=%s）",
+                    self.target_user_id, _request_identity.permission,
+                )
+                record_audit_log(
+                    operation_type="memory.rejected",
+                    source="orchestrator",
+                    action="记忆保存被权限门拒绝",
+                    user_id=self.target_user_id,
+                    detail={"reason": "permission_denied", "permission": _request_identity.permission},
+                    correlation_id=conversation_id,
+                )
+            elif self.target_user_id:
                 # Phase 1: 写入前清洗（移除 system_reminder 注入块）
                 cleaned_content = sanitize_content(user_message)
                 if not cleaned_content:
@@ -1283,7 +1315,13 @@ class Orchestrator:
         #   - 在记忆保存之后、SelfModel 编排器之前执行
         #   - 仅当 _growth_pipeline 已成功初始化时执行
         _growth_result = None
-        if self._growth_pipeline is not None:
+        if self._growth_pipeline is not None and not can_trigger_growth(_request_identity):
+            # P2.1.3 Growth Gate：sandbox/未知身份不得触发成长提案
+            logger.info(
+                "[P2.1.3] GrowthPipeline 触发被拒绝（user_id=%s, permission=%s）",
+                self.target_user_id, _request_identity.permission,
+            )
+        elif self._growth_pipeline is not None:
             try:
                 _growth_result = self._growth_pipeline.incremental_update(user_message)
             except Exception as _gp_exc:
@@ -1308,6 +1346,7 @@ class Orchestrator:
             and self._governance_policy is not None
             and _growth_result is not None
             and _growth_result.get("growth_records")
+            and can_modify_personality(_request_identity)
         ):
             try:
                 _auto_applied = 0
@@ -1336,10 +1375,23 @@ class Orchestrator:
             except Exception as _smu_exc:
                 print(f"[Orchestrator] Phase 4.0.3 SelfModel 更新失败（已隔离，不影响聊天）: {_smu_exc}")
 
+        if (
+            self._self_model_updater is not None
+            and self._governance_policy is not None
+            and _growth_result is not None
+            and _growth_result.get("growth_records")
+            and not can_modify_personality(_request_identity)
+        ):
+            # P2.1.3 Self Model Gate：sandbox/未知身份不得修改 self_model
+            logger.info(
+                "[P2.1.3] SelfModel 治理链被拒绝（user_id=%s, permission=%s）",
+                self.target_user_id, _request_identity.permission,
+            )
+
         # Phase 5.0-A: 触发 SelfModel 5 阶段编排器
         # - 仅当 self_model_orchestrator 已被注入时执行
         # - 整个调用 try/except 隔离,任何异常都不影响 reply 返回
-        if self.self_model_orchestrator is not None:
+        if self.self_model_orchestrator is not None and can_modify_personality(_request_identity):
             try:
                 self.self_model_orchestrator.run_after_event({
                     "trait_states": getattr(personality, "trait_states", None) if personality else None,
@@ -1348,6 +1400,12 @@ class Orchestrator:
                 })
             except Exception as _smo_exc:  # noqa: BLE001
                 print(f"[Orchestrator] SelfModel 编排器异常(已隔离,不影响回复): {_smo_exc}")
+        elif self.self_model_orchestrator is not None:
+            # P2.1.3 Self Model Gate：sandbox/未知身份不得触发 SelfModel 编排器
+            logger.info(
+                "[P2.1.3] SelfModel 编排器被拒绝（user_id=%s, permission=%s）",
+                self.target_user_id, _request_identity.permission,
+            )
 
         # Phase 3.7.6: 响应风格快照记录（透明，不影响回复链路）
         self._record_style_snapshot(reply, user_message, conversation_id)
@@ -1966,6 +2024,10 @@ class Orchestrator:
         return base
 
     def _process_emotion_pre(self, assembled_context, user_message: str, user_id: str):
+        # P2.1.3 Emotion Gate：sandbox/未知身份跳过情绪状态更新（聊天回复流程不受影响）
+        if not can_modify_emotion(resolve_identity(user_id)):
+            logger.info("[P2.1.3] 情绪 pre 更新被拒绝（user_id=%s）", user_id)
+            return assembled_context
         try:
             em_manager = assembled_context.get("emotion_manager") if assembled_context else None
             if not em_manager:
@@ -1985,6 +2047,10 @@ class Orchestrator:
             return assembled_context
 
     def _process_emotion_post(self, assembled_context, reply: str, user_id: str):
+        # P2.1.3 Emotion Gate：sandbox/未知身份跳过情绪状态持久化（聊天回复流程不受影响）
+        if not can_modify_emotion(resolve_identity(user_id)):
+            logger.info("[P2.1.3] 情绪 post 更新被拒绝（user_id=%s）", user_id)
+            return assembled_context
         try:
             em_manager = assembled_context.get("emotion_manager") if assembled_context else None
             if not em_manager:
