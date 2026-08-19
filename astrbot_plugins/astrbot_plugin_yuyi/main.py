@@ -11,13 +11,20 @@ class YuyiPlugin(StarlettePluginBundle):
     async def chat_with_yuyi(self, event: AstrBotEvent, message: str):
         '''与浅雾羽依对话'''
         try:
-            user_id = event.get_sender_id()
+            # P2.1.2: 身份安全——平台异常时 get_sender_id() 可能返回 None/空，
+            # 绝不允许 str(None)="None" 直通成用户；未确认身份统一发 _unknown_sender，
+            # 由服务端 IdentityResolver 做最终裁决（防御纵深：两端各校验一次）
+            raw_sender = event.get_sender_id()
+            if isinstance(raw_sender, str) and raw_sender.strip():
+                payload_user = raw_sender.strip()
+            else:
+                payload_user = "_unknown_sender"
             user_name = event.get_sender_name()
             group_id = event.get_group_id()
 
             # 构造 OpenAI 兼容请求体
             payload = {
-                "user": str(user_id),
+                "user": payload_user,
                 "messages": [
                     {"role": "user", "content": message}
                 ]

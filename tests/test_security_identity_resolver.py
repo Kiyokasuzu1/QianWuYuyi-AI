@@ -85,11 +85,21 @@ class TestInvalidInputs:
         for variant in ("unknown", "none", "null", "None", "NULL"):
             assert IdentityResolver().resolve(variant).permission == "sandbox"
 
-    def test_non_string_int_rejected(self):
-        """非字符串一律落沙盒：不做 int→str 转换（禁止'转换'）。"""
+    def test_int_qq_number_accepted(self):
+        """P2.1.2 修订：JSON number 型 user（int，非 bool）按 QQ 使用（API 兼容）。"""
         identity = IdentityResolver().resolve(366648462)
-        assert identity.id == SANDBOX_ID
-        assert identity.permission == "sandbox"
+        assert identity.id == "366648462"
+        assert identity.source == "qq"
+        assert identity.permission == "user"
+
+    def test_other_non_string_types_rejected(self):
+        """float/dict/bool/bytes 等其余非字符串一律落沙盒。"""
+        for raw in (3.14, True, False, {}, [], b"366648462"):
+            assert IdentityResolver().resolve(raw).permission == "sandbox", repr(raw)
+
+    def test_int_out_of_qq_range_rejected(self):
+        assert IdentityResolver().resolve(1234).permission == "sandbox"
+        assert IdentityResolver().resolve(1234567890123).permission == "sandbox"
 
     def test_illegal_characters(self):
         for raw in ("qq_366648462", "366648462abc", "user@test", "清清", "-12345"):

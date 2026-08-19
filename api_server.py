@@ -818,14 +818,19 @@ def chat_completions():
         if not messages:
             return jsonify({"error": "messages 不能为空"}), 400
 
-        # R2.7.6-AUDIT: user_id 规范化——防显式 null/空串/非字符串输入
-        #   data.get('user', 'default') 只会在缺 key 时用 default；key 存在但值
-        #   为 null 时返回 None，导致后续 for_user("None") 创建一个奇怪的目录名。
-        raw_user = data.get('user', None)
-        if raw_user in (None, "") or not isinstance(raw_user, (str, int)):
-            user_id = "default"
-        else:
-            user_id = str(raw_user)
+        # P2.1.2: 统一身份解析——所有外部 user 标识必须经过 IdentityResolver
+        #   合法 QQ（5~12 位纯数字）→ 原样进入 user 路径
+        #   占位符/非字符串/非法格式 → _unknown_sender（隔离沙盒桶）
+        #   取代 R2.7.6-AUDIT 的 default 归一化（A-3 修复；行为契约见
+        #   tests/test_p6sec_user_id_safety.py）
+        from src.security.identity import DEFAULT_RESOLVER as _identity_resolver
+        _identity = _identity_resolver.resolve(data.get('user', None))
+        user_id = _identity.id
+        if _identity.is_sandbox:
+            logger.info(
+                "[P2.1] 身份未确认（source=%s）→ 沙盒 %s",
+                _identity.source, user_id,
+            )
 
         # R2.7.6-AUDIT: 提取最后一条 user role 的文本消息（兼容多模态 content 数组）
         #   规范：content: str | List[{"type":"text","text":"..."}, ...]
@@ -1003,7 +1008,9 @@ def dashboard_v2_index():
 def initiative():
     try:
         data = request.get_json() or {}
-        user_id = data.get('user_id', 'default')
+        # P2.1.2: /initiative 同样经过统一身份解析（占位符不再兜成 default）
+        from src.security.identity import DEFAULT_RESOLVER as _identity_resolver
+        user_id = _identity_resolver.resolve(data.get('user_id', None)).id
         global orchestrator
         if orchestrator is None:
             init_orchestrator()

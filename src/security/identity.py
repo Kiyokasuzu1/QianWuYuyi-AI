@@ -66,17 +66,20 @@ class Identity:
 class IdentityResolver:
     """原始 user 标识 → Identity。
 
-    规则（P2.1.1 契约）：
+    规则（P2.1.1 契约，P2.1.2 修订）：
         1. 合法 QQ（5~12 位纯数字字符串）
            → {id: 原样, source: "qq", verified: True, permission: "user"}
-        2. 非法情况（None / 空字符串 / 占位符 / 非字符串 / 异常格式）
+        1b. JSON 数字型 user（int，非 bool，字符串形式恰为 5~12 位数字）
+           → 按 QQ 原样使用（API 兼容：JSON number 无格式歧义，
+              int→str 属规范化而非猜测/修正；True/False 排除）
+        2. 非法情况（None / 空字符串 / 占位符 / 其他非字符串 / 异常格式）
            → {id: "_unknown_sender", source: "unknown", verified: False,
               permission: "sandbox"}
 
     禁止行为：
         - 不自动修正（如去前缀、补零）
         - 不猜测（如把 "366648462abc" 拆出数字）
-        - 不转换（如把 int 366648462 转 str 放行——非字符串一律落沙盒）
+        - 不转换（float/dict/bool 等非字符串一律落沙盒；仅 int 数字例外，见 1b）
 
     扩展接口（本阶段仅存储，不启用行为）：
         allowed_sources: 未来放行的来源白名单（当前仅 qq 实际生效）
@@ -143,8 +146,19 @@ class IdentityResolver:
             本方法永不抛异常。
         """
         try:
+            if isinstance(raw_user, bool):
+                # bool 是 int 子类，必须先排除（True 不能变成 "1"）
+                return self._sandbox()
+
+            if isinstance(raw_user, int):
+                # JSON number 型 user：字符串形式恰为 5~12 位数字 → 按 QQ 使用
+                as_str = str(raw_user)
+                if _QQ_PATTERN.match(as_str):
+                    return self._qq_identity(as_str)
+                return self._sandbox()
+
             if not isinstance(raw_user, str):
-                # 非字符串（含 None / int / dict …）一律落沙盒，不做 str() 转换
+                # 其余非字符串（None / float / dict / bytes …）一律落沙盒
                 return self._sandbox()
 
             stripped = raw_user.strip()
