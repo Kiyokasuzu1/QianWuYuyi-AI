@@ -90,6 +90,13 @@ def _ctx_with_emotion(orch):
     return {"emotion_manager": orch.emotion_manager, "trace": []}
 
 
+def _ctx_with_relationship():
+    """关系后处理上下文：mock repo + 起始 profile（trust=0.5, familiarity=0.1）。"""
+    repo = MagicMock()
+    profile = {"trust": 0.5, "familiarity": 0.1}
+    return {"relationship_repo": repo, "relationship_profile": profile, "trace": []}, repo, profile
+
+
 class TestUserAllMutationsAllowed:
     """真实 QQ 用户：四个门全部放行。"""
 
@@ -223,3 +230,29 @@ class TestChatFlowUnaffected:
         orch, _tmp = orch_env
         reply = orch.process("你好羽依", user_id=USER_QQ)
         assert isinstance(reply, str) and reply == "好的"
+
+
+class TestRelationshipGate:
+    """P2.1.3-R：关系状态更新遵循身份权限。"""
+
+    def test_15_user_relationship_update_allowed(self, orch_env):
+        orch, _tmp = orch_env
+        ctx, repo, profile = _ctx_with_relationship()
+        orch._process_relationship_post(ctx, "你好", "好的", [], USER_QQ)
+        assert repo.save.called, "user 身份应允许关系画像持久化"
+        assert profile["trust"] != 0.5 or profile["familiarity"] != 0.1, \
+            "user 身份应允许 trust/familiarity 变化"
+
+    def test_16_sandbox_relationship_update_denied(self, orch_env):
+        orch, _tmp = orch_env
+        ctx, repo, profile = _ctx_with_relationship()
+        orch._process_relationship_post(ctx, "你好", "好的", [], SANDBOX)
+        assert not repo.save.called, "sandbox 不应写入关系画像"
+        assert profile == {"trust": 0.5, "familiarity": 0.1}, "sandbox 不应改变关系状态"
+
+    def test_17_unknown_relationship_update_denied(self, orch_env):
+        orch, _tmp = orch_env
+        ctx, repo, profile = _ctx_with_relationship()
+        orch._process_relationship_post(ctx, "你好", "好的", [], "guest_12345")
+        assert not repo.save.called, "unknown 身份不应写入关系画像"
+        assert profile == {"trust": 0.5, "familiarity": 0.1}, "unknown 身份不应改变关系状态"

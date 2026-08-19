@@ -46,6 +46,7 @@ from src.security.permission import (
     can_modify_emotion,
     can_modify_personality,
     can_trigger_growth,
+    can_modify_relationship,
 )
 
 # Phase A.1: Historical Experience Recovery
@@ -2124,6 +2125,11 @@ class Orchestrator:
             return assembled_context
 
     def _process_relationship_post(self, assembled_context, user_message: str, reply: str, chat_memories: list, user_id: str):
+        # P2.1.3-R Relationship Gate：sandbox/未知身份不得创建/修改关系状态
+        # （trust/familiarity 等变化全部跳过；聊天回复流程不受影响）
+        if not can_modify_relationship(resolve_identity(user_id)):
+            logger.info("[P2.1.3-R] 关系更新被拒绝（user_id=%s）", user_id)
+            return assembled_context
         try:
             rel_repo = assembled_context.get("relationship_repo") if assembled_context else None
             rel_profile = assembled_context.get("relationship_profile") if assembled_context else None

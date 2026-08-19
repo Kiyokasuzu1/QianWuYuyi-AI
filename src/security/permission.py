@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""用户身份权限门（P2.1.3-A Permission Gate Foundation）。
+"""用户身份权限门（P2.1.3-A Permission Gate Foundation / P2.1.3-R Relationship Gate）。
 
 职责（单一）：
     基于 Identity 判断"该身份是否允许修改羽依的某类状态"。
-    为 P2.1.3 后续在 emotion / self_model / growth / memory 状态更新链
-    接入沙盒隔离提供统一判断层。
+    为 P2.1.3 后续在 memory / emotion / self_model / growth / relationship
+    状态更新链接入沙盒隔离提供统一判断层。
 
 概念区分（防混淆）：
     src/permission/     = 羽依能力阶段治理（Phase 3.5：羽依自身成长阶段
@@ -12,8 +12,9 @@
     src/security/permission.py = 用户身份权限门（本模块：来访身份
                           是否允许修改羽依状态，纯函数、无状态）
 
-最小策略（P2.1.3-A）：
-    permission == "user"    → 允许 memory / emotion / personality / growth
+最小策略（P2.1.3-A / P2.1.3-R）：
+    permission == "user"    → 允许 memory / emotion / personality / growth /
+                              relationship
     permission == "sandbox" → 全部禁止
     其他任何值（含 "unknown"）→ 按 sandbox 处理（fail-closed）
     "admin" 为预留通道：状态修改权限同样 fail-closed（管理操作走
@@ -36,12 +37,13 @@ __all__ = [
     "can_modify_emotion",
     "can_modify_personality",
     "can_trigger_growth",
+    "can_modify_relationship",
     "get_permissions",
     "is_sandbox_like",
 ]
 
 #: 权限门覆盖的状态目标（完整清单；get_permissions 的键与之严格一致）
-PERMISSION_TARGETS = ("memory", "emotion", "personality", "growth")
+PERMISSION_TARGETS = ("memory", "emotion", "personality", "growth", "relationship")
 
 #: 允许修改状态的身份权限等级（白名单：仅 "user"）
 _ALLOWED_STATE_PERMISSIONS = frozenset({"user"})
@@ -88,12 +90,18 @@ def can_trigger_growth(identity: Any) -> bool:
     return _can_modify(identity)
 
 
+def can_modify_relationship(identity: Any) -> bool:
+    """该身份是否允许创建/修改关系状态（trust/familiarity 等）。永不抛异常。"""
+    return _can_modify(identity)
+
+
 def get_permissions(identity: Any) -> Dict[str, bool]:
-    """返回完整权限表（键 = PERMISSION_TARGETS，与四个判定函数严格一致）。"""
+    """返回完整权限表（键 = PERMISSION_TARGETS，与各判定函数严格一致）。"""
     allowed = _can_modify(identity)
     return {
         "memory": allowed,
         "emotion": allowed,
         "personality": allowed,
         "growth": allowed,
+        "relationship": allowed,
     }

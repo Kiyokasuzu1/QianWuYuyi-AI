@@ -18,6 +18,7 @@ from src.security.permission import (
     can_modify_emotion,
     can_modify_memory,
     can_modify_personality,
+    can_modify_relationship,
     can_trigger_growth,
     get_permissions,
 )
@@ -27,6 +28,7 @@ _ALL_CHECK_FNS = (
     can_modify_emotion,
     can_modify_personality,
     can_trigger_growth,
+    can_modify_relationship,
 )
 
 
@@ -39,6 +41,7 @@ class TestUserIdentityAllowed:
         assert can_modify_emotion(identity) is True
         assert can_modify_personality(identity) is True
         assert can_trigger_growth(identity) is True
+        assert can_modify_relationship(identity) is True
 
     def test_user_get_permissions_all_true(self):
         identity = Identity(id="366648462", source="qq", verified=True, permission="user")
@@ -94,7 +97,13 @@ class TestGetPermissionsContract:
     def test_sandbox_full_dict_contract(self):
         identity = Identity(id="_unknown_sender", source="placeholder", verified=False, permission="sandbox")
         perms = get_permissions(identity)
-        assert perms == {"memory": False, "emotion": False, "personality": False, "growth": False}
+        assert perms == {
+            "memory": False,
+            "emotion": False,
+            "personality": False,
+            "growth": False,
+            "relationship": False,
+        }
 
     def test_permissions_consistent_with_check_fns(self):
         identity = Identity(id="366648462", source="qq", verified=True, permission="user")
@@ -104,6 +113,7 @@ class TestGetPermissionsContract:
             "emotion": can_modify_emotion(identity),
             "personality": can_modify_personality(identity),
             "growth": can_trigger_growth(identity),
+            "relationship": can_modify_relationship(identity),
         }
         assert perms == mapping
         assert all(isinstance(v, bool) for v in perms.values())
