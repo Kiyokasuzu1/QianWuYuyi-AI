@@ -977,7 +977,16 @@ def chat_completions():
 
 @app.route('/health', methods=['GET'])
 def health():
-    return jsonify({"status": "ok"})
+    # P2.0 Version System: 附带版本元数据（向后兼容，仅增量字段，绝不影响 status）
+    try:
+        from src.version import get_version, get_commit
+        return jsonify({
+            "status": "ok",
+            "version": get_version(),
+            "commit": get_commit(),
+        })
+    except Exception:  # noqa: BLE001
+        return jsonify({"status": "ok"})
 
 
 # Phase 5.0 Dashboard Upgrade —— 顶层 Dashboard V2 入口
@@ -1261,6 +1270,13 @@ def admin_control_status():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
+    # P2.0 Version System: 启动版本横幅（仅日志输出，不改变任何初始化流程与顺序）
+    try:
+        from src.version import get_banner
+        for _banner_line in get_banner().splitlines():
+            logger.info(_banner_line)
+    except Exception:  # noqa: BLE001
+        logger.warning("版本横幅输出失败（不影响启动）")
     # 初始化 Orchestrator（启动时加载模型）
     init_orchestrator()
     # R2.7.6-DEPLOY: 端口从 .env 读取，默认 5000（之前写死 port=5000，
