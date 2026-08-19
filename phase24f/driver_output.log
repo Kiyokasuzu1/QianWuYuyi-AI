@@ -1,0 +1,116 @@
+=== phase24f driver start 2026-08-18 20:23:01 +0800 ===
+is-active before: active
+--- memory before ---
+16ab12652fcc81915e23d3779e7f13339a0618e8632ef6fba8c0c27e3e751328  /root/QianWuYuyi-AI/data/memory.json
+--- backup done 2026-08-18 20:23:01 +0800 ---
+is-active stopped: inactive
+{
+ "phase": "2.4-F",
+ "batch_id": "phase24f-t2c",
+ "mode": "import",
+ "at": "2026-08-18T20:23:05",
+ "memory_path": "/root/QianWuYuyi-AI/data/memory.json",
+ "pre_count": 402,
+ "pre_sha256": "16ab12652fcc81915e23d3779e7f13339a0618e8632ef6fba8c0c27e3e751328",
+ "payload_total": 3,
+ "added": 3,
+ "added_ids": [
+  "rec_9dd2f1fb59f14d5b",
+  "rec_778264d346fb3477",
+  "rec_0235c109cd15fca8"
+ ],
+ "skipped": [],
+ "post_count": 405,
+ "post_sha256": "2aa2c6e6844d35f720c8e4adcdcfc55e30fefa21a8c0d25615c65dc878f967f4",
+ "expected_post_count": 405,
+ "concurrent_clobber_warning": false,
+ "elapsed_seconds": 0.48
+}
+import exit: 0
+{
+ "memory_path": "/root/QianWuYuyi-AI/data/memory.json",
+ "total_records": 405,
+ "pre_count": 402,
+ "imported_expected": 3,
+ "imported_present": 3,
+ "missing_imports": [],
+ "schema_fail_count": 0,
+ "schema_fail": [],
+ "pollution_guard_fail_count": 0,
+ "pollution_guard_fail": [],
+ "duplicate_fingerprints": {
+  "8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4": 11,
+  "62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a": 3,
+  "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881": 10,
+  "d7439bee24773bcbfa2d0a97947ee36227b10d1022b1a55847e928965bb6bfde": 4,
+  "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb": 2,
+  "3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d": 2,
+  "670d9743542cae3ea7ebe36af56bd53648b0a1126162e78d81a32934a711302e": 4,
+  "e4223ed20d7ea5740a326e2b268ca6db91d041cf5194f577e393a8ba3b85d8e9": 2,
+  "ca0df2c95aa144c1d0ff2ff3c8f967fdc1de9ef0c4120b3726416701b519d619": 2,
+  "29c1b289e7522195b362e44f54e05470b69ad20540ab60a18a05e5bf6951f13d": 2,
+  "153812ae5fea0b73a011bf28bd7cea93644437c3fe3260b7b2d7e1e2f9f46bde": 2,
+  "2396a1256ac4b1c6849c931ddb8018bdd984bb2383be21bb819a33b95d8d603f": 2,
+  "f244da1dc2414780fe88c43efd92954840da7d96cbbac36b54cb40d3fda77af9": 4,
+  "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad": 2,
+  "70571c74384826686818c228e79d785cc2525c56aa3e29fc040121213cca1265": 2,
+  "8801be8ea075695055d63b98e0640b51396e519f571d50b8b0f1de2ed9823481": 2,
+  "6aa8f49cc992dfd75a114269ed26de0ad6d4e7d7a70d9c8afb3d7a57a88a73ed": 2,
+  "55aad3e7ae67b3c20f299d2179d849650943293beb08dfbb50f60651c3dea1f9": 15
+ },
+ "pre_existing_missing": [],
+ "pre_existing_content_changed": false,
+ "bad_provenance": [],
+ "retrieval_checks": [
+  {
+   "query": "我是清夏铃",
+   "hits": 3,
+   "hit_imported": 0
+  },
+  {
+   "query": "羽依",
+   "hits": 3,
+   "hit_imported": 0
+  },
+  {
+   "query": "架构",
+   "hits": 3,
+   "hit_imported": 0
+  },
+  {
+   "query": "记忆",
+   "hits": 3,
+   "hit_imported": 0
+  },
+  {
+   "query": "清夏铃",
+   "hits": 3,
+   "hit_imported": 0
+  },
+  {
+   "query": "人生经历档案",
+   "hits": 3,
+   "hit_imported": 0
+  },
+  {
+   "query": "成长经验",
+   "hits": 3,
+   "hit_imported": 0
+  },
+  {
+   "query": "第一次启动",
+   "hits": 3,
+   "hit_imported": 0
+  },
+  {
+   "query": "统一认知中枢",
+   "hits": 3,
+   "hit_imported": 0
+  }
+ ]
+}
+verify exit: 0
+--- memory after ---
+2aa2c6e6844d35f720c8e4adcdcfc55e30fefa21a8c0d25615c65dc878f967f4  /root/QianWuYuyi-AI/data/memory.json
+is-active after: active
+=== phase24f driver done 2026-08-18 20:23:11 +0800 ===

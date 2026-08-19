@@ -1,0 +1,632 @@
+[
+  {
+    "trace_id": "trace_2361d77c9944",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 1.0,
+    "memory_id": null,
+    "created_at": "2026-08-09T19:59:33.236477"
+  },
+  {
+    "trace_id": "trace_bd2289683da4",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 1.0,
+    "memory_id": null,
+    "created_at": "2026-08-09T19:59:33.268399"
+  },
+  {
+    "trace_id": "trace_f9399e040b64",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 1.0,
+    "memory_id": null,
+    "created_at": "2026-08-09T19:59:33.297434"
+  },
+  {
+    "trace_id": "trace_a5016b5c60e6",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 0.8,
+    "memory_id": null,
+    "created_at": "2026-08-09T20:01:09.332115"
+  },
+  {
+    "trace_id": "trace_481cd06e9b58",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 1.0,
+    "memory_id": null,
+    "created_at": "2026-08-09T20:13:49.451720"
+  },
+  {
+    "trace_id": "trace_5be77b78397d",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 1.0,
+    "memory_id": null,
+    "created_at": "2026-08-09T20:13:49.482573"
+  },
+  {
+    "trace_id": "trace_eba31bf37387",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 1.0,
+    "memory_id": null,
+    "created_at": "2026-08-09T20:13:49.508044"
+  },
+  {
+    "trace_id": "trace_4677a115363f",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 1.0,
+    "memory_id": null,
+    "created_at": "2026-08-09T20:20:27.812045"
+  },
+  {
+    "trace_id": "trace_58164cc0c4e3",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 1.0,
+    "memory_id": null,
+    "created_at": "2026-08-09T20:20:27.860132"
+  },
+  {
+    "trace_id": "trace_6c5c2a91d0b3",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 1.0,
+    "memory_id": null,
+    "created_at": "2026-08-09T20:20:27.898085"
+  },
+  {
+    "trace_id": "trace_4525190a0c53",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 1.0,
+    "memory_id": null,
+    "created_at": "2026-08-09T20:21:39.095065"
+  },
+  {
+    "trace_id": "trace_7e215061c88e",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 1.0,
+    "memory_id": null,
+    "created_at": "2026-08-09T20:21:39.137964"
+  },
+  {
+    "trace_id": "trace_3d8b31a974bb",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 1.0,
+    "memory_id": null,
+    "created_at": "2026-08-09T20:21:39.176234"
+  },
+  {
+    "trace_id": "trace_32e19c621f20",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 1.0,
+    "memory_id": null,
+    "created_at": "2026-08-09T20:24:59.297438"
+  },
+  {
+    "trace_id": "trace_760c1fe1a562",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 1.0,
+    "memory_id": null,
+    "created_at": "2026-08-09T20:24:59.323851"
+  },
+  {
+    "trace_id": "trace_3afc03bb827e",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 1.0,
+    "memory_id": null,
+    "created_at": "2026-08-09T20:24:59.358236"
+  },
+  {
+    "trace_id": "trace_873fddae994f",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 1.0,
+    "memory_id": null,
+    "created_at": "2026-08-09T20:26:56.841500"
+  },
+  {
+    "trace_id": "trace_7e4371e3a8f4",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 1.0,
+    "memory_id": null,
+    "created_at": "2026-08-09T20:26:56.876304"
+  },
+  {
+    "trace_id": "trace_8e1a354e2cdb",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 1.0,
+    "memory_id": null,
+    "created_at": "2026-08-09T20:26:56.911529"
+  },
+  {
+    "trace_id": "trace_18cb22a2d919",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 1.0,
+    "memory_id": null,
+    "created_at": "2026-08-10T00:03:11.163180"
+  },
+  {
+    "trace_id": "trace_2c59a11a881a",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 1.0,
+    "memory_id": null,
+    "created_at": "2026-08-10T00:03:11.191491"
+  },
+  {
+    "trace_id": "trace_6f4cedb738ba",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 1.0,
+    "memory_id": null,
+    "created_at": "2026-08-10T00:03:11.227608"
+  },
+  {
+    "trace_id": "trace_3bd03ffbf1dc",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 1.0,
+    "memory_id": null,
+    "created_at": "2026-08-10T16:15:54.106970"
+  },
+  {
+    "trace_id": "trace_950508d37333",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 1.0,
+    "memory_id": null,
+    "created_at": "2026-08-10T16:15:54.146084"
+  },
+  {
+    "trace_id": "trace_f37b4f7bcf87",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 1.0,
+    "memory_id": null,
+    "created_at": "2026-08-10T16:15:54.191664"
+  },
+  {
+    "trace_id": "trace_d5acd3fc0143",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 0.8,
+    "memory_id": null,
+    "created_at": "2026-08-10T16:17:46.183547"
+  },
+  {
+    "trace_id": "trace_6740e3d94f24",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 1.0,
+    "memory_id": null,
+    "created_at": "2026-08-10T16:27:47.763095"
+  },
+  {
+    "trace_id": "trace_d4c8cd03034b",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 1.0,
+    "memory_id": null,
+    "created_at": "2026-08-10T16:27:47.814278"
+  },
+  {
+    "trace_id": "trace_98106f2a28f3",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 1.0,
+    "memory_id": null,
+    "created_at": "2026-08-10T16:27:47.860012"
+  },
+  {
+    "trace_id": "trace_10e28417262a",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 0.8,
+    "memory_id": null,
+    "created_at": "2026-08-10T16:29:31.541171"
+  },
+  {
+    "trace_id": "trace_f0c0a3c040e7",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-17T22:20:29.565432"
+  },
+  {
+    "trace_id": "trace_08c935d9f5b8",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-17T22:21:30.809514"
+  },
+  {
+    "trace_id": "trace_df3e213016bd",
+    "emotion": "anxiety",
+    "cause": "user_interaction",
+    "event_type": "user_conflict",
+    "intensity": 0.5,
+    "memory_id": null,
+    "created_at": "2026-08-17T22:22:31.977799"
+  },
+  {
+    "trace_id": "trace_bf8432847437",
+    "emotion": "anxiety",
+    "cause": "user_interaction",
+    "event_type": "user_conflict",
+    "intensity": 0.5,
+    "memory_id": null,
+    "created_at": "2026-08-17T22:23:17.265854"
+  },
+  {
+    "trace_id": "trace_e3be29dd0b39",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 0.6,
+    "memory_id": null,
+    "created_at": "2026-08-17T22:24:37.497475"
+  },
+  {
+    "trace_id": "trace_a0b515ff3792",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-17T22:25:23.744616"
+  },
+  {
+    "trace_id": "trace_a34b85ad491e",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-17T22:28:27.596783"
+  },
+  {
+    "trace_id": "trace_90facab9187d",
+    "emotion": "anxiety",
+    "cause": "user_interaction",
+    "event_type": "user_conflict",
+    "intensity": 0.5,
+    "memory_id": null,
+    "created_at": "2026-08-17T22:29:41.041979"
+  },
+  {
+    "trace_id": "trace_c3e7cfb3b44a",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-17T22:32:00.088346"
+  },
+  {
+    "trace_id": "trace_483c63298818",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-17T22:35:22.303339"
+  },
+  {
+    "trace_id": "trace_6a51ef9737a8",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-17T22:35:52.672807"
+  },
+  {
+    "trace_id": "trace_69f60548b617",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-17T22:36:57.692477"
+  },
+  {
+    "trace_id": "trace_47ae3e0b8708",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-17T22:38:44.703682"
+  },
+  {
+    "trace_id": "trace_314bacdc8657",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-17T22:39:39.102161"
+  },
+  {
+    "trace_id": "trace_0afe5007646c",
+    "emotion": "anxiety",
+    "cause": "user_interaction",
+    "event_type": "user_conflict",
+    "intensity": 0.5,
+    "memory_id": null,
+    "created_at": "2026-08-17T22:41:19.697174"
+  },
+  {
+    "trace_id": "trace_99e8a9d1aaa0",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-17T22:58:15.344008"
+  },
+  {
+    "trace_id": "trace_500d33fc698d",
+    "emotion": "anxiety",
+    "cause": "user_interaction",
+    "event_type": "user_conflict",
+    "intensity": 0.5,
+    "memory_id": null,
+    "created_at": "2026-08-17T22:59:31.335752"
+  },
+  {
+    "trace_id": "trace_6ddd3516f641",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-17T23:00:35.277199"
+  },
+  {
+    "trace_id": "trace_f1efa96125c8",
+    "emotion": "anxiety",
+    "cause": "user_interaction",
+    "event_type": "user_conflict",
+    "intensity": 0.5,
+    "memory_id": null,
+    "created_at": "2026-08-17T23:01:46.831744"
+  },
+  {
+    "trace_id": "trace_7e28296c369f",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-17T23:03:14.615330"
+  },
+  {
+    "trace_id": "trace_01fb6b4f78ae",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-17T23:04:51.410086"
+  },
+  {
+    "trace_id": "trace_7067995f4725",
+    "emotion": "anxiety",
+    "cause": "user_interaction",
+    "event_type": "user_conflict",
+    "intensity": 0.5,
+    "memory_id": null,
+    "created_at": "2026-08-17T23:06:31.949829"
+  },
+  {
+    "trace_id": "trace_05b8a6e4486a",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-17T23:08:01.675494"
+  },
+  {
+    "trace_id": "trace_50f54b4d75b7",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-17T23:09:05.246558"
+  },
+  {
+    "trace_id": "trace_bef570024d87",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-17T23:09:50.995768"
+  },
+  {
+    "trace_id": "trace_2abb386970eb",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-17T23:48:34.393089"
+  },
+  {
+    "trace_id": "trace_2ddfacf74c73",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-17T23:49:57.392588"
+  },
+  {
+    "trace_id": "trace_a2ebd13957a3",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-17T23:55:04.952777"
+  },
+  {
+    "trace_id": "trace_ab6f61654cb9",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-17T23:57:22.002455"
+  },
+  {
+    "trace_id": "trace_44b8826228d3",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-17T23:58:34.471482"
+  },
+  {
+    "trace_id": "trace_4a42ec0c321d",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-17T23:59:20.999922"
+  },
+  {
+    "trace_id": "trace_57039f506e68",
+    "emotion": "anxiety",
+    "cause": "user_interaction",
+    "event_type": "user_conflict",
+    "intensity": 0.5,
+    "memory_id": null,
+    "created_at": "2026-08-18T00:00:14.871878"
+  },
+  {
+    "trace_id": "trace_afe30741474b",
+    "emotion": "anxiety",
+    "cause": "user_interaction",
+    "event_type": "user_conflict",
+    "intensity": 0.5,
+    "memory_id": null,
+    "created_at": "2026-08-18T00:03:08.598629"
+  },
+  {
+    "trace_id": "trace_f2766ae03f3b",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-18T00:25:22.221568"
+  },
+  {
+    "trace_id": "trace_fcbad01558cf",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-18T00:26:12.550265"
+  },
+  {
+    "trace_id": "trace_d263646873be",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-18T01:57:21.867939"
+  },
+  {
+    "trace_id": "trace_2b3c5c4f0b0c",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 0.6,
+    "memory_id": null,
+    "created_at": "2026-08-18T19:02:31.881371"
+  },
+  {
+    "trace_id": "trace_b4b949f24e5a",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-18T19:03:48.988912"
+  },
+  {
+    "trace_id": "trace_f9bafa93e539",
+    "emotion": "joy",
+    "cause": "user_interaction",
+    "event_type": "user_praise",
+    "intensity": 0.6,
+    "memory_id": null,
+    "created_at": "2026-08-18T19:06:01.077136"
+  },
+  {
+    "trace_id": "trace_36a936e3744f",
+    "emotion": "neutral",
+    "cause": "system",
+    "event_type": "mitigation",
+    "intensity": 0.7,
+    "memory_id": null,
+    "created_at": "2026-08-18T19:06:43.927993"
+  }
+]

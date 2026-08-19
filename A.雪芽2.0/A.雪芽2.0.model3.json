@@ -1,0 +1,32 @@
+{
+	"Version": 3,
+	"FileReferences": {
+		"Moc": "A.雪芽2.0.moc3",
+		"Textures": [
+			"A.雪芽2.0.4096/texture_00.png",
+			"A.雪芽2.0.4096/texture_01.png",
+			"A.雪芽2.0.4096/texture_02.png",
+			"A.雪芽2.0.4096/texture_03.png",
+			"A.雪芽2.0.4096/texture_04.png",
+			"A.雪芽2.0.4096/texture_05.png",
+			"A.雪芽2.0.4096/texture_06.png",
+			"A.雪芽2.0.4096/texture_07.png",
+			"A.雪芽2.0.4096/texture_08.png",
+			"A.雪芽2.0.4096/texture_09.png"
+		],
+		"Physics": "A.雪芽2.0.physics3.json",
+		"DisplayInfo": "A.雪芽2.0.cdi3.json"
+	},
+	"Groups": [
+		{
+			"Target": "Parameter",
+			"Name": "EyeBlink",
+			"Ids": []
+		},
+		{
+			"Target": "Parameter",
+			"Name": "LipSync",
+			"Ids": []
+		}
+	]
+}

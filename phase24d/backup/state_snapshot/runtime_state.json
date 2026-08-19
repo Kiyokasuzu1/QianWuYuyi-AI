@@ -1,0 +1,622 @@
+{
+  "world_state": {
+    "current_time": "2026-08-10T16:25:00.609136",
+    "user_status": "unknown",
+    "environment": {},
+    "self_state": {
+      "energy": 0.9941659353673458,
+      "mood": "平静",
+      "curiosity": 0.49593611291249606,
+      "social_need": 0.6000000000000001,
+      "focus": 0.5864537097083197,
+      "trust": 0.49864537097083217,
+      "initiative": 0.6000000000000001,
+      "last_updated": 1786350807.7342825
+    },
+    "active_tasks": [],
+    "recent_events": [
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:21:57.982893",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:21:58.015353",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:21:58.047308",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:21:58.076124",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:21:58.106902",
+        "data": {}
+      },
+      {
+        "type": "runtime.throttle_decision",
+        "timestamp": "2026-08-10T16:22:07.057997",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:09.323141",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:09.357601",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:09.392914",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:09.418099",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:09.451609",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:09.482436",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:09.516325",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:09.546044",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:09.573382",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:09.606239",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:09.636439",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:09.672964",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:09.705655",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:09.736437",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:09.771291",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:09.808493",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:09.864839",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:09.914575",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:09.947370",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:09.983528",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:10.013602",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:10.050134",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:10.094307",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:10.134271",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:10.200100",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:10.242491",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:10.564849",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:10.610202",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:10.651043",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:10.918260",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:10.965937",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:11.079022",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:11.110254",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:11.145609",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:11.173440",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:11.206556",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:11.242161",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:11.273284",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:11.308134",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:11.345847",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:11.388319",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:11.430797",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:11.473384",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:11.511521",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:11.567522",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:11.605581",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:11.636562",
+        "data": {}
+      },
+      {
+        "type": "message.received",
+        "timestamp": "2026-08-10T16:22:12.188318",
+        "data": {}
+      },
+      {
+        "type": "memory.created",
+        "timestamp": "2026-08-10T16:22:12.197401",
+        "data": {}
+      },
+      {
+        "type": "message.responded",
+        "timestamp": "2026-08-10T16:22:12.205106",
+        "data": {}
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:28:43.391825",
+        "data": {
+          "text": "hi"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:28:43.425521",
+        "data": {
+          "text": "嗨"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:28:43.459409",
+        "data": {
+          "text": "x"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:28:43.496527",
+        "data": {
+          "text": "count-me"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:28:43.529723",
+        "data": {
+          "text": "今天天气如何"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:28:43.760574",
+        "data": {
+          "text": "a"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:28:43.762848",
+        "data": {
+          "text": "b"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:28:43.934075",
+        "data": {
+          "text": "你好"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:28:43.966836",
+        "data": {
+          "text": "hi"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:28:44.026515",
+        "data": {
+          "text": "hi"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:28:44.054243",
+        "data": {
+          "text": "hi"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:28:44.086913",
+        "data": {
+          "text": "你好"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:28:44.118287",
+        "data": {
+          "text": "x"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:28:44.161063",
+        "data": {
+          "text": "msg1"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:28:44.188205",
+        "data": {
+          "text": "msg2"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:29:32.436429",
+        "data": {
+          "text": "hi",
+          "content": "hi"
+        }
+      },
+      {
+        "type": "x",
+        "timestamp": "2026-08-10T16:29:33.165107",
+        "data": {}
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:29:33.543669",
+        "data": {
+          "text": "你好"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:29:33.574410",
+        "data": {
+          "text": "你好"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:29:33.603266",
+        "data": {
+          "text": "你好"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:29:33.738360",
+        "data": {
+          "text": "hi"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:29:33.956080",
+        "data": {
+          "text": "hello"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:29:33.987903",
+        "data": {
+          "text": "hi"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:29:34.365498",
+        "data": {
+          "text": "hello"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:29:34.430160",
+        "data": {
+          "text": "x"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:29:34.666037",
+        "data": {
+          "text": "x"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:29:34.781685",
+        "data": {
+          "text": "hi"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:29:34.919389",
+        "data": {
+          "text": "hi"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:29:34.951351",
+        "data": {
+          "text": "hi"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:29:35.049682",
+        "data": {
+          "text": "hi"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:29:35.574624",
+        "data": {
+          "text": "hi"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:29:35.606686",
+        "data": {
+          "text": "hi"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:29:35.654212",
+        "data": {
+          "text": "hi"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:29:35.723226",
+        "data": {
+          "text": "hi"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:29:35.763321",
+        "data": {
+          "text": "hi"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:29:36.132524",
+        "data": {
+          "text": "hi"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:29:36.239562",
+        "data": {
+          "text": "hi"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:29:36.296427",
+        "data": {
+          "text": "hi"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:29:36.380147",
+        "data": {
+          "text": "hi"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:29:37.353961",
+        "data": {
+          "text": "hi"
+        }
+      },
+      {
+        "type": "user_input",
+        "timestamp": "2026-08-10T16:29:37.576822",
+        "data": {
+          "text": "x"
+        }
+      },
+      {
+        "type": "user_message",
+        "timestamp": "2026-08-10T16:33:27.601187",
+        "data": {
+          "text": "hello",
+          "content": "hello"
+        }
+      },
+      {
+        "type": "user_message",
+        "timestamp": "2026-08-10T16:33:27.677409",
+        "data": {
+          "text": "hello",
+          "content": "hello"
+        }
+      },
+      {
+        "type": "user_message",
+        "timestamp": "2026-08-10T16:33:27.734282",
+        "data": {
+          "text": "hello",
+          "content": "hello"
+        }
+      }
+    ],
+    "last_action": null
+  },
+  "self_state": {
+    "energy": 0.9941659353673458,
+    "mood": "平静",
+    "curiosity": 0.49593611291249606,
+    "social_need": 0.6000000000000001,
+    "focus": 0.5864537097083197,
+    "trust": 0.49864537097083217,
+    "initiative": 0.6000000000000001,
+    "last_updated": 1786350807.7342825
+  },
+  "last_saved": 1786435667.043309
+}

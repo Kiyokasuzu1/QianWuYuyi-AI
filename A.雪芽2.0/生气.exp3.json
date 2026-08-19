@@ -1,0 +1,51 @@
+{
+    "Type": "Live2D Expression",
+    "IsModelCustomizationExpression": false,
+    "Parameters": [
+        {
+            "Id": "Param207",
+            "Value": 0.0,
+            "Blend": "Add"
+        },
+        {
+            "Id": "Param211",
+            "Value": 0.0,
+            "Blend": "Add"
+        },
+        {
+            "Id": "open_06",
+            "Value": 0.0,
+            "Blend": "Add"
+        },
+        {
+            "Id": "Param169",
+            "Value": 0.0,
+            "Blend": "Add"
+        },
+        {
+            "Id": "open_09",
+            "Value": 1.0,
+            "Blend": "Add"
+        },
+        {
+            "Id": "open_03",
+            "Value": 0.0,
+            "Blend": "Add"
+        },
+        {
+            "Id": "open_10",
+            "Value": 0.0,
+            "Blend": "Add"
+        },
+        {
+            "Id": "open_Cheek",
+            "Value": 0.0,
+            "Blend": "Add"
+        },
+        {
+            "Id": "Param17",
+            "Value": 0.0,
+            "Blend": "Add"
+        }
+    ]
+}

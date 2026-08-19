@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <title>database</title>
+  <ellipse cx="12" cy="6" rx="7" ry="2.5" />
+  <path d="M5 6 L5 17" />
+  <path d="M19 6 L19 17" />
+  <path d="M5 17 C5 19, 19 19, 19 17" />
+  <path d="M5 10.5 L19 10.5" />
+  <path d="M5 13.5 L19 13.5" />
+</svg>

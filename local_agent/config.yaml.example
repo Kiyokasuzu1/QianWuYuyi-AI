@@ -1,0 +1,33 @@
+# 浅雾羽依 - 本地代理配置
+# 复制此文件为 config.yaml 后修改
+
+agent:
+  # 羽依服务器 WebSocket 地址
+  server_url: "ws://localhost:8765"
+
+  # 认证 token（需要和服务器端的 YUYI_REMOTE_TOKEN 一致）
+  # 推荐改用环境变量 YUYI_AGENT_TOKEN（或 YUYI_REMOTE_TOKEN）传入，优先级高于此处配置；
+  # 服务器已拒绝空 token 和公开弱默认值，请使用 openssl rand -hex 32 生成的随机串。
+  token: "your-secret-token-here"
+
+  # 代理 ID（留空则自动生成，格式: agent_主机名_随机码）
+  agent_id: ""
+
+  # 关联的用户 ID
+  user_id: "default"
+
+  # 心跳间隔（秒）
+  heartbeat_interval: 10
+
+  # 重连延迟（秒）
+  reconnect_delay: 5
+
+  # 最大重连次数（0 = 无限重连）
+  max_reconnect_attempts: 0
+
+  # 截图配置
+  screen:
+    # JPEG 压缩质量（1-100）
+    capture_quality: 85
+    # 图片最大宽度（像素），超过则等比缩放
+    max_width: 1920

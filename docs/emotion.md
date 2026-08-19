@@ -337,6 +337,37 @@
 
 对经历的理解。
 
+
+---
+
+# Emotion Dynamics
+
+从 Phase 3.5.28 起，
+
+情绪系统在当前 `EmotionState` 之外增加 `EmotionDynamicsEngine`。
+
+
+`EmotionState` 负责当前情绪状态：
+
+- valence
+- arousal
+- dominant emotion
+
+
+`EmotionDynamicsEngine` 负责动态视图：
+
+- emotion transition history
+- persistent mood
+- emotional memory summary
+- pattern aggregation
+
+
+因此情绪系统开始从“当前状态”
+
+扩展为
+
+“状态 + 转移 + 记忆 + mood”的连续结构。
+
 对关系的认识。
 
 对当前情况的判断。

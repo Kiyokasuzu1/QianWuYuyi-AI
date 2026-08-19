@@ -1,0 +1,231 @@
+/* =============================================================
+ * Step 8.4.4 —— Event Stream 样式
+ * ============================================================= */
+.yuyi-event-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0;
+}
+.yuyi-es-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(189, 224, 254, 0.45), rgba(255, 255, 255, 0.85));
+  box-shadow: 0 6px 18px rgba(120, 130, 200, 0.10);
+  backdrop-filter: blur(12px);
+}
+.yuyi-es-title {
+  font-size: 16px;
+  margin: 0;
+  color: #2b4c7e;
+  font-weight: 600;
+}
+.yuyi-es-health {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #4a4a6a;
+}
+.yuyi-es-status-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #c5c5d8;
+}
+.yuyi-es-dot-ok { background: #6ed27e; box-shadow: 0 0 6px rgba(110, 210, 126, 0.5); }
+.yuyi-es-dot-err { background: #f08080; box-shadow: 0 0 6px rgba(240, 128, 128, 0.5); }
+.yuyi-es-dot-idle { background: #c5c5d8; }
+
+.yuyi-es-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.75);
+  box-shadow: 0 4px 14px rgba(120, 130, 200, 0.08);
+  backdrop-filter: blur(10px);
+}
+.yuyi-es-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 140px;
+}
+.yuyi-es-field-btn {
+  justify-content: flex-end;
+  align-self: flex-end;
+  flex-direction: row;
+  gap: 8px;
+}
+.yuyi-es-label {
+  font-size: 11px;
+  color: #6a6a8a;
+  font-weight: 500;
+}
+.yuyi-es-input, .yuyi-es-select {
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(120, 130, 200, 0.18);
+  background: rgba(255, 255, 255, 0.85);
+  outline: none;
+  color: #2b2b48;
+  font-family: inherit;
+}
+.yuyi-es-input:focus, .yuyi-es-select:focus {
+  border-color: rgba(108, 99, 255, 0.6);
+  box-shadow: 0 0 0 2px rgba(108, 99, 255, 0.18);
+}
+.yuyi-es-select[multiple] { min-height: 80px; }
+.yuyi-es-btn {
+  font-size: 12px;
+  padding: 6px 14px;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(135deg, #a0c4ff, #bdb2ff);
+  color: #2a2a52;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 4px 10px rgba(120, 130, 200, 0.18);
+}
+.yuyi-es-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 14px rgba(120, 130, 200, 0.22); }
+.yuyi-es-btn-ghost {
+  background: rgba(255, 255, 255, 0.7);
+  color: #4a4a6a;
+  box-shadow: none;
+  border: 1px solid rgba(120, 130, 200, 0.18);
+}
+.yuyi-es-btn-ghost:hover { background: rgba(255, 255, 255, 0.95); }
+
+.yuyi-es-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.yuyi-es-empty, .yuyi-es-error {
+  padding: 18px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.6);
+  text-align: center;
+  font-size: 13px;
+  color: #6a6a8a;
+}
+.yuyi-es-error { color: #b35c5c; background: rgba(255, 220, 220, 0.6); }
+.yuyi-es-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 4px 12px rgba(120, 130, 200, 0.10);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  backdrop-filter: blur(10px);
+}
+.yuyi-es-card:hover { box-shadow: 0 6px 16px rgba(120, 130, 200, 0.18); }
+.yuyi-es-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.yuyi-es-badge {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.yuyi-es-type {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2a2a52;
+  font-family: monospace;
+}
+.yuyi-es-time {
+  font-size: 11px;
+  color: #6a6a8a;
+  font-family: monospace;
+}
+.yuyi-es-source {
+  font-size: 11px;
+  color: #6a6a8a;
+  margin-left: auto;
+}
+.yuyi-es-toggle {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: rgba(120, 130, 200, 0.10);
+  color: #4a4a6a;
+  cursor: pointer;
+  user-select: none;
+}
+.yuyi-es-toggle:hover { background: rgba(120, 130, 200, 0.18); }
+.yuyi-es-card-summary {
+  font-size: 13px;
+  color: #2b2b48;
+  line-height: 1.5;
+}
+.yuyi-es-card-trace {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.yuyi-es-chip {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(120, 130, 200, 0.10);
+  color: #4a4a6a;
+  font-family: monospace;
+}
+.yuyi-es-chip-on { background: rgba(110, 210, 126, 0.18); color: #2e6a36; }
+.yuyi-es-chip-off { background: rgba(180, 180, 200, 0.18); color: #6a6a8a; }
+.yuyi-es-card-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(120, 130, 200, 0.18);
+}
+.yuyi-es-card-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.yuyi-es-card-detail-title {
+  font-size: 11px;
+  color: #6a6a8a;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.yuyi-es-card-json {
+  font-size: 11px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(20, 20, 40, 0.85);
+  color: #c8e0ff;
+  font-family: monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.yuyi-es-card-monospace {
+  font-size: 11px;
+  font-family: monospace;
+  color: #4a4a6a;
+  word-break: break-all;
+}

@@ -1,0 +1,9 @@
+# QianWuYuyi-AI 版本检查文件（升级机制依据）
+# 升级前请比对：本文件的 PACKAGE_VERSION 与当前安装的 upgrade/VERSION_CHECK
+PACKAGE_VERSION=v1.1.0-stable
+GIT_COMMIT=726fa72cd873711cbd3919a89853a0659241d433
+GIT_TAG=v1.1.0-stable
+BUILD_DATE=2026-08-16
+PREVIOUS_VERSION=V1.1.0 (V1.1 Foundation Hardening Freeze)
+INTERNAL_SYSTEM_VERSION=7.2.1-p2
+UPGRADE_FROM=v1.0.x / v1.1.x 任意版本

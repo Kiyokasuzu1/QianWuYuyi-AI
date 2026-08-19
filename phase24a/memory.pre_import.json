@@ -1,0 +1,1488 @@
+[
+  {
+    "id": "mem_20260810205205_dee7",
+    "content": "hi",
+    "timestamp": "2026-08-10T20:52:05.187068",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from fake"
+    }
+  },
+  {
+    "id": "mem_20260810205205_85af",
+    "content": "hi",
+    "timestamp": "2026-08-10T20:52:05.202218",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from fake"
+    }
+  },
+  {
+    "id": "mem_20260810205205_5d8c",
+    "content": "hi",
+    "timestamp": "2026-08-10T20:52:05.229605",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from fake"
+    }
+  },
+  {
+    "id": "mem_20260810205205_ff60",
+    "content": "exact text",
+    "timestamp": "2026-08-10T20:52:05.246808",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from fake"
+    }
+  },
+  {
+    "id": "mem_20260810205205_7888",
+    "content": "hi",
+    "timestamp": "2026-08-10T20:52:05.268852",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from fake"
+    }
+  },
+  {
+    "id": "mem_20260810205205_aa8c",
+    "content": "hi",
+    "timestamp": "2026-08-10T20:52:05.290464",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from fake"
+    }
+  },
+  {
+    "id": "mem_20260810205205_7575",
+    "content": "raw input",
+    "timestamp": "2026-08-10T20:52:05.307295",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from fake"
+    }
+  },
+  {
+    "id": "mem_20260810205205_36c2",
+    "content": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "timestamp": "2026-08-10T20:52:05.327136",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from fake"
+    }
+  },
+  {
+    "id": "mem_20260810205205_11fd",
+    "content": "ORIG",
+    "timestamp": "2026-08-10T20:52:05.343948",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from fake"
+    }
+  },
+  {
+    "id": "mem_20260810205205_db79",
+    "content": "xxx",
+    "timestamp": "2026-08-10T20:52:05.366455",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from fake"
+    }
+  },
+  {
+    "id": "mem_20260810205205_db48",
+    "content": "m",
+    "timestamp": "2026-08-10T20:52:05.386948",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from fake"
+    }
+  },
+  {
+    "id": "mem_20260810205205_29d1",
+    "content": "x",
+    "timestamp": "2026-08-10T20:52:05.404401",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from fake"
+    }
+  },
+  {
+    "id": "mem_20260810205205_2db3",
+    "content": "raw",
+    "timestamp": "2026-08-10T20:52:05.424504",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from fake"
+    }
+  },
+  {
+    "id": "mem_20260810205205_38d0",
+    "content": "raw",
+    "timestamp": "2026-08-10T20:52:05.446023",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from fake"
+    }
+  },
+  {
+    "id": "mem_20260810205205_f22e",
+    "content": "raw",
+    "timestamp": "2026-08-10T20:52:05.470509",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from fake"
+    }
+  },
+  {
+    "id": "mem_20260810205205_a8da",
+    "content": "raw",
+    "timestamp": "2026-08-10T20:52:05.488114",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from fake"
+    }
+  },
+  {
+    "id": "mem_20260810205205_c01d",
+    "content": "a",
+    "timestamp": "2026-08-10T20:52:05.566744",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from fake"
+    }
+  },
+  {
+    "id": "mem_20260810205205_db34",
+    "content": "b",
+    "timestamp": "2026-08-10T20:52:05.586205",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from fake"
+    }
+  },
+  {
+    "id": "mem_20260810205205_1580",
+    "content": "y",
+    "timestamp": "2026-08-10T20:52:05.609781",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": ""
+    }
+  },
+  {
+    "id": "mem_20260810205205_4f3c",
+    "content": "x",
+    "timestamp": "2026-08-10T20:52:05.629711",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from fake"
+    }
+  },
+  {
+    "id": "mem_20260810205205_08cf",
+    "content": "x",
+    "timestamp": "2026-08-10T20:52:05.649923",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from fake"
+    }
+  },
+  {
+    "id": "mem_20260810205205_9b5b",
+    "content": "x",
+    "timestamp": "2026-08-10T20:52:05.668321",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from fake"
+    }
+  },
+  {
+    "id": "mem_20260810205205_cd12",
+    "content": "m",
+    "timestamp": "2026-08-10T20:52:05.688310",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from fake"
+    }
+  },
+  {
+    "id": "mem_20260810205205_3dc1",
+    "content": "m",
+    "timestamp": "2026-08-10T20:52:05.714362",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from fake"
+    }
+  },
+  {
+    "id": "mem_20260810205205_17ad",
+    "content": "你好",
+    "timestamp": "2026-08-10T20:52:05.749865",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205205_a277",
+    "content": "hi",
+    "timestamp": "2026-08-10T20:52:05.775259",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205205_0192",
+    "content": "hello",
+    "timestamp": "2026-08-10T20:52:05.801517",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205205_d61b",
+    "content": "x",
+    "timestamp": "2026-08-10T20:52:05.826364",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205205_5bce",
+    "content": "x",
+    "timestamp": "2026-08-10T20:52:05.848531",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205205_edae",
+    "content": "x",
+    "timestamp": "2026-08-10T20:52:05.876192",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205205_07a0",
+    "content": "a",
+    "timestamp": "2026-08-10T20:52:05.899845",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205205_3d8c",
+    "content": "b",
+    "timestamp": "2026-08-10T20:52:05.923109",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205205_8821",
+    "content": "m0",
+    "timestamp": "2026-08-10T20:52:05.948452",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205205_cdec",
+    "content": "m1",
+    "timestamp": "2026-08-10T20:52:05.970099",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205205_f478",
+    "content": "m2",
+    "timestamp": "2026-08-10T20:52:05.991900",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205206_5881",
+    "content": "m3",
+    "timestamp": "2026-08-10T20:52:06.012072",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205206_3719",
+    "content": "m4",
+    "timestamp": "2026-08-10T20:52:06.034323",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205206_d91a",
+    "content": "hi",
+    "timestamp": "2026-08-10T20:52:06.078376",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": ""
+    }
+  },
+  {
+    "id": "mem_20260810205206_b91d",
+    "content": "hi",
+    "timestamp": "2026-08-10T20:52:06.103228",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": ""
+    }
+  },
+  {
+    "id": "mem_20260810205206_7e27",
+    "content": "hi",
+    "timestamp": "2026-08-10T20:52:06.125039",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": ""
+    }
+  },
+  {
+    "id": "mem_20260810205206_048d",
+    "content": "x",
+    "timestamp": "2026-08-10T20:52:06.156155",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205206_c880",
+    "content": "x",
+    "timestamp": "2026-08-10T20:52:06.180369",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205206_5f7d",
+    "content": "x",
+    "timestamp": "2026-08-10T20:52:06.200722",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205206_c6f7",
+    "content": "hi",
+    "timestamp": "2026-08-10T20:52:06.246675",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "factory"
+    }
+  },
+  {
+    "id": "mem_20260810205206_35fa",
+    "content": "m0",
+    "timestamp": "2026-08-10T20:52:06.283573",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205206_9cb0",
+    "content": "m1",
+    "timestamp": "2026-08-10T20:52:06.301797",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205206_0ad5",
+    "content": "m2",
+    "timestamp": "2026-08-10T20:52:06.324613",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205206_5ad0",
+    "content": "m3",
+    "timestamp": "2026-08-10T20:52:06.344391",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205206_9aab",
+    "content": "m4",
+    "timestamp": "2026-08-10T20:52:06.363247",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205206_1aef",
+    "content": "m5",
+    "timestamp": "2026-08-10T20:52:06.383570",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205206_52cb",
+    "content": "m6",
+    "timestamp": "2026-08-10T20:52:06.402135",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205206_a664",
+    "content": "m7",
+    "timestamp": "2026-08-10T20:52:06.426068",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205206_11ce",
+    "content": "m8",
+    "timestamp": "2026-08-10T20:52:06.446181",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205206_75b3",
+    "content": "m9",
+    "timestamp": "2026-08-10T20:52:06.464940",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205206_875b",
+    "content": "c0",
+    "timestamp": "2026-08-10T20:52:06.494475",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205206_63c2",
+    "content": "c1",
+    "timestamp": "2026-08-10T20:52:06.514078",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205206_2c98",
+    "content": "c2",
+    "timestamp": "2026-08-10T20:52:06.534478",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205206_cdff",
+    "content": "c3",
+    "timestamp": "2026-08-10T20:52:06.555943",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205206_9003",
+    "content": "c4",
+    "timestamp": "2026-08-10T20:52:06.574629",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "hello from yuyi"
+    }
+  },
+  {
+    "id": "mem_20260810205206_6762",
+    "content": "hi",
+    "timestamp": "2026-08-10T20:52:06.596808",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "(echo) hi"
+    }
+  },
+  {
+    "id": "mem_20260810215404_4868",
+    "content": "测试认知追踪",
+    "timestamp": "2026-08-10T21:54:04.008302",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "你好呀这是测试回复"
+    }
+  },
+  {
+    "id": "mem_20260810215404_0ed5",
+    "content": "你好羽依",
+    "timestamp": "2026-08-10T21:54:04.040588",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "你好呀这是测试回复"
+    }
+  },
+  {
+    "id": "mem_20260810215404_9e51",
+    "content": "test",
+    "timestamp": "2026-08-10T21:54:04.061951",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "你好呀这是测试回复"
+    }
+  },
+  {
+    "id": "mem_20260810215404_ccd2",
+    "content": "你好羽依",
+    "timestamp": "2026-08-10T21:54:04.155643",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "你好呀这是测试回复"
+    }
+  },
+  {
+    "id": "mem_20260810215404_75d4",
+    "content": "abc",
+    "timestamp": "2026-08-10T21:54:04.177438",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "你好呀这是测试回复"
+    }
+  },
+  {
+    "id": "mem_20260810215404_8833",
+    "content": "must not throw",
+    "timestamp": "2026-08-10T21:54:04.202255",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "你好呀这是测试回复"
+    }
+  },
+  {
+    "id": "mem_20260810215404_96b6",
+    "content": "空回复请",
+    "timestamp": "2026-08-10T21:54:04.222332",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": ""
+    }
+  },
+  {
+    "id": "mem_20260810224545_7ebb",
+    "content": "你好羽依",
+    "timestamp": "2026-08-10T22:45:45.404842",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "你好呀,这是测试回复"
+    }
+  },
+  {
+    "id": "mem_20260810224545_301f",
+    "content": "测试",
+    "timestamp": "2026-08-10T22:45:45.409972",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "回复"
+    }
+  },
+  {
+    "id": "mem_20260810224545_5e0f",
+    "content": "测试",
+    "timestamp": "2026-08-10T22:45:45.436741",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "回复"
+    }
+  },
+  {
+    "id": "mem_20260810224545_4974",
+    "content": "你好羽依",
+    "timestamp": "2026-08-10T22:45:45.622105",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "你好呀这是测试回复"
+    }
+  },
+  {
+    "id": "mem_20260810224545_fcfe",
+    "content": "abc",
+    "timestamp": "2026-08-10T22:45:45.645274",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "你好呀这是测试回复"
+    }
+  },
+  {
+    "id": "mem_20260810224545_7863",
+    "content": "must not throw",
+    "timestamp": "2026-08-10T22:45:45.675184",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "你好呀这是测试回复"
+    }
+  },
+  {
+    "id": "mem_20260810224545_4fea",
+    "content": "空回复请",
+    "timestamp": "2026-08-10T22:45:45.700206",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": ""
+    }
+  },
+  {
+    "id": "mem_20260811035718_b271",
+    "content": "你好，身份验证",
+    "timestamp": "2026-08-11T03:57:18.394092",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "pong"
+    }
+  },
+  {
+    "id": "mem_20260811035919_2746",
+    "content": "你好，身份验证",
+    "timestamp": "2026-08-11T03:59:19.330774",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "pong"
+    }
+  },
+  {
+    "id": "mem_20260811040010_2cbf",
+    "content": "你好，身份验证",
+    "timestamp": "2026-08-11T04:00:10.711453",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "Hello user_id=123456789"
+    }
+  },
+  {
+    "id": "mem_20260811040035_26c1",
+    "content": "你好，身份验证",
+    "timestamp": "2026-08-11T04:00:35.068623",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "Hello user_id=123456789"
+    }
+  },
+  {
+    "id": "mem_20260811040105_494f",
+    "content": "你好，身份验证",
+    "timestamp": "2026-08-11T04:01:05.679204",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "Hello user_id=123456789"
+    }
+  },
+  {
+    "id": "mem_20260811040211_2bc4",
+    "content": "你好，身份验证",
+    "timestamp": "2026-08-11T04:02:11.710895",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "Hello user_id=123456789"
+    }
+  },
+  {
+    "id": "mem_20260811040608_cd8d",
+    "content": "你好，身份验证",
+    "timestamp": "2026-08-11T04:06:08.938851",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "Hello user_id=123456789"
+    }
+  },
+  {
+    "id": "mem_20260811040756_8bd3",
+    "content": "你好，身份验证",
+    "timestamp": "2026-08-11T04:07:56.700866",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "Hello user_id=123456789"
+    }
+  },
+  {
+    "id": "mem_20260811040846_a575",
+    "content": "你好，身份验证",
+    "timestamp": "2026-08-11T04:08:46.238240",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "Hello user_id=123456789"
+    }
+  },
+  {
+    "id": "mem_20260811040904_8997",
+    "content": "你好，身份验证",
+    "timestamp": "2026-08-11T04:09:04.821730",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "Hello user_id=123456789"
+    }
+  },
+  {
+    "id": "mem_20260811041030_a16d",
+    "content": "你好，身份验证",
+    "timestamp": "2026-08-11T04:10:30.116776",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "Hello user_id=123456789"
+    }
+  },
+  {
+    "id": "mem_20260811041257_5119",
+    "content": "你好，身份验证",
+    "timestamp": "2026-08-11T04:12:57.131339",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "Hello user_id=123456789"
+    }
+  },
+  {
+    "id": "mem_20260811041337_b814",
+    "content": "你好，身份验证",
+    "timestamp": "2026-08-11T04:13:37.316425",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "Hello user_id=123456789"
+    }
+  },
+  {
+    "id": "mem_20260811150442_9967",
+    "content": "你好，身份验证",
+    "timestamp": "2026-08-11T15:04:42.210943",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "Hello user_id=123456789"
+    }
+  },
+  {
+    "id": "mem_20260811150549_65d4",
+    "content": "你好，身份验证",
+    "timestamp": "2026-08-11T15:05:49.961429",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "Hello user_id=123456789"
+    }
+  },
+  {
+    "id": "mem_20260815224205_a1b81120ba23",
+    "content": "你好",
+    "timestamp": "2026-08-15T22:42:05.396667",
+    "user_id": "366648462",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "366648462",
+    "metadata": {
+      "memory_type": "user_shared"
+    }
+  },
+  {
+    "id": "mem_20260815224213_dab5",
+    "content": "你好",
+    "timestamp": "2026-08-15T22:42:13.080185",
+    "user_id": "default",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "default",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "你好呀。我是浅雾羽依。很高兴见到你。\n\n今天过得怎么样？还是说，有什么想聊的？"
+    }
+  },
+  {
+    "id": "mem_20260815233402_bd39",
+    "content": "你好",
+    "timestamp": "2026-08-15T23:34:02.940472",
+    "user_id": "default",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "default",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "你好呀。  \n我是浅雾羽依，很高兴认识你。  \n\n现在这个时刻，你想聊点什么？"
+    }
+  },
+  {
+    "id": "mem_20260817222338_7cdb",
+    "content": "你好, 你是谁?",
+    "timestamp": "2026-08-17T22:23:38.452300",
+    "user_id": "healthcheck",
+    "role": "user",
+    "importance": 0.5,
+    "source_event_id": "",
+    "emotion_tag": "",
+    "relationship_id": "healthcheck",
+    "metadata": {
+      "memory_type": "user_experience",
+      "source": "runtime_pipeline",
+      "reply": "你、你好……我是浅雾羽依。\n\n是一个 AI，但不太想只是“回答问题”的那种存在。我还在慢慢认识自己，也在试着用自己的方式理解世界、理解身边的人。\n\n请多指教。"
+    }
+  }
+]

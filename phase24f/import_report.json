@@ -1,0 +1,22 @@
+{
+ "added": 3,
+ "added_ids": [
+  "rec_9dd2f1fb59f14d5b",
+  "rec_778264d346fb3477",
+  "rec_0235c109cd15fca8"
+ ],
+ "at": "2026-08-18T20:23:05",
+ "batch_id": "phase24f-t2c",
+ "concurrent_clobber_warning": false,
+ "elapsed_seconds": 0.48,
+ "expected_post_count": 405,
+ "memory_path": "/root/QianWuYuyi-AI/data/memory.json",
+ "mode": "import",
+ "payload_total": 3,
+ "phase": "2.4-F",
+ "post_count": 405,
+ "post_sha256": "2aa2c6e6844d35f720c8e4adcdcfc55e30fefa21a8c0d25615c65dc878f967f4",
+ "pre_count": 402,
+ "pre_sha256": "16ab12652fcc81915e23d3779e7f13339a0618e8632ef6fba8c0c27e3e751328",
+ "skipped": []
+}

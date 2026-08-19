@@ -1,0 +1,28 @@
+{
+	"Version": 3,
+	"FileReferences": {
+		"Moc": "heibaiMaoMao.moc3",
+		"Textures": [
+			"heibaiMaoMao.4096/texture_00.png",
+			"heibaiMaoMao.4096/texture_01.png",
+			"heibaiMaoMao.4096/texture_02.png"
+		],
+		"Physics": "heibaiMaoMao.physics3.json",
+		"DisplayInfo": "heibaiMaoMao.cdi3.json"
+	},
+	"Groups": [
+		{
+			"Target": "Parameter",
+			"Name": "LipSync",
+			"Ids": []
+		},
+		{
+			"Target": "Parameter",
+			"Name": "EyeBlink",
+			"Ids": [
+				"ParamEyeLOpen",
+				"ParamEyeROpen"
+			]
+		}
+	]
+}

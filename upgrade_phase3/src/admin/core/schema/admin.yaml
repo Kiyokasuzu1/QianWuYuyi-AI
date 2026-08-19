@@ -1,0 +1,19 @@
+# 管理面板配置 Schema
+enabled:
+  type: boolean
+  required: true
+  default: false
+  description: 是否启用管理面板
+host:
+  type: string
+  default: "127.0.0.1"
+  description: 管理面板监听地址
+token_required:
+  type: boolean
+  default: true
+  description: 是否需要 token 认证
+session_timeout:
+  type: float
+  default: 3600
+  min: 60
+  description: 会话超时时间（秒）

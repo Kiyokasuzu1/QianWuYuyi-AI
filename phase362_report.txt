@@ -1,0 +1,160 @@
+﻿
+╔══════════════════════════════════════════════════════════════════════╗
+║  Case: Case1_positive_feedback                                      ║
+╚══════════════════════════════════════════════════════════════════════╝
+事件分布: {'positive': 0.7, 'neutral': 0.2, 'negative': 0.1}   总事件: 100   实际改变 trait 的次数: 80
+临时数据: C:\Users\29553\AppData\Local\Temp\yuyi_p361_Case1_positive_feedback_8x3zhc1j
+⚠️  Flags: saturation, drift_eats_growth
+
+━━━  演化轨迹（各 trait 的 TraitState.current_value）
+  维度                     T=    0 T=   10 T=   25 T=   50 T=   75 T=  100
+  caring                 0.7000 0.8299 0.8622 0.8998 0.9502 0.9807
+  emotional_expression   0.6500 0.7129 0.7429 0.8029 0.8612 0.8988
+  gentleness             0.8000 0.8028 0.7828 0.7613 0.7594 0.7620
+  initiative             0.0000 0.0000 0.4950 0.4900 0.4850 0.4800
+  sensitivity            0.8000 0.8100 0.8300 0.8700 0.9177 0.9460
+  shyness                0.7500 0.7500 0.7700 0.8008 0.7958 0.7708
+  warmth                 0.7000 0.7700 0.8588 0.8873 0.9554 0.9886
+
+━━━  事件 Δ 统计
+  维度                          单次最大+      单次最大-       累计ΣΔ
+  caring                    +0.0250    -0.0150    +0.6550
+  emotional_expression      +0.0150    -0.0017    +0.2562
+  gentleness                +0.0028    -0.0100    -0.0380
+  initiative                -0.0050    -0.0050    -0.0200
+  sensitivity               +0.0100    -0.0014    +0.1586
+  shyness                   +0.0200    -0.0050    +0.0208
+  warmth                    +0.0300    -0.0150    +1.0664
+
+━━━  Resolve Decay（仅 resolve 100 次，不再有成长事件）
+  维度                          剩余成长%      每resolveΔ
+  caring                     100.0%        +0.000000
+  emotional_expression        86.4%        -0.000460
+  gentleness                 100.0%        +0.000000
+  sensitivity                100.0%        +0.000000
+  shyness                    100.0%        +0.000000
+  warmth                     100.0%        +0.000000
+
+━━━  Personality Half-Life（单脉冲实验）
+  施加 Δ+0.040 到 warmth  (BASE=0.7000 → 初始=0.7400，目标一半=0.7200)
+  → 半衰期: 在 200 次 resolve 内未下降到一半
+  → 模拟 200 次 resolve 后: value=0.74，剩余成长 Δ 的 100.0%
+  → 采样点 (step/value/remainingΔ):
+     step   1: value=0.7400 rem=+0.0400
+     step  10: value=0.7400 rem=+0.0400
+     step  25: value=0.7400 rem=+0.0400
+     step  50: value=0.7400 rem=+0.0400
+     step 200: value=0.7400 rem=+0.0400
+
+⚠️  饱和细节: warmth=+sat(0.989) | caring=+sat(0.981)
+⚠️  漂移吃成长: warmth ΣΔ=+1.066 → 实际Δ=+0.289 (丢失 72.9%) | caring ΣΔ=+0.655 → 实际Δ=+0.281 (丢失 57.1%)
+
+╔══════════════════════════════════════════════════════════════════════╗
+║  Case: Case2_negative_feedback                                      ║
+╚══════════════════════════════════════════════════════════════════════╝
+事件分布: {'positive': 0.1, 'neutral': 0.2, 'negative': 0.7}   总事件: 100   实际改变 trait 的次数: 87
+临时数据: C:\Users\29553\AppData\Local\Temp\yuyi_p361_Case2_negative_feedback_84a3pf2s
+⚠️  Flags: saturation, drift_eats_growth, fast_decay
+
+━━━  演化轨迹（各 trait 的 TraitState.current_value）
+  维度                     T=    0 T=   10 T=   25 T=   50 T=   75 T=  100
+  caring                 0.7000 0.6700 0.6650 0.6150 0.5111 0.4811
+  emotional_expression   0.6500 0.6500 0.6650 0.6787 0.6770 0.6770
+  gentleness             0.8000 0.7700 0.7400 0.6871 0.6558 0.5658
+  initiative             0.0000 0.4800 0.4550 0.4300 0.3850 0.3450
+  sensitivity            0.8000 0.8183 0.8383 0.9083 0.9645 0.9741
+  shyness                0.7500 0.8500 0.9253 0.9745 0.9928 0.9988
+  warmth                 0.7000 0.5750 0.4650 0.3061 0.1011 0.0268
+
+━━━  事件 Δ 统计
+  维度                          单次最大+      单次最大-       累计ΣΔ
+  caring                    +0.0250    -0.0150    -0.2189
+  emotional_expression      +0.0150    -0.0017    +0.0270
+  gentleness                -0.0013    -0.0100    -0.2342
+  initiative                -0.0050    -0.0050    -0.1550
+  sensitivity               +0.0100    -0.0017    +0.2283
+  shyness                   +0.0200    -0.0050    +0.7659
+  warmth                    +0.0300    -0.0150    -0.8589
+
+━━━  Resolve Decay（仅 resolve 100 次，不再有成长事件）
+  维度                          剩余成长%      每resolveΔ
+  caring                      83.2%        +0.000180
+  emotional_expression       100.0%        +0.000000
+  gentleness                  82.0%        +0.000320
+  sensitivity                100.0%        +0.000000
+  shyness                     14.1%        -0.001820
+  warmth                      17.1%        +0.004330
+
+━━━  Personality Half-Life（单脉冲实验）
+  施加 Δ+0.040 到 warmth  (BASE=0.7000 → 初始=0.7400，目标一半=0.7200)
+  → 半衰期: 在 200 次 resolve 内未下降到一半
+  → 模拟 200 次 resolve 后: value=0.74，剩余成长 Δ 的 100.0%
+  → 采样点 (step/value/remainingΔ):
+     step   1: value=0.7400 rem=+0.0400
+     step  10: value=0.7400 rem=+0.0400
+     step  25: value=0.7400 rem=+0.0400
+     step  50: value=0.7400 rem=+0.0400
+     step 200: value=0.7400 rem=+0.0400
+
+⚠️  饱和细节: warmth=-sat(0.027) | shyness=+sat(0.999) | sensitivity=+sat(0.974)
+⚠️  漂移吃成长: shyness ΣΔ=+0.766 → 实际Δ=+0.249 (丢失 67.5%)
+
+╔══════════════════════════════════════════════════════════════════════╗
+║  Case: Case3_realistic_20_10_70                                     ║
+╚══════════════════════════════════════════════════════════════════════╝
+事件分布: {'positive': 0.2, 'negative': 0.1, 'neutral': 0.7}   总事件: 100   实际改变 trait 的次数: 63
+临时数据: C:\Users\29553\AppData\Local\Temp\yuyi_p361_Case3_realistic_20_10_70_e3nofzet
+
+━━━  演化轨迹（各 trait 的 TraitState.current_value）
+  维度                     T=    0 T=   10 T=   25 T=   50 T=   75 T=  100
+  caring                 0.7000 0.7930 0.7654 0.8069 0.7987 0.8395
+  emotional_expression   0.6500 0.6965 0.6965 0.7115 0.7115 0.7247
+  gentleness             0.8000 0.7928 0.7843 0.7843 0.7844 0.7745
+  initiative             0.0000 0.0000 0.4900 0.4900 0.4850 0.4700
+  sensitivity            0.8000 0.8000 0.8200 0.8414 0.8914 0.9201
+  shyness                0.7500 0.7650 0.8050 0.7942 0.7932 0.8352
+  warmth                 0.7000 0.7390 0.6732 0.8110 0.8616 0.8664
+
+━━━  事件 Δ 统计
+  维度                          单次最大+      单次最大-       累计ΣΔ
+  caring                    +0.0250    -0.0150    +0.1518
+  emotional_expression      +0.0150    -0.0018    +0.0747
+  gentleness                +0.0028    -0.0100    -0.0255
+  initiative                -0.0050    -0.0050    -0.0300
+  sensitivity               +0.0100    -0.0014    +0.1214
+  shyness                   +0.0200    -0.0050    +0.0860
+  warmth                    +0.0300    -0.0150    +0.2649
+
+━━━  Resolve Decay（仅 resolve 100 次，不再有成长事件）
+  维度                          剩余成长%      每resolveΔ
+  caring                     100.0%        +0.000000
+  emotional_expression       100.0%        +0.000000
+  gentleness                 100.0%        +0.000000
+  sensitivity                100.0%        +0.000000
+  shyness                     48.4%        -0.000320
+  warmth                     100.0%        +0.000000
+
+━━━  Personality Half-Life（单脉冲实验）
+  施加 Δ+0.040 到 warmth  (BASE=0.7000 → 初始=0.7400，目标一半=0.7200)
+  → 半衰期: 在 200 次 resolve 内未下降到一半
+  → 模拟 200 次 resolve 后: value=0.74，剩余成长 Δ 的 100.0%
+  → 采样点 (step/value/remainingΔ):
+     step   1: value=0.7400 rem=+0.0400
+     step  10: value=0.7400 rem=+0.0400
+     step  25: value=0.7400 rem=+0.0400
+     step  50: value=0.7400 rem=+0.0400
+     step 200: value=0.7400 rem=+0.0400
+
+
+========================================================================
+Phase 3.6.1 压力测试汇总对比（3 Case 矩阵）
+========================================================================
+  Case                     最终warmth   最终shyness             单脉冲warmth半衰期 flags               
+  Case1_positive_feedback     0.9886      0.7708                    > 200 saturation, drift_eats_growth
+  Case2_negative_feedback     0.0268      0.9988                    > 200 saturation, drift_eats_growth, fast_decay
+  Case3_realistic_20_10_70     0.8664      0.8352                    > 200 -                   
+
+  Case                      100 resolve后warmth剩余% drift/resolve warmth
+  Case1_positive_feedback                   100.0%            +0.000000
+  Case2_negative_feedback                    17.1%            +0.004330
+  Case3_realistic_20_10_70                   100.0%            +0.000000

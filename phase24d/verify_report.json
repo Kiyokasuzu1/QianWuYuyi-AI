@@ -1,0 +1,82 @@
+{
+ "bad_provenance": [],
+ "duplicate_fingerprints": {
+  "153812ae5fea0b73a011bf28bd7cea93644437c3fe3260b7b2d7e1e2f9f46bde": 2,
+  "2396a1256ac4b1c6849c931ddb8018bdd984bb2383be21bb819a33b95d8d603f": 2,
+  "29c1b289e7522195b362e44f54e05470b69ad20540ab60a18a05e5bf6951f13d": 2,
+  "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881": 10,
+  "3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d": 2,
+  "55aad3e7ae67b3c20f299d2179d849650943293beb08dfbb50f60651c3dea1f9": 15,
+  "62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a": 3,
+  "670d9743542cae3ea7ebe36af56bd53648b0a1126162e78d81a32934a711302e": 4,
+  "6aa8f49cc992dfd75a114269ed26de0ad6d4e7d7a70d9c8afb3d7a57a88a73ed": 2,
+  "70571c74384826686818c228e79d785cc2525c56aa3e29fc040121213cca1265": 2,
+  "8801be8ea075695055d63b98e0640b51396e519f571d50b8b0f1de2ed9823481": 2,
+  "8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4": 11,
+  "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad": 2,
+  "ca0df2c95aa144c1d0ff2ff3c8f967fdc1de9ef0c4120b3726416701b519d619": 2,
+  "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb": 2,
+  "d7439bee24773bcbfa2d0a97947ee36227b10d1022b1a55847e928965bb6bfde": 4,
+  "e4223ed20d7ea5740a326e2b268ca6db91d041cf5194f577e393a8ba3b85d8e9": 2,
+  "f244da1dc2414780fe88c43efd92954840da7d96cbbac36b54cb40d3fda77af9": 4
+ },
+ "imported_expected": 86,
+ "imported_present": 86,
+ "memory_path": "/root/QianWuYuyi-AI/data/memory.json",
+ "missing_imports": [],
+ "pollution_guard_fail": [],
+ "pollution_guard_fail_count": 0,
+ "pre_count": 316,
+ "pre_existing_content_changed": false,
+ "pre_existing_missing": [],
+ "retrieval_checks": [
+  {
+   "hit_imported": 0,
+   "hits": 3,
+   "query": "我是清夏铃"
+  },
+  {
+   "hit_imported": 0,
+   "hits": 3,
+   "query": "羽依"
+  },
+  {
+   "hit_imported": 0,
+   "hits": 3,
+   "query": "架构"
+  },
+  {
+   "hit_imported": 0,
+   "hits": 3,
+   "query": "记忆"
+  },
+  {
+   "hit_imported": 0,
+   "hits": 3,
+   "query": "清夏铃"
+  },
+  {
+   "hit_imported": 0,
+   "hits": 3,
+   "query": "人生经历档案"
+  },
+  {
+   "hit_imported": 0,
+   "hits": 3,
+   "query": "成长经验"
+  },
+  {
+   "hit_imported": 0,
+   "hits": 3,
+   "query": "第一次启动"
+  },
+  {
+   "hit_imported": 0,
+   "hits": 3,
+   "query": "统一认知中枢"
+  }
+ ],
+ "schema_fail": [],
+ "schema_fail_count": 0,
+ "total_records": 402
+}

@@ -15,9 +15,42 @@ v0.6 更新:
 """
 
 import json
+import logging
+import os
+import shutil
+import threading
 from pathlib import Path
 from typing import Dict, List
 from datetime import datetime, date
+
+from src.memory.atomic_write import atomic_write_json
+
+logger = logging.getLogger(__name__)
+
+# V1.0: per-path RLock 表（多实例同文件写串行化）
+_PATH_LOCKS: Dict[str, threading.RLock] = {}
+_PATH_LOCKS_GUARD = threading.Lock()
+
+
+def _path_lock(path) -> threading.RLock:
+    _key = os.path.abspath(str(path))
+    with _PATH_LOCKS_GUARD:
+        _lock = _PATH_LOCKS.get(_key)
+        if _lock is None:
+            _lock = threading.RLock()
+            _PATH_LOCKS[_key] = _lock
+    return _lock
+
+
+def _backup_corrupt(path: Path) -> None:
+    """损坏文件复制备份（不覆盖不删除旧文件）。"""
+    try:
+        if path.exists():
+            _backup = f"{path}.corrupt.{datetime.now():%Y%m%dT%H%M%S%f}"
+            shutil.copy2(str(path), _backup)
+            logger.warning("RelationshipState: 损坏文件已备份为 %s", _backup)
+    except Exception:
+        pass
 
 
 class RelationshipState:
@@ -41,13 +74,15 @@ class RelationshipState:
                     data = json.load(f)
                     return self._upgrade(data)
             except Exception:
-                pass
+                # V1.0: 损坏备份后返回默认态；绝不覆盖旧文件
+                _backup_corrupt(self.state_path)
         return self._default()
 
     def _save(self):
+        # V1.0: atomic_write + per-path RLock（替换裸 open("w")+json.dump）
         self._state["last_updated"] = datetime.now().isoformat()
-        with open(self.state_path, "w", encoding="utf-8") as f:
-            json.dump(self._state, f, ensure_ascii=False, indent=2)
+        with _path_lock(self.state_path):
+            atomic_write_json(str(self.state_path), self._state)
 
     def _default(self):
         return {

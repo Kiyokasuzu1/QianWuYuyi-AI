@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>羽依 Yuyi · AI 控制中心</title>
+<link rel="stylesheet" href="/admin/css/design-tokens.css">
+<link rel="stylesheet" href="/admin/css/components/card.css">
+<link rel="stylesheet" href="/admin/css/components/button.css">
+<link rel="stylesheet" href="/admin/css/components/status.css">
+<link rel="stylesheet" href="/admin/css/components/toast.css">
+<link rel="stylesheet" href="/admin/css/style.css">
+</head>
+<body>
+
+<!-- 背景装饰 -->
+<div class="bg-decoration">
+  <canvas id="particle-canvas"></canvas>
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  <div class="blob blob-3"></div>
+  <div class="stars"></div>
+</div>
+
+<!-- 顶部状态栏 -->
+<header class="top-bar glass">
+  <div class="logo-area">
+    <div class="logo-icon">
+      <svg viewBox="0 0 48 48" width="36" height="36">
+        <defs>
+          <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#a5b4fc;stop-opacity:1" />
+            <stop offset="50%" style="stop-color:#c4b5fd;stop-opacity:1" />
+            <stop offset="100%" style="stop-color:#f0abfc;stop-opacity:1" />
+          </linearGradient>
+        </defs>
+        <circle cx="24" cy="24" r="20" fill="url(#logoGrad)" opacity="0.8"/>
+        <circle cx="18" cy="22" r="3" fill="#fff"/>
+        <circle cx="30" cy="22" r="3" fill="#fff"/>
+        <circle cx="18" cy="22" r="1.5" fill="#4c3f7a"/>
+        <circle cx="30" cy="22" r="1.5" fill="#4c3f7a"/>
+        <path d="M18 30 Q24 34 30 30" stroke="#fff" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+        <!-- 猫耳 -->
+        <polygon points="12,10 18,18 10,20" fill="url(#logoGrad)" opacity="0.8"/>
+        <polygon points="36,10 30,18 38,20" fill="url(#logoGrad)" opacity="0.8"/>
+      </svg>
+    </div>
+    <div class="logo-text">
+      <h1>羽依</h1>
+      <span class="subtitle">Yuyi Console</span>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <div class="status-item" title="运行时长">
+      <svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span id="uptime">--</span>
+    </div>
+    <div class="status-item" title="在线代理">
+      <svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span id="agent-count">0</span>
+    </div>
+    <div class="status-item" title="系统健康度">
+      <svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 21s-7-4.5-9-10C1.5 7 4 3 8 3c2 0 3.5 1 4 2s1 2 2 2 1-1 2-2 2-2 4-2c4 0 6.5 4 5 8-2 5.5-9 10-9 10z" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+      <span id="health-status">--</span>
+    </div>
+    <div class="status-item" title="CPU 占用">
+      <svg viewBox="0 0 24 24" width="16" height="16"><rect x="4" y="4" width="16" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="9" y="9" width="6" height="6" fill="currentColor" opacity="0.6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span id="cpu-usage">--</span>
+    </div>
+    <div class="status-item" title="内存占用">
+      <svg viewBox="0 0 24 24" width="16" height="16"><rect x="3" y="7" width="18" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 7v10M11 7v10M15 7v10M19 7v10" stroke="currentColor" stroke-width="2"/></svg>
+      <span id="memory-usage">--</span>
+    </div>
+    <div class="status-item status-item-time">
+      <span id="current-time">--:--:--</span>
+    </div>
+  </div>
+
+  <div class="header-actions">
+    <button class="icon-btn" id="refresh-btn" title="刷新" onclick="refreshDashboard()">
+      <svg viewBox="0 0 24 24" width="20" height="20"><path d="M23 4v6h-6M1 20v-6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </div>
+</header>
+
+<!-- 主体布局 -->
+<div class="main-layout">
+
+  <!-- 左侧导航 -->
+  <aside class="sidebar glass">
+    <nav class="nav-section">
+      <div class="nav-title">仪表板</div>
+      <a href="#" class="nav-item active" data-view="dashboard" onclick="switchView('dashboard')">
+        <svg viewBox="0 0 24 24" width="18" height="18"><rect x="3" y="3" width="7" height="9" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><rect x="14" y="3" width="7" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><rect x="14" y="12" width="7" height="9" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><rect x="3" y="16" width="7" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+        <span>首页</span>
+      </a>
+      <a href="#" class="nav-item" data-view="modules" onclick="switchView('modules')">
+        <svg viewBox="0 0 24 24" width="18" height="18"><rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18" stroke="currentColor" stroke-width="2"/></svg>
+        <span>模块</span>
+      </a>
+    </nav>
+
+    <nav class="nav-section">
+      <div class="nav-title">羽依心智</div>
+      <a href="#" class="nav-item" data-view="cognitive" onclick="switchView('cognitive')">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>认知</span>
+      </a>
+      <a href="#" class="nav-item" data-view="autonomous" onclick="switchView('autonomous')">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 2a10 10 0 100 20 10 10 0 000-20z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 8v8M8 12h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <span>自主智能</span>
+      </a>
+    </nav>
+
+    <nav class="nav-section">
+      <div class="nav-title">系统</div>
+      <a href="#" class="nav-item" data-view="logs" onclick="switchView('logs')">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 4h16v16H4z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 8h8M8 12h8M8 16h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <span>日志</span>
+      </a>
+      <a href="#" class="nav-item" data-view="config" onclick="switchView('config')">
+        <svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 1v6M12 17v6M4.22 4.22l4.24 4.24M15.54 15.54l4.24 4.24M1 12h6M17 12h6M4.22 19.78l4.24-4.24M15.54 8.46l4.24-4.24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <span>设置</span>
+      </a>
+      <a href="#" class="nav-item" data-view="audit" onclick="switchView('audit')">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <span>操作日志</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="yuyi-mini">
+        <svg viewBox="0 0 48 48" width="60" height="60">
+          <defs>
+            <linearGradient id="miniGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" style="stop-color:#a5b4fc"/>
+              <stop offset="100%" style="stop-color:#f0abfc"/>
+            </linearGradient>
+          </defs>
+          <!-- 猫耳 -->
+          <polygon points="12,12 20,22 10,24" fill="url(#miniGrad)" opacity="0.8"/>
+          <polygon points="36,12 28,22 38,24" fill="url(#miniGrad)" opacity="0.8"/>
+          <polygon points="14,16 18,22 12,23" fill="#fce7f3" opacity="0.6"/>
+          <polygon points="34,16 30,22 36,23" fill="#fce7f3" opacity="0.6"/>
+          <!-- 脸 -->
+          <ellipse cx="24" cy="30" rx="14" ry="14" fill="#fdf4ff" opacity="0.9"/>
+          <!-- 头发 -->
+          <ellipse cx="24" cy="24" rx="16" ry="12" fill="url(#miniGrad)" opacity="0.5"/>
+          <!-- 眼睛 -->
+          <path d="M18 30 Q20 28 22 30" stroke="#4c3f7a" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.7"/>
+          <path d="M26 30 Q28 28 30 30" stroke="#4c3f7a" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.7"/>
+          <!-- 小鱼装饰 -->
+          <circle cx="30" cy="20" r="3" fill="#93c5fd" opacity="0.6"/>
+          <polygon points="32,20 35,17 35,23" fill="#93c5fd" opacity="0.6"/>
+          <!-- 腮红 -->
+          <ellipse cx="16" cy="32" rx="3" ry="2" fill="#f9a8d4" opacity="0.4"/>
+          <ellipse cx="32" cy="32" rx="3" ry="2" fill="#f9a8d4" opacity="0.4"/>
+          <!-- 嘴巴 -->
+          <path d="M22 36 Q24 37 26 36" stroke="#c084fc" stroke-width="1" fill="none" stroke-linecap="round" opacity="0.7"/>
+        </svg>
+        <div class="mini-text">
+          <div class="mini-name">羽依</div>
+          <div class="mini-status">陪伴中 ♡</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 内容区 -->
+  <main class="content">
+
+    <!-- 欢迎 + 羽依区域 -->
+    <section class="welcome-section glass-card" id="welcome-section">
+      <div class="welcome-text">
+        <div class="greeting" id="greeting">加载中...</div>
+        <div class="welcome-sub">
+          <span class="sparkle">✦</span>
+          羽依正在为您工作中，随时待命~
+        </div>
+        <div class="quick-actions">
+          <button class="chip-btn" onclick="apiAction('reload_config')">
+            <svg viewBox="0 0 24 24" width="14" height="14"><path d="M23 4v6h-6M1 20v-6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            重载配置
+          </button>
+          <button class="chip-btn" onclick="apiAction('save_backup')">
+            <svg viewBox="0 0 24 24" width="14" height="14"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" fill="none" stroke="currentColor" stroke-width="2"/><polyline points="17,21 17,13 7,13 7,21" fill="none" stroke="currentColor" stroke-width="2"/><polyline points="7,3 7,8 15,8" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+            保存备份
+          </button>
+          <button class="chip-btn" onclick="apiAction('system_check')">
+            <svg viewBox="0 0 24 24" width="14" height="14"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="22,4 12,14.01 9,11.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            系统检查
+          </button>
+        </div>
+      </div>
+
+      <div class="yuyi-illustration">
+        <div class="yuyi-scene">
+          <!-- 云朵 -->
+          <div class="cloud cloud-1"></div>
+          <div class="cloud cloud-2"></div>
+          <!-- 星星 -->
+          <div class="star star-1">✦</div>
+          <div class="star star-2">✧</div>
+          <!-- 羽依角色 -->
+          <div class="yuyi-character" id="yuyi-character-main">
+            <!-- 角色立绘图片 -->
+            <img src="/admin/images/yuyi-character.jpg" alt="羽依" class="yuyi-character-img" id="yuyi-character-img" onerror="this.style.display='none';document.getElementById('yuyi-character-svg').style.display='block';">
+            <!-- SVG 备用（图片加载失败时显示） -->
+            <svg id="yuyi-character-svg" viewBox="0 0 120 160" width="120" height="160" style="display:none">
+              <defs>
+                <linearGradient id="hairGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" style="stop-color:#e0e7ff"/>
+                  <stop offset="100%" style="stop-color:#c4b5fd"/>
+                </linearGradient>
+                <linearGradient id="dressGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" style="stop-color:#fce7f3"/>
+                  <stop offset="100%" style="stop-color:#f0abfc"/>
+                </linearGradient>
+                <radialGradient id="cheekGrad">
+                  <stop offset="0%" style="stop-color:#f9a8d4;stop-opacity:0.6"/>
+                  <stop offset="100%" style="stop-color:#f9a8d4;stop-opacity:0"/>
+                </radialGradient>
+              </defs>
+              <ellipse cx="60" cy="60" rx="32" ry="38" fill="url(#hairGrad)"/>
+              <polygon points="35,28 45,48 28,44" fill="url(#hairGrad)"/>
+              <polygon points="85,28 75,48 92,44" fill="url(#hairGrad)"/>
+              <polygon points="37,34 43,46 33,44" fill="#fce7f3"/>
+              <polygon points="83,34 77,46 87,44" fill="#fce7f3"/>
+              <ellipse cx="60" cy="62" rx="22" ry="26" fill="#fdf4ff"/>
+              <path d="M38 50 Q50 38 60 42 Q70 38 82 50 Q78 56 72 52 Q66 56 60 52 Q54 56 48 52 Q42 56 38 50" fill="url(#hairGrad)"/>
+              <path id="char-eye-left" d="M48 60 Q50 56 52 60" stroke="#4c3f7a" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+              <path id="char-eye-right" d="M68 60 Q70 56 72 60" stroke="#4c3f7a" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+              <ellipse cx="44" cy="70" rx="5" ry="3" fill="url(#cheekGrad)"/>
+              <ellipse cx="76" cy="70" rx="5" ry="3" fill="url(#cheekGrad)"/>
+              <path id="char-mouth" d="M55 74 Q60 78 65 74" stroke="#c084fc" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+              <path d="M38 92 Q30 110 40 150 L80 150 Q90 110 82 92 Z" fill="url(#dressGrad)"/>
+              <circle cx="60" cy="88" r="4" fill="#f0abfc"/>
+              <polygon points="54,86 60,90 54,94" fill="#f0abfc"/>
+              <polygon points="66,86 60,90 66,94" fill="#f0abfc"/>
+            </svg>
+            <!-- 情绪状态指示器 -->
+            <div class="character-mood-indicator" id="character-mood-indicator">
+              <span class="mood-emoji" id="mood-emoji">💤</span>
+            </div>
+            <!-- 角色消息气泡 -->
+            <div class="character-message" id="character-message">正在为您待命~</div>
+          </div>
+          <!-- 能量条 -->
+          <div class="character-energy">
+            <div class="energy-bar-wrap">
+              <div class="energy-bar" id="character-energy-bar" style="width:50%"></div>
+            </div>
+            <span class="energy-label" id="character-energy-label">能量 50%</span>
+          </div>
+          <!-- 小鱼装饰 -->
+          <div class="fish fish-1">
+            <svg viewBox="0 0 40 24" width="30" height="18">
+              <ellipse cx="18" cy="12" rx="12" ry="7" fill="#93c5fd" opacity="0.6"/>
+              <polygon points="30,12 38,5 38,19" fill="#93c5fd" opacity="0.6"/>
+              <circle cx="12" cy="10" r="1.5" fill="#fff"/>
+            </svg>
+          </div>
+          <div class="fish fish-2">
+            <svg viewBox="0 0 40 24" width="24" height="14">
+              <ellipse cx="18" cy="12" rx="12" ry="7" fill="#fbcfe8" opacity="0.6"/>
+              <polygon points="30,12 38,5 38,19" fill="#fbcfe8" opacity="0.6"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 模块状态区 -->
+    <section class="section modules-section glass-card" id="modules-section">
+      <div class="section-header">
+        <h2>模块状态管理</h2>
+        <div class="section-actions">
+          <span class="badge" id="module-count">0 个模块</span>
+        </div>
+      </div>
+      <div class="modules-grid" id="modules-grid">
+        <!-- 模块卡片由 JS 生成 -->
+        <div class="loading">加载模块中...</div>
+      </div>
+    </section>
+
+    <!-- 下方区域：左日志 + 右快捷操作 -->
+    <div class="bottom-grid">
+
+      <!-- 实时日志 -->
+      <section class="section logs-section glass-card">
+        <div class="section-header">
+          <h2>实时日志</h2>
+          <div class="section-actions">
+            <button class="icon-btn-sm" onclick="refreshLogs()" title="刷新">
+              <svg viewBox="0 0 24 24" width="14" height="14"><path d="M23 4v6h-6M1 20v-6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
+            <button class="chip-btn" id="log-filter-info" onclick="setLogFilter('INFO')">INFO</button>
+            <button class="chip-btn" id="log-filter-warn" onclick="setLogFilter('WARN')">WARN</button>
+            <button class="chip-btn" id="log-filter-error" onclick="setLogFilter('ERROR')">ERROR</button>
+          </div>
+        </div>
+        <div class="logs-container" id="logs-container">
+          <div class="loading">等待日志...</div>
+        </div>
+      </section>
+
+      <!-- 快捷操作 + 人格 -->
+      <div class="right-column">
+
+        <!-- 快捷操作 -->
+        <section class="section quick-actions glass-card">
+          <div class="section-header">
+            <h2>快捷操作</h2>
+          </div>
+          <div class="quick-actions-grid">
+            <button class="action-btn" onclick="apiAction('reload_config')">
+              <div class="action-icon" style="background:linear-gradient(135deg,#dbeafe,#bfdbfe)">
+                <svg viewBox="0 0 24 24" width="20" height="20"><path d="M23 4v6h-6M1 20v-6h6" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/></svg>
+              </div>
+              <span>重载配置</span>
+            </button>
+            <button class="action-btn" onclick="apiAction('save_backup')">
+              <div class="action-icon" style="background:linear-gradient(135deg,#fce7f3,#fbcfe8)">
+                <svg viewBox="0 0 24 24" width="20" height="20"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" fill="none" stroke="#ec4899" stroke-width="2"/><polyline points="17,21 17,13 7,13 7,21" fill="none" stroke="#ec4899" stroke-width="2"/></svg>
+              </div>
+              <span>保存备份</span>
+            </button>
+            <button class="action-btn" onclick="apiAction('system_check')">
+              <div class="action-icon" style="background:linear-gradient(135deg,#dcfce7,#bbf7d0)">
+                <svg viewBox="0 0 24 24" width="20" height="20"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round"/><polyline points="22,4 12,14.01 9,11.01" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round"/></svg>
+              </div>
+              <span>系统检查</span>
+            </button>
+            <button class="action-btn" onclick="apiAction('clear_cache')">
+              <div class="action-icon" style="background:linear-gradient(135deg,#fef3c7,#fde68a)">
+                <svg viewBox="0 0 24 24" width="20" height="20"><polyline points="3,6 5,6 21,6" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6m5 0V4a2 2 0 012-2h0a2 2 0 012 2v2" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round"/></svg>
+              </div>
+              <span>清理缓存</span>
+            </button>
+            <button class="action-btn" onclick="switchView('config')">
+              <div class="action-icon" style="background:linear-gradient(135deg,#e0e7ff,#c7d2fe)">
+                <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="3" fill="none" stroke="#6366f1" stroke-width="2"/><path d="M12 1v6M12 17v6M4.22 4.22l4.24 4.24M15.54 15.54l4.24 4.24M1 12h6M17 12h6M4.22 19.78l4.24-4.24M15.54 8.46l4.24-4.24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round"/></svg>
+              </div>
+              <span>配置面板</span>
+            </button>
+            <button class="action-btn" onclick="switchView('audit')">
+              <div class="action-icon" style="background:linear-gradient(135deg,#fee2e2,#fecaca)">
+                <svg viewBox="0 0 24 24" width="20" height="20"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" fill="none" stroke="#ef4444" stroke-width="2"/><path d="M14 2v6h6" fill="none" stroke="#ef4444" stroke-width="2"/></svg>
+              </div>
+              <span>审计日志</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- 羽依核心生命状态 -->
+        <section class="section personality-snap glass-card">
+          <div class="section-header">
+            <h2>羽依核心状态</h2>
+          </div>
+          <div class="emotion-display" id="emotion-display">
+            <div class="emotion-card">
+              <div class="emotion-label">当前情绪</div>
+              <div class="emotion-value" id="emotion-primary">♡ 平静</div>
+              <div class="emotion-meter">
+                <div class="meter-bar">
+                  <div class="meter-fill" id="emotion-intensity-bar" style="width:50%"></div>
+                </div>
+                <span class="meter-label" id="emotion-intensity-label">强度 50%</span>
+              </div>
+            </div>
+          </div>
+          <div class="yuyi-core-display" id="yuyi-core-display">
+            <div class="loading" style="font-size:13px;color:var(--c-text-muted);">加载中...</div>
+          </div>
+          <div class="traits-display" id="traits-display">
+            <div class="loading" style="font-size:13px;color:var(--c-text-muted);">加载中...</div>
+          </div>
+        </section>
+
+        <!-- 羽依时间线 -->
+        <section class="section timeline-section glass-card">
+          <div class="section-header">
+            <h2>羽依的轨迹</h2>
+            <div class="section-actions">
+              <span class="badge" id="timeline-count">0 记录</span>
+            </div>
+          </div>
+          <div id="timeline-container" class="timeline-container">
+            <div class="timeline-empty">
+              <div class="timeline-empty-icon">✦</div>
+              <div class="timeline-empty-text">还没有活动记录哦~</div>
+              <div class="timeline-empty-hint">开始操作后，这里会记录羽依的活动轨迹</div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Toast 通知 -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- 模板：模块卡片 -->
+<template id="module-card-template">
+  <div class="module-card">
+    <div class="module-header">
+      <div class="module-icon">
+        <svg viewBox="0 0 24 24" width="18" height="18"><rect x="3" y="3" width="7" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><rect x="14" y="3" width="7" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><rect x="3" y="14" width="7" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><rect x="14" y="14" width="7" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+      </div>
+      <div class="module-title">
+        <div class="module-name">模块名</div>
+        <div class="module-version">v0.1.0</div>
+      </div>
+      <div class="module-menu">
+        <svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="5" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="19" r="1.5" fill="currentColor"/></svg>
+      </div>
+    </div>
+    <div class="module-status-row">
+      <span class="status-dot"></span>
+      <span class="status-text">运行中</span>
+      <span class="status-uptime">2秒前</span>
+    </div>
+    <div class="module-info">
+      <div class="info-row">
+        <span class="info-label">重载</span>
+        <span class="info-value reload-mode">hot</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">错误</span>
+        <span class="info-value error-count">0</span>
+      </div>
+    </div>
+    <div class="module-deps"></div>
+    <div class="module-actions">
+      <button class="module-toggle">
+        <span class="toggle-icon">⏻</span>
+        <span class="toggle-text">关闭</span>
+      </button>
+      <button class="module-reload" title="重载">
+        <svg viewBox="0 0 24 24" width="16" height="16"><path d="M23 4v6h-6M1 20v-6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </div>
+</template>
+
+<script src="/admin/js/theme-manager.js"></script>
+<script src="/admin/js/toast.js"></script>
+<script src="/admin/js/yuyi-background.js"></script>
+<script src="/admin/js/yuyi-character.js"></script>
+<script src="/admin/js/yuyi-state-manager.js"></script>
+<script src="/admin/js/yuyi-avatar.js"></script>
+<script src="/admin/js/yuyi-audio.js"></script>
+<script src="/admin/js/yuyi-replies.js"></script>
+<script src="/admin/js/yuyi-timeline.js"></script>
+<script src="/admin/js/yuyi-cognitive.js"></script>
+<script src="/admin/js/yuyi-radar.js"></script>
+<script src="/admin/js/yuyi-reasoning.js"></script>
+<script src="/admin/js/yuyi-relationship-timeline.js"></script>
+<script src="/admin/js/yuyi-growth-preview.js"></script>
+<script src="/admin/js/yuyi-memory-graph.js"></script>
+<script src="/admin/js/yuyi-autonomous.js"></script>
+<script src="/admin/js/app.js"></script>
+<script src="/admin/js/dashboard.js"></script>
+</body>
+</html>

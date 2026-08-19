@@ -1,0 +1,1546 @@
+/* =============================================================
+ * 羽依生命状态控制中心 · Yuyi Life Control Center
+ * 设计原则:柔和、陪伴、治愈
+ * 浅色背景 + 玻璃拟态 + 软阴影 + 圆角 + 微动效
+ * ============================================================= */
+
+:root {
+  --yuyi-bg: linear-gradient(135deg, #f7faff 0%, #eef3ff 50%, #fbf6ff 100%);
+  --yuyi-card: rgba(255, 255, 255, 0.72);
+  --yuyi-card-border: rgba(180, 200, 255, 0.28);
+  --yuyi-text: #2a2f4a;
+  --yuyi-text-soft: #6c7393;
+  --yuyi-text-mute: #9aa1bf;
+  --yuyi-accent: #8aa6ff;
+  --yuyi-accent-2: #c4a8ff;
+  --yuyi-pink: #ffc4d6;
+  --yuyi-shadow: 0 10px 40px -16px rgba(80, 100, 180, 0.22);
+  --yuyi-radius: 18px;
+  --yuyi-radius-sm: 12px;
+  --yuyi-online: #4ec891;
+  --yuyi-degraded: #f0a85c;
+  --yuyi-critical: #ef6f8b;
+  --yuyi-offline: #b0b6cc;
+  --yuyi-sidebar-w: 220px;
+  --yuyi-events-w: 280px;
+  --yuyi-transition: 240ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", -apple-system, BlinkMacSystemFont, sans-serif;
+  color: var(--yuyi-text);
+  background: var(--yuyi-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+body { overflow: hidden; }
+
+/* 布局 ----------------------------------------------------- */
+.yuyi-dashboard {
+  display: grid;
+  grid-template-columns: var(--yuyi-sidebar-w) 1fr var(--yuyi-events-w);
+  height: 100vh;
+  width: 100vw;
+  gap: 18px;
+  padding: 18px;
+}
+
+/* Sidebar ---------------------------------------------------- */
+.yuyi-sidebar {
+  background: var(--yuyi-card);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--yuyi-card-border);
+  border-radius: var(--yuyi-radius);
+  box-shadow: var(--yuyi-shadow);
+  padding: 22px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.yuyi-sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.yuyi-sidebar__logo {
+  width: 44px; height: 44px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--yuyi-accent), var(--yuyi-accent-2));
+  color: #fff;
+  display: grid; place-items: center;
+  font-size: 22px; font-weight: 600;
+  box-shadow: 0 6px 20px -8px rgba(138, 166, 255, 0.6);
+}
+.yuyi-sidebar__title h1 { margin: 0; font-size: 18px; }
+.yuyi-sidebar__title p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--yuyi-text-mute);
+}
+
+.yuyi-sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+.yuyi-nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--yuyi-radius-sm);
+  color: var(--yuyi-text-soft);
+  text-decoration: none;
+  font-size: 14px;
+  transition: var(--yuyi-transition);
+  cursor: pointer;
+}
+.yuyi-nav-item:hover {
+  background: rgba(138, 166, 255, 0.08);
+  color: var(--yuyi-text);
+}
+.yuyi-nav-item.is-active {
+  background: linear-gradient(135deg, rgba(138,166,255,0.18), rgba(196,168,255,0.18));
+  color: var(--yuyi-text);
+  font-weight: 500;
+}
+.yuyi-nav-item[aria-disabled="true"] {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.yuyi-nav-item__dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--yuyi-accent);
+  box-shadow: 0 0 0 4px rgba(138, 166, 255, 0.12);
+}
+.yuyi-nav-item.is-active .yuyi-nav-item__dot {
+  background: var(--yuyi-accent-2);
+  box-shadow: 0 0 0 4px rgba(196, 168, 255, 0.18);
+}
+
+.yuyi-sidebar__footer { margin-top: auto; }
+.yuyi-sidebar__pill {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--yuyi-text-soft);
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid var(--yuyi-card-border);
+}
+
+/* Main ------------------------------------------------------- */
+.yuyi-main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: auto;
+  padding: 4px 4px 4px 0;
+}
+
+.yuyi-main__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 4px 0;
+}
+.yuyi-main__header h2 { margin: 0; font-size: 22px; }
+.yuyi-main__subtitle {
+  margin: 4px 0 0;
+  color: var(--yuyi-text-mute);
+  font-size: 13px;
+}
+
+.yuyi-btn {
+  border: none;
+  cursor: pointer;
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  transition: var(--yuyi-transition);
+}
+.yuyi-btn--ghost {
+  background: rgba(255,255,255,0.6);
+  border: 1px solid var(--yuyi-card-border);
+  color: var(--yuyi-text-soft);
+}
+.yuyi-btn--ghost:hover { background: #fff; color: var(--yuyi-text); }
+
+/* Grid ------------------------------------------------------ */
+.yuyi-grid--overview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+/* Card ------------------------------------------------------ */
+.yuyi-card {
+  background: var(--yuyi-card);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--yuyi-card-border);
+  border-radius: var(--yuyi-radius);
+  box-shadow: var(--yuyi-shadow);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: var(--yuyi-transition);
+}
+.yuyi-card:hover { transform: translateY(-2px); }
+
+.yuyi-card__header {
+  display: flex; align-items: center; justify-content: space-between;
+}
+.yuyi-card__header h3 {
+  margin: 0; font-size: 14px;
+  color: var(--yuyi-text-soft);
+  font-weight: 500;
+  letter-spacing: 0.4px;
+}
+.yuyi-card__tag {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(138,166,255,0.12);
+  color: var(--yuyi-accent);
+}
+.yuyi-card__body--placeholder {
+  display: grid;
+  place-items: center;
+  min-height: 140px;
+}
+
+.yuyi-health__score {
+  font-size: 36px; font-weight: 600;
+  color: var(--yuyi-text);
+}
+.yuyi-health__score small { font-size: 14px; color: var(--yuyi-text-mute); }
+
+.yuyi-health__issues {
+  list-style: none; padding: 0; margin: 8px 0 0;
+  display: flex; flex-direction: column; gap: 4px;
+  max-height: 80px; overflow: auto;
+}
+.yuyi-health__issues li {
+  font-size: 12px; color: var(--yuyi-text-mute);
+  padding: 4px 8px;
+  background: rgba(239, 111, 139, 0.06);
+  border-radius: 6px;
+}
+
+.yuyi-stat {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 8px; margin: 0;
+}
+.yuyi-stat div { display: flex; flex-direction: column; gap: 2px; }
+.yuyi-stat dt { font-size: 11px; color: var(--yuyi-text-mute); }
+.yuyi-stat dd { margin: 0; font-size: 18px; font-weight: 500; }
+
+.yuyi-list {
+  list-style: none; padding: 0; margin: 0;
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 140px; overflow: auto;
+}
+.yuyi-list li {
+  display: flex; justify-content: space-between;
+  font-size: 12px; color: var(--yuyi-text-soft);
+  padding: 4px 8px;
+  background: rgba(255,255,255,0.5);
+  border-radius: 6px;
+}
+.yuyi-list li b { color: var(--yuyi-text); font-weight: 500; }
+
+.yuyi-empty { color: var(--yuyi-text-mute); font-size: 13px; margin: 0; }
+
+/* Step 8.4.7: Audit Viewer */
+.yuyi-input {
+  font-family: inherit;
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid var(--yuyi-card-border, rgba(0,0,0,0.1));
+  border-radius: 6px;
+  background: rgba(255,255,255,0.7);
+  color: var(--yuyi-text, #2c2c2c);
+  outline: none;
+}
+.yuyi-input:focus {
+  border-color: rgba(138,166,255,0.6);
+  background: #fff;
+}
+.yuyi-audit__list {
+  max-height: 360px;
+  overflow: auto;
+  gap: 4px;
+}
+.yuyi-audit__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  background: rgba(255,255,255,0.55);
+  border-radius: 6px;
+  border-left: 3px solid rgba(138,166,255,0.4);
+}
+.yuyi-audit__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.yuyi-audit__who {
+  font-weight: 500;
+  color: var(--yuyi-text);
+  min-width: 80px;
+}
+.yuyi-audit__action {
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--yuyi-text-soft);
+  flex: 1;
+  word-break: break-all;
+}
+.yuyi-audit__tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(0,0,0,0.06);
+  color: var(--yuyi-text-mute);
+}
+.yuyi-audit__tag.is-online { background: rgba(118,210,145,0.2); color: #2c8a4a; }
+.yuyi-audit__tag.is-degraded { background: rgba(245,180,86,0.2); color: #a86b1a; }
+.yuyi-audit__tag.is-critical { background: rgba(245,86,86,0.2); color: #a82a2a; }
+.yuyi-audit__tag.is-offline { background: rgba(140,140,140,0.2); color: #666; }
+.yuyi-audit__meta {
+  display: flex;
+  gap: 12px;
+  font-size: 10px;
+  color: var(--yuyi-text-mute);
+}
+.yuyi-audit__reason {
+  font-style: italic;
+}
+
+/* Live2D 占位 */
+.yuyi-l2d-placeholder {
+  width: 100%;
+  height: 180px;
+  border-radius: var(--yuyi-radius-sm);
+  background: linear-gradient(135deg, rgba(138,166,255,0.1), rgba(196,168,255,0.12));
+  border: 1px dashed var(--yuyi-card-border);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  color: var(--yuyi-text-mute);
+  gap: 4px;
+}
+.yuyi-l2d-placeholder span { font-size: 14px; }
+.yuyi-l2d-placeholder small { font-size: 11px; }
+
+/* Events ---------------------------------------------------- */
+.yuyi-events {
+  background: var(--yuyi-card);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--yuyi-card-border);
+  border-radius: var(--yuyi-radius);
+  box-shadow: var(--yuyi-shadow);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+}
+.yuyi-events__header { display: flex; align-items: center; justify-content: space-between; }
+.yuyi-events__header h3 { margin: 0; font-size: 14px; color: var(--yuyi-text-soft); font-weight: 500; }
+.yuyi-events__hint { font-size: 11px; color: var(--yuyi-text-mute); }
+.yuyi-events__list {
+  list-style: none; padding: 0; margin: 0;
+  display: flex; flex-direction: column; gap: 6px;
+  overflow: auto;
+  flex: 1;
+}
+.yuyi-events__item {
+  padding: 8px 10px;
+  background: rgba(255,255,255,0.5);
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--yuyi-text-soft);
+  display: flex; flex-direction: column; gap: 2px;
+  border-left: 2px solid var(--yuyi-accent);
+}
+.yuyi-events__item--empty {
+  background: transparent;
+  color: var(--yuyi-text-mute);
+  border-left: none;
+  text-align: center;
+  padding: 18px 0;
+}
+.yuyi-events__item b { color: var(--yuyi-text); font-weight: 500; font-size: 12px; }
+.yuyi-events__item small { color: var(--yuyi-text-mute); font-size: 10px; }
+
+/* Toast ----------------------------------------------------- */
+.yuyi-toast {
+  position: fixed;
+  left: 50%; bottom: 24px;
+  transform: translateX(-50%) translateY(20px);
+  background: rgba(40, 44, 70, 0.92);
+  color: #fff;
+  padding: 10px 18px;
+  border-radius: 12px;
+  font-size: 13px;
+  opacity: 0;
+  pointer-events: none;
+  transition: var(--yuyi-transition);
+  z-index: 999;
+}
+.yuyi-toast.is-visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* 状态色 ----------------------------------------------------- */
+.is-online { color: var(--yuyi-online) !important; }
+.is-degraded { color: var(--yuyi-degraded) !important; }
+.is-critical { color: var(--yuyi-critical) !important; }
+.is-offline { color: var(--yuyi-offline) !important; }
+
+/* 响应式 ---------------------------------------------------- */
+@media (max-width: 1100px) {
+  .yuyi-dashboard { grid-template-columns: 200px 1fr 240px; }
+}
+@media (max-width: 900px) {
+  .yuyi-dashboard { grid-template-columns: 1fr; }
+  .yuyi-sidebar, .yuyi-events { display: none; }
+}
+
+/* 微动效 ----------------------------------------------------- */
+@keyframes yuyi-breath {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+.yuyi-sidebar__logo { animation: yuyi-breath 4s ease-in-out infinite; }
+
+/* =============================================================
+ * SelfModel 页面专用样式
+ * ============================================================= */
+.ysm-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px dashed rgba(180, 200, 255, 0.18);
+  font-size: 13px;
+}
+.ysm-row:last-child { border-bottom: 0; }
+.ysm-row__name {
+  flex: 1 1 auto;
+  color: var(--yuyi-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ysm-row__meta {
+  color: var(--yuyi-text-soft);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.ysm-values { display: flex; flex-wrap: wrap; gap: 6px; }
+.ysm-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(138, 166, 255, 0.18), rgba(196, 168, 255, 0.18));
+  color: var(--yuyi-text);
+  font-size: 12px;
+  border: 1px solid rgba(180, 200, 255, 0.35);
+}
+
+/* =============================================================
+ * Memory 页面专用样式
+ * ============================================================= */
+.ymm-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 6px;
+  border-bottom: 1px dashed rgba(180, 200, 255, 0.18);
+  cursor: pointer;
+  transition: background var(--yuyi-transition);
+}
+.ymm-row:hover { background: rgba(138, 166, 255, 0.08); }
+.ymm-row:last-child { border-bottom: 0; }
+.ymm-row__main { flex: 1 1 auto; min-width: 0; }
+.ymm-row__summary {
+  display: block;
+  color: var(--yuyi-text);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ymm-row__meta {
+  display: block;
+  color: var(--yuyi-text-soft);
+  font-size: 11px;
+  margin-top: 2px;
+}
+.ymm-row__imp {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(180, 200, 255, 0.3);
+}
+.ymm-timeline { list-style: none; padding: 0; margin: 0; }
+.ymm-timeline__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 12px;
+}
+.ymm-timeline__date {
+  flex: 0 0 90px;
+  color: var(--yuyi-text-soft);
+}
+.ymm-timeline__bar {
+  flex: 1 1 auto;
+  height: 10px;
+  background: rgba(180, 200, 255, 0.15);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.ymm-timeline__bar > span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, rgba(138, 166, 255, 0.7), rgba(196, 168, 255, 0.7));
+  border-radius: 6px;
+  transition: width 320ms ease;
+}
+.ymm-timeline__count {
+  flex: 0 0 110px;
+  color: var(--yuyi-text-soft);
+  text-align: right;
+}
+.ymm-detail__content {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: var(--yuyi-radius-sm);
+  border: 1px solid rgba(180, 200, 255, 0.25);
+}
+.ymm-detail__content h4 {
+  margin: 0 0 6px 0;
+  font-size: 13px;
+  color: var(--yuyi-text-soft);
+  font-weight: 500;
+}
+.ymm-detail__content p {
+  margin: 0;
+  color: var(--yuyi-text);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* =============================================================
+ * Reflection 页面专用样式
+ * ============================================================= */
+.yrf-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 6px;
+  border-bottom: 1px dashed rgba(180, 200, 255, 0.18);
+  cursor: pointer;
+  transition: background var(--yuyi-transition);
+  border-radius: 6px;
+}
+.yrf-row:hover { background: rgba(138, 166, 255, 0.08); }
+.yrf-row.is-active { background: rgba(138, 166, 255, 0.16); }
+.yrf-row:last-child { border-bottom: 0; }
+.yrf-row__main { min-width: 0; }
+.yrf-row__summary {
+  display: block;
+  color: var(--yuyi-text);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
+}
+.yrf-row__meta {
+  display: block;
+  color: var(--yuyi-text-soft);
+  font-size: 11px;
+  margin-top: 2px;
+}
+.yrf-type {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.yrf-type--daily {
+  background: rgba(138, 166, 255, 0.18);
+  color: #5a76c9;
+}
+.yrf-type--event {
+  background: rgba(196, 168, 255, 0.18);
+  color: #8567c4;
+}
+.yrf-type--growth {
+  background: rgba(255, 196, 214, 0.22);
+  color: #c25a85;
+}
+
+.yrf-detail__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.yrf-detail__id {
+  font-family: ui-monospace, "SF Mono", monospace;
+  font-size: 11px;
+  color: var(--yuyi-text-mute);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.yrf-detail__section {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: var(--yuyi-radius-sm);
+  border: 1px solid rgba(180, 200, 255, 0.25);
+}
+.yrf-detail__section h4 {
+  margin: 0 0 6px 0;
+  font-size: 13px;
+  color: var(--yuyi-text-soft);
+  font-weight: 500;
+}
+.yrf-detail__section p {
+  margin: 0;
+  color: var(--yuyi-text);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.yrf-tag-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.yrf-tag-list li {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(138, 166, 255, 0.12);
+  color: var(--yuyi-text-soft);
+  font-size: 11px;
+  font-family: ui-monospace, "SF Mono", monospace;
+}
+
+.yrf-insight-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.yrf-insight {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
+  border-left: 3px solid var(--yuyi-accent);
+}
+.yrf-insight__cat {
+  display: inline-block;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(196, 168, 255, 0.18);
+  color: var(--yuyi-accent-2);
+  align-self: flex-start;
+}
+.yrf-insight__desc {
+  color: var(--yuyi-text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.yrf-insight__conf {
+  color: var(--yuyi-text-soft);
+  font-size: 11px;
+}
+
+.yrf-chain {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0;
+}
+.yrf-chain__level {
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: var(--yuyi-radius-sm);
+  border: 1px solid rgba(180, 200, 255, 0.25);
+}
+.yrf-chain__level h4 {
+  margin: 0 0 6px 0;
+  font-size: 12px;
+  color: var(--yuyi-text-soft);
+  font-weight: 500;
+  letter-spacing: 0.4px;
+}
+.yrf-chain__refl {
+  margin: 0;
+  color: var(--yuyi-text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.yrf-chain__arrow {
+  text-align: center;
+  color: var(--yuyi-accent);
+  font-size: 16px;
+  user-select: none;
+}
+.yrf-chain__level--reflection { border-left: 3px solid var(--yuyi-accent); }
+.yrf-chain__level--memories { border-left: 3px solid var(--yuyi-accent-2); }
+.yrf-chain__level--events { border-left: 3px solid var(--yuyi-pink); }
+.yrf-chain__level--evidence { border-left: 3px solid var(--yuyi-degraded); }
+
+.yrf-node-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.yrf-node {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: 6px;
+}
+.yrf-node__kind {
+  flex: 0 0 auto;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(138, 166, 255, 0.18);
+  color: var(--yuyi-accent);
+}
+.yrf-node__id {
+  flex: 0 0 auto;
+  font-family: ui-monospace, "SF Mono", monospace;
+  font-size: 11px;
+  color: var(--yuyi-text);
+}
+.yrf-node small {
+  flex: 1 1 auto;
+  color: var(--yuyi-text-soft);
+  font-size: 11px;
+}
+
+/* ============== Goal 页面 ============== */
+.ygl-row {
+  list-style: none;
+  padding: 10px 12px;
+  border-bottom: 1px dashed rgba(180, 200, 255, 0.18);
+  cursor: pointer;
+  transition: background var(--yuyi-transition);
+}
+.ygl-row:hover { background: rgba(138, 166, 255, 0.08); }
+.ygl-row.is-active { background: rgba(138, 166, 255, 0.16); }
+.ygl-row:last-child { border-bottom: 0; }
+.ygl-row__main { min-width: 0; }
+.ygl-row__title {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--yuyi-text);
+  margin-bottom: 2px;
+}
+.ygl-row__meta {
+  font-size: 11px;
+  color: var(--yuyi-text-mute);
+}
+
+.ygl-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  background: rgba(180, 200, 255, 0.22);
+  color: var(--yuyi-text);
+}
+.ygl-status--active { background: rgba(78, 200, 145, 0.18); color: #2c7d5a; }
+.ygl-status--paused { background: rgba(240, 168, 92, 0.18); color: #8a5a1a; }
+.ygl-status--completed { background: rgba(138, 166, 255, 0.22); color: #2a3f7a; }
+.ygl-status--abandoned { background: rgba(239, 111, 139, 0.18); color: #8a2f4a; }
+.ygl-status--candidate { background: rgba(196, 168, 255, 0.22); color: #5a3a8a; }
+
+.ygl-current__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.ygl-current__type {
+  font-size: 12px;
+  color: var(--yuyi-text-soft);
+}
+.ygl-current__title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 4px 0 8px;
+  color: var(--yuyi-text);
+}
+.ygl-current__desc {
+  font-size: 13px;
+  color: var(--yuyi-text-soft);
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+.ygl-current__reason {
+  margin-top: 8px;
+  color: var(--yuyi-text-soft);
+  font-style: italic;
+}
+
+.ygl-detail__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.ygl-detail__id {
+  font-size: 12px;
+  color: var(--yuyi-text-mute);
+  font-family: monospace;
+}
+.ygl-detail__title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 4px 0 8px;
+}
+.ygl-detail__desc {
+  font-size: 13px;
+  color: var(--yuyi-text-soft);
+  margin-bottom: 10px;
+}
+.ygl-detail__section {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: rgba(180, 200, 255, 0.10);
+  border-radius: var(--yuyi-radius-sm);
+}
+.ygl-detail__section h4 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--yuyi-text-soft);
+  font-weight: 600;
+}
+.ygl-tag-list {
+  list-style: none;
+  padding: 0;
+  margin: 4px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.ygl-tag-list li {
+  font-size: 11px;
+  padding: 2px 6px;
+  background: rgba(138, 166, 255, 0.18);
+  border-radius: 6px;
+  color: var(--yuyi-text-soft);
+  font-family: monospace;
+}
+
+.ygl-history__item {
+  list-style: none;
+  padding: 10px 12px;
+  border-bottom: 1px dashed rgba(180, 200, 255, 0.18);
+}
+.ygl-history__item:last-child { border-bottom: 0; }
+.ygl-history__main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.ygl-history__type {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(196, 168, 255, 0.22);
+  color: var(--yuyi-text);
+  font-family: monospace;
+}
+.ygl-history__goal {
+  font-size: 12px;
+  color: var(--yuyi-text-soft);
+  font-family: monospace;
+}
+.ygl-history__meta {
+  font-size: 11px;
+  color: var(--yuyi-text-mute);
+}
+.ygl-history__lifecycle {
+  color: var(--yuyi-accent);
+  font-weight: 500;
+}
+.ygl-history__reason {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--yuyi-text-soft);
+  line-height: 1.4;
+}
+/* =============================================================
+ * Step 8.4.4 —— Event Stream 样式
+ * ============================================================= */
+.yuyi-event-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0;
+}
+.yuyi-es-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(189, 224, 254, 0.45), rgba(255, 255, 255, 0.85));
+  box-shadow: 0 6px 18px rgba(120, 130, 200, 0.10);
+  backdrop-filter: blur(12px);
+}
+.yuyi-es-title {
+  font-size: 16px;
+  margin: 0;
+  color: #2b4c7e;
+  font-weight: 600;
+}
+.yuyi-es-health {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #4a4a6a;
+}
+.yuyi-es-status-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #c5c5d8;
+}
+.yuyi-es-dot-ok { background: #6ed27e; box-shadow: 0 0 6px rgba(110, 210, 126, 0.5); }
+.yuyi-es-dot-err { background: #f08080; box-shadow: 0 0 6px rgba(240, 128, 128, 0.5); }
+.yuyi-es-dot-idle { background: #c5c5d8; }
+
+.yuyi-es-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.75);
+  box-shadow: 0 4px 14px rgba(120, 130, 200, 0.08);
+  backdrop-filter: blur(10px);
+}
+.yuyi-es-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 140px;
+}
+.yuyi-es-field-btn {
+  justify-content: flex-end;
+  align-self: flex-end;
+  flex-direction: row;
+  gap: 8px;
+}
+.yuyi-es-label {
+  font-size: 11px;
+  color: #6a6a8a;
+  font-weight: 500;
+}
+.yuyi-es-input, .yuyi-es-select {
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(120, 130, 200, 0.18);
+  background: rgba(255, 255, 255, 0.85);
+  outline: none;
+  color: #2b2b48;
+  font-family: inherit;
+}
+.yuyi-es-input:focus, .yuyi-es-select:focus {
+  border-color: rgba(108, 99, 255, 0.6);
+  box-shadow: 0 0 0 2px rgba(108, 99, 255, 0.18);
+}
+.yuyi-es-select[multiple] { min-height: 80px; }
+.yuyi-es-btn {
+  font-size: 12px;
+  padding: 6px 14px;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(135deg, #a0c4ff, #bdb2ff);
+  color: #2a2a52;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 4px 10px rgba(120, 130, 200, 0.18);
+}
+.yuyi-es-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 14px rgba(120, 130, 200, 0.22); }
+.yuyi-es-btn-ghost {
+  background: rgba(255, 255, 255, 0.7);
+  color: #4a4a6a;
+  box-shadow: none;
+  border: 1px solid rgba(120, 130, 200, 0.18);
+}
+.yuyi-es-btn-ghost:hover { background: rgba(255, 255, 255, 0.95); }
+
+.yuyi-es-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.yuyi-es-empty, .yuyi-es-error {
+  padding: 18px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.6);
+  text-align: center;
+  font-size: 13px;
+  color: #6a6a8a;
+}
+.yuyi-es-error { color: #b35c5c; background: rgba(255, 220, 220, 0.6); }
+.yuyi-es-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 4px 12px rgba(120, 130, 200, 0.10);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  backdrop-filter: blur(10px);
+}
+.yuyi-es-card:hover { box-shadow: 0 6px 16px rgba(120, 130, 200, 0.18); }
+.yuyi-es-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.yuyi-es-badge {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.yuyi-es-type {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2a2a52;
+  font-family: monospace;
+}
+.yuyi-es-time {
+  font-size: 11px;
+  color: #6a6a8a;
+  font-family: monospace;
+}
+.yuyi-es-source {
+  font-size: 11px;
+  color: #6a6a8a;
+  margin-left: auto;
+}
+.yuyi-es-toggle {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: rgba(120, 130, 200, 0.10);
+  color: #4a4a6a;
+  cursor: pointer;
+  user-select: none;
+}
+.yuyi-es-toggle:hover { background: rgba(120, 130, 200, 0.18); }
+.yuyi-es-card-summary {
+  font-size: 13px;
+  color: #2b2b48;
+  line-height: 1.5;
+}
+.yuyi-es-card-trace {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.yuyi-es-chip {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(120, 130, 200, 0.10);
+  color: #4a4a6a;
+  font-family: monospace;
+}
+.yuyi-es-chip-on { background: rgba(110, 210, 126, 0.18); color: #2e6a36; }
+.yuyi-es-chip-off { background: rgba(180, 180, 200, 0.18); color: #6a6a8a; }
+.yuyi-es-card-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(120, 130, 200, 0.18);
+}
+.yuyi-es-card-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.yuyi-es-card-detail-title {
+  font-size: 11px;
+  color: #6a6a8a;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.yuyi-es-card-json {
+  font-size: 11px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(20, 20, 40, 0.85);
+  color: #c8e0ff;
+  font-family: monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.yuyi-es-card-monospace {
+  font-size: 11px;
+  font-family: monospace;
+  color: #4a4a6a;
+  word-break: break-all;
+}
+/* =============================================================
+ * Step 8.4.5 —— TracePanel & Confidence Toggle 样式
+ * ============================================================= */
+.yuyi-tp {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 2px 8px rgba(120, 130, 200, 0.08);
+  backdrop-filter: blur(8px);
+  font-size: 13px;
+  color: #3a3a5a;
+}
+.yuyi-tp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 0;
+}
+.yuyi-tp-title {
+  font-weight: 600;
+  color: #2b4c7e;
+}
+.yuyi-tp-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #4a4a6a;
+}
+.yuyi-tp-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ccc;
+}
+.yuyi-tp-dot-ok { background: #6ad36a; box-shadow: 0 0 4px rgba(106, 211, 106, 0.4); }
+.yuyi-tp-dot-warn { background: #f0c14a; box-shadow: 0 0 4px rgba(240, 193, 74, 0.4); }
+.yuyi-tp-dot-err { background: #d36a6a; box-shadow: 0 0 4px rgba(211, 106, 106, 0.4); }
+.yuyi-tp-tag-fallback {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(243, 178, 178, 0.6);
+  color: #8a3a3a;
+  font-weight: 600;
+}
+.yuyi-tp-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid rgba(120, 130, 200, 0.12);
+  padding-top: 6px;
+}
+.yuyi-tp-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #4a4a6a;
+}
+.yuyi-tp-label {
+  font-weight: 500;
+  color: #6a6a8a;
+}
+.yuyi-tp-value {
+  font-family: monospace;
+  color: #2b4c7e;
+}
+.yuyi-tp-section {
+  margin-top: 4px;
+  border-top: 1px dashed rgba(120, 130, 200, 0.12);
+  padding-top: 6px;
+}
+.yuyi-tp-section-title {
+  font-size: 11px;
+  color: #6a6a8a;
+  font-weight: 600;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.yuyi-tp-sources {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.yuyi-tp-source {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-family: monospace;
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: rgba(245, 245, 250, 0.5);
+}
+.yuyi-tp-source.ok { color: #3a6a3a; }
+.yuyi-tp-source.err { color: #8a3a3a; }
+.yuyi-tp-source-pm { font-weight: 600; }
+.yuyi-tp-source-dot { font-size: 10px; }
+.yuyi-tp-source-method { color: #4a4a6a; }
+.yuyi-tp-err { color: #8a3a3a; }
+.yuyi-tp-source-empty {
+  list-style: none;
+  font-size: 11px;
+  color: #8a8aaa;
+  font-style: italic;
+}
+.yuyi-tp-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #4a4a6a;
+  cursor: pointer;
+  user-select: none;
+}
+.yuyi-tp-toggle input { cursor: pointer; }
+
+/* =============================================================
+ * Phase 7.0: Runtime Center —— 运行中心页面样式
+ * 前缀: yroc-*
+ * ============================================================= */
+
+/* 服务状态网格 */
+.yroc-services-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+/* 单个服务卡片 */
+.yroc-svc-card {
+  padding: 12px 14px;
+  border-radius: var(--yuyi-radius-sm);
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(180, 200, 255, 0.18);
+  transition: transform var(--yuyi-transition), box-shadow var(--yuyi-transition);
+}
+.yroc-svc-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px -8px rgba(80, 100, 180, 0.18);
+}
+.yroc-svc-card.is-online { border-left: 3px solid var(--yuyi-online); }
+.yroc-svc-card.is-degraded { border-left: 3px solid var(--yuyi-degraded); }
+.yroc-svc-card.is-critical { border-left: 3px solid var(--yuyi-critical); }
+.yroc-svc-card.is-offline { border-left: 3px solid var(--yuyi-offline); }
+
+.yroc-svc__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.yroc-svc__dot { font-size: 14px; line-height: 1; }
+.yroc-svc__name { font-weight: 600; font-size: 13px; color: var(--yuyi-text); flex: 1; }
+.yroc-svc__status {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.yroc-svc__status.is-online { color: var(--yuyi-online); }
+.yroc-svc__status.is-degraded { color: var(--yuyi-degraded); }
+.yroc-svc__status.is-critical { color: var(--yuyi-critical); }
+.yroc-svc__status.is-offline { color: var(--yuyi-offline); }
+
+.yroc-svc__detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--yuyi-text-soft);
+}
+.yroc-svc__detail span {
+  font-family: ui-monospace, "SF Mono", monospace;
+}
+
+/* 请求链路追踪列表 */
+.yroc-trace-item {
+  list-style: none;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  border-radius: var(--yuyi-radius-sm);
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(180, 200, 255, 0.14);
+  border-left: 3px solid var(--yuyi-offline);
+  transition: background var(--yuyi-transition);
+}
+.yroc-trace-item:hover { background: rgba(255, 255, 255, 0.7); }
+.yroc-trace-item.is-online { border-left-color: var(--yuyi-online); }
+.yroc-trace-item.is-critical { border-left-color: var(--yuyi-critical); }
+
+.yroc-trace__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+.yroc-trace__dot { font-size: 12px; }
+.yroc-trace__id {
+  font-family: ui-monospace, "SF Mono", monospace;
+  font-size: 11px;
+  color: var(--yuyi-text-mute);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.yroc-trace__time {
+  font-size: 11px;
+  color: var(--yuyi-text-mute);
+  font-family: ui-monospace, "SF Mono", monospace;
+}
+.yroc-trace__duration {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--yuyi-accent);
+}
+.yroc-trace__source {
+  font-size: 10px;
+  color: var(--yuyi-text-mute);
+  margin-left: auto;
+}
+
+.yroc-trace__msg,
+.yroc-trace__reply {
+  font-size: 12px;
+  color: var(--yuyi-text-soft);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+.yroc-trace__reply { color: var(--yuyi-text-mute); }
+
+/* stages timeline */
+.yroc-trace__stages {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.yroc-trace__stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 500;
+  background: rgba(138, 166, 255, 0.12);
+  color: var(--yuyi-text-soft);
+}
+.yroc-trace__stage small {
+  font-size: 9px;
+  color: var(--yuyi-text-mute);
+}
+.yroc-trace__stage.is-critical {
+  background: rgba(239, 111, 139, 0.12);
+  color: var(--yuyi-critical);
+}
+.yroc-trace__arrow {
+  font-size: 10px;
+  color: var(--yuyi-text-mute);
+}
+
+.yroc-trace__error {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--yuyi-critical);
+  background: rgba(239, 111, 139, 0.08);
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+/* =============================================================
+ * Phase 7.1: Runtime Event Stream —— 实时事件流样式
+ * 前缀: yroc-evt-*
+ * ============================================================= */
+
+.yroc-events-list {
+  max-height: 380px;
+  overflow: auto;
+  padding: 0;
+  margin: 0;
+}
+
+/* 单个事件项 */
+.yroc-evt {
+  list-style: none;
+  padding: 8px 10px;
+  margin-bottom: 5px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.52);
+  border: 1px solid rgba(180, 200, 255, 0.12);
+  border-left: 3px solid var(--yuyi-accent);
+  animation: yroc-evt-in 240ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background var(--yuyi-transition);
+}
+.yroc-evt:hover { background: rgba(255, 255, 255, 0.72); }
+
+.yroc-evt--info { border-left-color: var(--yuyi-accent); }
+.yroc-evt--warn { border-left-color: var(--yuyi-degraded); background: rgba(240, 168, 92, 0.06); }
+.yroc-evt--err  { border-left-color: var(--yuyi-critical); background: rgba(239, 111, 139, 0.06); }
+
+@keyframes yroc-evt-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* 头部: icon + type + time + duration */
+.yroc-evt__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.yroc-evt__icon {
+  font-size: 14px;
+  line-height: 1;
+  min-width: 18px;
+  text-align: center;
+}
+.yroc-evt__type {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--yuyi-text);
+  letter-spacing: 0.2px;
+  flex: 1;
+}
+.yroc-evt__time {
+  font-family: ui-monospace, "SF Mono", monospace;
+  font-size: 11px;
+  color: var(--yuyi-text-mute);
+}
+.yroc-evt__dur {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--yuyi-accent);
+  padding: 1px 6px;
+  background: rgba(138, 166, 255, 0.12);
+  border-radius: 8px;
+}
+
+/* meta: stage / trace_id */
+.yroc-evt__meta {
+  font-size: 10.5px;
+  color: var(--yuyi-text-mute);
+  margin-top: 2px;
+  line-height: 1.5;
+}
+.yroc-evt__meta code {
+  font-family: ui-monospace, "SF Mono", monospace;
+  font-size: 10.5px;
+  color: var(--yuyi-text-soft);
+  background: rgba(0, 0, 0, 0.03);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+/* body: preview / reply / error 等 */
+.yroc-evt__body {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--yuyi-text-soft);
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+/* =============================================================
+ * Phase 7.2: Cognitive Trace —— 子系统颜色映射
+ * 前缀: yroc-evt--cog-{subsystem}
+ * ============================================================= */
+.yroc-evt--cog-memory      { border-left-color: #8b5cf6; background: rgba(139, 92, 246, 0.05); }
+.yroc-evt--cog-personality { border-left-color: #f59e0b; background: rgba(245, 158, 11, 0.05); }
+.yroc-evt--cog-emotion     { border-left-color: #ec4899; background: rgba(236, 72, 153, 0.05); }
+.yroc-evt--cog-growth      { border-left-color: #10b981; background: rgba(16, 185, 129, 0.05); }
+.yroc-evt--cog-self_model  { border-left-color: #14b8a6; background: rgba(20, 184, 166, 0.05); }
+.yroc-evt--cog-response    { border-left-color: #64748b; background: rgba(100, 116, 139, 0.05); }

@@ -1,0 +1,762 @@
+/* ============================================
+   羽依 Yuyi Console — Phase 6.5 Step 5.4
+   SelfModel Health Dashboard + Retention Dashboard
+   --------------------------------------------
+   - Health Overview（健康状态卡）
+   - Issue List（按 severity 过滤）
+   - Persistence 状态（文件 / snapshot）
+   - 当前容量（Beliefs / History / Reflection）
+   - Quota 使用情况（进度条）
+   - Retention Dry Run 触发
+   - 严格只读视觉强调
+   ============================================ */
+
+/* ============ 视图容器 ============ */
+.smhealth-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.smhealth-view .section-header h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.smhealth-view .section-header h2::before {
+  content: "♡";
+  color: var(--c-accent-2);
+  font-size: 20px;
+}
+
+/* ============ 顶部状态卡（overall status / check time / issue count） ============ */
+.smhealth-overview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.smhealth-overview-card {
+  background: var(--c-glass);
+  border: 1px solid var(--c-glass-border);
+  border-radius: var(--r-md, 12px);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+  overflow: hidden;
+}
+
+.smhealth-overview-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, rgba(165, 180, 252, 0.6), rgba(240, 171, 252, 0.6));
+  opacity: 0.8;
+}
+
+.smhealth-overview-card--healthy::before {
+  background: linear-gradient(90deg, #86efac, #bbf7d0);
+}
+
+.smhealth-overview-card--warning::before {
+  background: linear-gradient(90deg, #fde68a, #fcd34d);
+}
+
+.smhealth-overview-card--degraded::before {
+  background: linear-gradient(90deg, #fcd34d, #fb923c);
+}
+
+.smhealth-overview-card--critical::before {
+  background: linear-gradient(90deg, #fca5a5, #ef4444);
+}
+
+.smhealth-overview-card--unknown::before {
+  background: linear-gradient(90deg, #d1d5db, #e5e7eb);
+}
+
+.smhealth-overview-label {
+  font-size: 11px;
+  color: var(--c-text-muted);
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.smhealth-overview-value {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--c-text);
+  line-height: 1.1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.smhealth-overview-value--healthy  { color: #15803d; }
+.smhealth-overview-value--warning  { color: #b45309; }
+.smhealth-overview-value--degraded { color: #c2410c; }
+.smhealth-overview-value--critical { color: #b91c1c; }
+.smhealth-overview-value--unknown  { color: var(--c-text-muted); }
+
+.smhealth-overview-hint {
+  font-size: 11px;
+  color: var(--c-text-light);
+}
+
+.smhealth-overview-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 14px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.smhealth-overview-icon--healthy  { background: rgba(134, 239, 172, 0.4); color: #15803d; }
+.smhealth-overview-icon--warning  { background: rgba(253, 230, 138, 0.4); color: #b45309; }
+.smhealth-overview-icon--degraded { background: rgba(251, 146, 60, 0.4); color: #c2410c; }
+.smhealth-overview-icon--critical { background: rgba(252, 165, 165, 0.4); color: #b91c1c; }
+.smhealth-overview-icon--unknown  { background: rgba(209, 213, 219, 0.4); color: var(--c-text-muted); }
+
+/* ============ 子区块 ============ */
+.smhealth-block {
+  background: var(--c-glass);
+  border: 1px solid var(--c-glass-border);
+  border-radius: var(--r-md, 12px);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.smhealth-block-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--c-text-muted);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ============ 工具栏（severity 过滤 + READ-ONLY 标签） ============ */
+.smhealth-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--c-glass);
+  border: 1px solid var(--c-glass-border);
+  border-radius: var(--r-md, 12px);
+}
+
+.smhealth-toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.smhealth-toolbar-label {
+  font-size: 11px;
+  color: var(--c-text-muted);
+  font-weight: 600;
+  margin-right: 4px;
+  letter-spacing: 0.4px;
+}
+
+.smhealth-chip {
+  appearance: none;
+  border: 1px solid var(--c-glass-border);
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--c-text);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all var(--t-fast, 0.15s);
+}
+
+.smhealth-chip:hover {
+  border-color: var(--c-accent);
+}
+
+.smhealth-chip--active {
+  background: linear-gradient(135deg, rgba(165, 180, 252, 0.25), rgba(240, 171, 252, 0.25));
+  border-color: var(--c-accent);
+  color: var(--c-text);
+}
+
+.smhealth-readonly-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(134, 239, 172, 0.22);
+  color: #15803d;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+}
+
+.smhealth-readonly-tag::before {
+  content: "🔒";
+  font-size: 9px;
+}
+
+/* ============ Issue 列表 ============ */
+.smhealth-issues {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 480px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.smhealth-issue {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.4);
+  border: 1px solid var(--c-glass-border);
+  border-left-width: 4px;
+  border-radius: var(--r-md, 12px);
+}
+
+.smhealth-issue--critical { border-left-color: #ef4444; }
+.smhealth-issue--error    { border-left-color: #ef4444; }
+.smhealth-issue--warning  { border-left-color: #f59e0b; }
+.smhealth-issue--info     { border-left-color: #3b82f6; }
+
+.smhealth-issue-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.smhealth-issue-icon--critical { background: rgba(252, 165, 165, 0.4); color: #b91c1c; }
+.smhealth-issue-icon--error    { background: rgba(252, 165, 165, 0.4); color: #b91c1c; }
+.smhealth-issue-icon--warning  { background: rgba(253, 230, 138, 0.4); color: #b45309; }
+.smhealth-issue-icon--info     { background: rgba(147, 197, 253, 0.4); color: #1d4ed8; }
+
+.smhealth-issue-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.smhealth-issue-row1 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.smhealth-issue-severity {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.smhealth-issue-severity--critical { background: rgba(239, 68, 68, 0.15); color: #b91c1c; }
+.smhealth-issue-severity--error    { background: rgba(239, 68, 68, 0.15); color: #b91c1c; }
+.smhealth-issue-severity--warning  { background: rgba(245, 158, 11, 0.15); color: #b45309; }
+.smhealth-issue-severity--info     { background: rgba(59, 130, 246, 0.15); color: #1d4ed8; }
+
+.smhealth-issue-component {
+  font-size: 10px;
+  color: var(--c-text-muted);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  padding: 1px 6px;
+  background: rgba(165, 180, 252, 0.1);
+  border-radius: 4px;
+}
+
+.smhealth-issue-time {
+  font-size: 11px;
+  color: var(--c-text-muted);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+.smhealth-issue-message {
+  font-size: 13px;
+  color: var(--c-text);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.smhealth-issue-location {
+  font-size: 11px;
+  color: var(--c-text-muted);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  word-break: break-word;
+}
+
+.smhealth-issue-code {
+  font-size: 10px;
+  color: var(--c-text-light);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  padding: 1px 6px;
+  background: rgba(165, 180, 252, 0.1);
+  border-radius: 4px;
+}
+
+/* ============ Persistence 状态 ============ */
+.smhealth-persistence-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.smhealth-persistence-card {
+  background: rgba(255, 255, 255, 0.4);
+  border: 1px solid var(--c-glass-border);
+  border-radius: var(--r-md, 12px);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.smhealth-persistence-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.smhealth-persistence-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--c-text);
+}
+
+.smhealth-persistence-pill {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.smhealth-persistence-pill--ok      { background: rgba(134, 239, 172, 0.3); color: #15803d; }
+.smhealth-persistence-pill--missing { background: rgba(252, 165, 165, 0.3); color: #b91c1c; }
+.smhealth-persistence-pill--corrupt { background: rgba(253, 230, 138, 0.3); color: #b45309; }
+.smhealth-persistence-pill--unknown { background: rgba(209, 213, 219, 0.3); color: var(--c-text-muted); }
+
+.smhealth-persistence-card-meta {
+  font-size: 11px;
+  color: var(--c-text-muted);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  word-break: break-word;
+}
+
+/* ============ Retention 容量卡 ============ */
+.smhealth-capacity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.smhealth-capacity-card {
+  background: var(--c-glass);
+  border: 1px solid var(--c-glass-border);
+  border-radius: var(--r-md, 12px);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+  overflow: hidden;
+}
+
+.smhealth-capacity-card::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(165, 180, 252, 0.6), rgba(240, 171, 252, 0.6));
+  opacity: 0.5;
+}
+
+.smhealth-capacity-card--beliefs::after     { background: linear-gradient(90deg, #fbcfe8, #f0abfc); }
+.smhealth-capacity-card--history::after     { background: linear-gradient(90deg, #93c5fd, #a5b4fc); }
+.smhealth-capacity-card--reflections::after { background: linear-gradient(90deg, #bbf7d0, #86efac); }
+
+.smhealth-capacity-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.smhealth-capacity-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--c-text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.smhealth-capacity-icon {
+  font-size: 14px;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.smhealth-capacity-icon--beliefs     { background: linear-gradient(135deg, #fbcfe8, #f0abfc); }
+.smhealth-capacity-icon--history     { background: linear-gradient(135deg, #93c5fd, #a5b4fc); }
+.smhealth-capacity-icon--reflections { background: linear-gradient(135deg, #bbf7d0, #86efac); }
+
+.smhealth-capacity-total {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--c-text);
+  line-height: 1;
+}
+
+.smhealth-capacity-rows {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+  font-size: 11px;
+  color: var(--c-text-light);
+}
+
+.smhealth-capacity-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+
+.smhealth-capacity-row-key {
+  color: var(--c-text-muted);
+}
+
+.smhealth-capacity-row-value {
+  color: var(--c-text);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-weight: 500;
+}
+
+/* ============ Quota 进度条 ============ */
+.smhealth-quota-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.smhealth-quota-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.smhealth-quota-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+}
+
+.smhealth-quota-name {
+  color: var(--c-text);
+  font-weight: 500;
+}
+
+.smhealth-quota-usage {
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  color: var(--c-text-muted);
+}
+
+.smhealth-quota-bar {
+  position: relative;
+  width: 100%;
+  height: 8px;
+  background: rgba(165, 180, 252, 0.12);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.smhealth-quota-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #a5b4fc, #f0abfc);
+  border-radius: 999px;
+  transition: width var(--t-fast, 0.2s);
+}
+
+.smhealth-quota-fill--over {
+  background: linear-gradient(90deg, #fca5a5, #ef4444);
+}
+
+.smhealth-quota-fill--warn {
+  background: linear-gradient(90deg, #fde68a, #f59e0b);
+}
+
+.smhealth-quota-fill--ok {
+  background: linear-gradient(90deg, #bbf7d0, #86efac);
+}
+
+/* ============ Dry Run 面板 ============ */
+.smhealth-dryrun {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.smhealth-dryrun-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.smhealth-dryrun-text {
+  font-size: 12px;
+  color: var(--c-text-light);
+  line-height: 1.5;
+  flex: 1;
+  min-width: 220px;
+}
+
+.smhealth-dryrun-btn {
+  appearance: none;
+  border: 1px solid var(--c-glass-border);
+  background: linear-gradient(135deg, rgba(165, 180, 252, 0.25), rgba(240, 171, 252, 0.25));
+  color: var(--c-text);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all var(--t-fast, 0.15s);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.smhealth-dryrun-btn:hover {
+  border-color: var(--c-accent);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(165, 180, 252, 0.25);
+}
+
+.smhealth-dryrun-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.smhealth-dryrun-result {
+  background: rgba(255, 255, 255, 0.4);
+  border: 1px solid var(--c-glass-border);
+  border-radius: var(--r-md, 12px);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.smhealth-dryrun-result-head {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--c-text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.smhealth-dryrun-pill {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(134, 239, 172, 0.3);
+  color: #15803d;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.smhealth-dryrun-pill--applied-false {
+  background: rgba(253, 230, 138, 0.4);
+  color: #b45309;
+}
+
+.smhealth-dryrun-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  font-size: 12px;
+}
+
+.smhealth-dryrun-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
+}
+
+.smhealth-dryrun-stat-label {
+  font-size: 10px;
+  color: var(--c-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.smhealth-dryrun-stat-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--c-text);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+.smhealth-dryrun-stat-value--zero {
+  color: var(--c-text-muted);
+}
+
+/* ============ Empty / Loading / Offline ============ */
+.smhealth-empty {
+  padding: 50px 24px;
+  text-align: center;
+  background: var(--c-glass);
+  border: 1px dashed var(--c-glass-border);
+  border-radius: var(--r-md, 12px);
+  color: var(--c-text-light);
+}
+
+.smhealth-empty-icon {
+  font-size: 32px;
+  color: var(--c-accent-2);
+  margin-bottom: 8px;
+}
+
+.smhealth-empty-text {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--c-text);
+  margin-bottom: 4px;
+}
+
+.smhealth-empty-hint {
+  font-size: 12px;
+  color: var(--c-text-muted);
+}
+
+.smhealth-loading {
+  padding: 30px 20px;
+  text-align: center;
+  color: var(--c-text-light);
+  font-size: 13px;
+}
+
+.smhealth-loading::before {
+  content: "✦";
+  margin-right: 8px;
+  color: var(--c-accent-2);
+  animation: smhealth-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes smhealth-pulse {
+  0%, 100% { opacity: 0.4; }
+  50%      { opacity: 1; }
+}
+
+.smhealth-offline {
+  padding: 40px 20px;
+  text-align: center;
+  background: var(--c-glass);
+  border-radius: var(--r-md, 12px);
+  border: 1px dashed var(--c-glass-border);
+}
+
+.smhealth-offline-icon {
+  font-size: 32px;
+  color: var(--c-accent-2);
+  margin-bottom: 8px;
+}
+
+.smhealth-offline-text {
+  font-weight: 500;
+  color: var(--c-text);
+  margin-bottom: 4px;
+}
+
+.smhealth-offline-hint {
+  font-size: 12px;
+  color: var(--c-text-muted);
+}
+
+/* ============ 响应式 ============ */
+@media (max-width: 720px) {
+  .smhealth-overview {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .smhealth-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .smhealth-toolbar-group {
+    justify-content: flex-start;
+  }
+
+  .smhealth-issue {
+    flex-direction: column;
+  }
+
+  .smhealth-issue-icon {
+    align-self: flex-start;
+  }
+
+  .smhealth-dryrun-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .smhealth-dryrun-btn {
+    align-self: stretch;
+    justify-content: center;
+  }
+}

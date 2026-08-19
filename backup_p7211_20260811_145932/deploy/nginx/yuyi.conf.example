@@ -1,0 +1,70 @@
+# Yuyi Nginx 反向代理配置示例 (Phase D.0)
+#
+# 使用方式:
+#   1. 复制到 /etc/nginx/conf.d/yuyi.conf
+#   2. 替换 your.domain.com
+#   3. sudo nginx -t && sudo systemctl reload nginx
+#
+# 大文件传输相关 (与项目硬约束保持一致):
+#   - proxy_buffers 16 1m, proxy_buffer_size 1m
+#   - proxy_*_timeout 120s
+#   - client_max_body_size 100m (人格/记忆批量上传)
+
+upstream yuyi_api {
+    server 127.0.0.1:5000 fail_timeout=0;
+    keepalive 32;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name your.domain.com;
+
+    # 强制 HTTPS (生产环境推荐)
+    # return 301 https://$host$request_uri;
+
+    # 大文件上传 (批量记忆/人格数据)
+    client_max_body_size 100m;
+
+    # 基础
+    location / {
+        proxy_pass         http://yuyi_api;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_set_header   Connection        "";
+
+        # 大文件/长连接缓冲
+        proxy_buffers       16 1m;
+        proxy_buffer_size   1m;
+        proxy_busy_buffers_size 2m;
+
+        # 超时 (大文件传输, 与项目硬约束一致)
+        proxy_connect_timeout 120s;
+        proxy_read_timeout    120s;
+        proxy_send_timeout    120s;
+    }
+
+    # WebSocket 远程模块 (port 8765)
+    location /remote/ {
+        proxy_pass         http://127.0.0.1:8765/;
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade           $http_upgrade;
+        proxy_set_header   Connection        "upgrade";
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_read_timeout 3600s;
+    }
+
+    # Admin 控制台 (限制 IP)
+    location /admin/ {
+        # allow 127.0.0.1;
+        # allow 10.0.0.0/8;
+        # deny all;
+        proxy_pass         http://yuyi_api;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+    }
+}

@@ -1,0 +1,16 @@
+{
+    "Type": "Live2D Expression",
+    "IsModelCustomizationExpression": false,
+    "Parameters": [
+        {
+            "Id": "ParamHeartEye6",
+            "Value": 1.0,
+            "Blend": "Add"
+        },
+        {
+            "Id": "ParamHeartEye19",
+            "Value": 0.0,
+            "Blend": "Add"
+        }
+    ]
+}

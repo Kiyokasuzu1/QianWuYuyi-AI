@@ -9,6 +9,12 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Any
 from datetime import datetime
 
+from src.memory.atomic_write import (
+    atomic_write_json,
+    backup_corrupt_file,
+    get_path_lock,
+)
+
 
 @dataclass
 class NarrativeSnapshot:
@@ -118,22 +124,26 @@ class SelfNarrativeHistory:
         }
         path = Path(filepath)
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        # V1.1: 锁 + 原子写（替换裸 open("w") 截断写）
+        with get_path_lock(str(path)):
+            atomic_write_json(str(path), data)
 
     @classmethod
     def load(cls, filepath: str) -> "SelfNarrativeHistory":
-        """从 JSON 文件加载"""
+        """从 JSON 文件加载（V1.1: 损坏时备份现场并返回空历史,不再抛出）"""
         history = cls()
         path = Path(filepath)
         if not path.exists():
             return history
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        # 未来可根据 schema_version 进行数据迁移
-        history.snapshots = [
-            NarrativeSnapshot.from_dict(s) for s in data.get("snapshots", [])
-        ]
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            # 未来可根据 schema_version 进行数据迁移
+            history.snapshots = [
+                NarrativeSnapshot.from_dict(s) for s in data.get("snapshots", [])
+            ]
+        except Exception:
+            backup_corrupt_file(path)
         return history
 
     def to_dict(self) -> Dict[str, Any]:

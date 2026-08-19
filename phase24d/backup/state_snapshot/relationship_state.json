@@ -1,0 +1,30 @@
+{
+  "version": "0.6",
+  "last_updated": "2026-08-18T00:15:34.051290",
+  "last_decay": "2026-08-18",
+  "bond_strength": 0.20800000000000002,
+  "trust": 0.362,
+  "familiarity": 0.24000000000000002,
+  "promise_level": 0.0,
+  "shared_history": 0.08,
+  "activity_level": 0.14427791579676666,
+  "milestones": [
+    {
+      "event_id": "evt_yuyi_birth_f621aa72",
+      "topic": "动作描写格式偏好",
+      "time": "2026-08-15T22:51:55.899406"
+    },
+    {
+      "event_id": "evt_yuyi_birth_4c8aefc8",
+      "topic": "第一次情感表达",
+      "time": "2026-08-15T22:58:22.176587"
+    }
+  ],
+  "important_events": [
+    {
+      "event_id": "evt_yuyi_birth_f621aa72",
+      "topic": "动作描写格式偏好",
+      "type": "birth"
+    }
+  ]
+}

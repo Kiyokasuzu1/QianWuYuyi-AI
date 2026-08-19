@@ -1,0 +1,29 @@
+# 远程代理服务配置 Schema
+enabled:
+  type: boolean
+  required: true
+  default: false
+  description: 是否启用远程代理服务
+host:
+  type: string
+  required: true
+  default: "0.0.0.0"
+  description: WebSocket 监听地址
+port:
+  type: integer
+  required: true
+  default: 8765
+  min: 1
+  max: 65535
+  description: WebSocket 监听端口
+auth_token:
+  type: string
+  required: true
+  default: ""
+  min: 1
+  description: 代理认证 token
+heartbeat_timeout:
+  type: float
+  default: 30
+  min: 1
+  description: 心跳超时时间（秒）

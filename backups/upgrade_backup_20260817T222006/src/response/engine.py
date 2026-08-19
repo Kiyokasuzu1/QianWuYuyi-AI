@@ -1,0 +1,41 @@
+from src.response.llm import LLMClient
+from src.response.prompt_builder import PromptBuilder
+
+
+class ResponseEngine:
+    def __init__(self):
+        self.llm = LLMClient()
+        self.prompt_builder = PromptBuilder()
+
+    def generate(
+        self,
+        user_message: str,
+        history: list = None,
+        chat_memories: list = None,
+        life_events: list = None,
+        personality_context: dict = None,
+        resolved_behavior: dict = None,
+        expression_constraint_text: str = None,  # Phase 7.4 新增
+        self_model_context: str = None,
+        emotion_context: str = None,
+        relationship_context: str = None,
+        agreement_context: str = None,  # Phase 11.8 新增
+        experience_context: list = None,  # Phase A.2 新增
+        identity_context: str = None,  # Phase 2 新增（IdentityContext）
+    ) -> str:
+        messages = self.prompt_builder.build_messages(
+            user_message=user_message,
+            history=history,
+            chat_memories=chat_memories,
+            life_events=life_events,
+            personality_context=personality_context,
+            resolved_behavior=resolved_behavior,
+            expression_constraint_text=expression_constraint_text,
+            self_model_context=self_model_context,
+            emotion_context=emotion_context,
+            relationship_context=relationship_context,
+            agreement_context=agreement_context,
+            experience_context=experience_context,
+            identity_context=identity_context,
+        )
+        return self.llm.generate(messages)

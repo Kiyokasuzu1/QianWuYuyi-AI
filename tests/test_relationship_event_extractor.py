@@ -18,24 +18,25 @@ def test_collaboration_detected():
     extractor = RelationshipEventExtractor()
     event = extractor.extract("我们一起开发这个项目已经半年了，合作很愉快", evidence_id="mem_001")
     assert event is not None
-    assert event.event_type == "collaboration"
-    assert "collaboration" in event.potential_dimensions
-    assert "mem_001" in event.evidence_ids
+    # Phase 4.2-A：统一 TypedDict 契约，键访问
+    assert event["type"] == "collaboration"
+    assert "collaboration" in event["potential_dimensions"]
+    assert "mem_001" in event["evidence_ids"]
 
 
 def test_trust_building_detected():
     extractor = RelationshipEventExtractor()
     event = extractor.extract("我很信任你的判断", evidence_id="mem_002")
     assert event is not None
-    assert event.event_type == "trust_building"
-    assert "trust" in event.potential_dimensions
+    assert event["type"] == "trust_building"
+    assert "trust" in event["potential_dimensions"]
 
 
 def test_boundary_respect_detected():
     extractor = RelationshipEventExtractor()
     event = extractor.extract("我尊重你的选择，不勉强你", evidence_id="mem_003")
     assert event is not None
-    assert event.event_type == "boundary_respect"
+    assert event["type"] == "boundary_respect"
 
 
 def test_short_message_ignored():
@@ -48,8 +49,9 @@ def test_event_does_not_contain_delta():
     extractor = RelationshipEventExtractor()
     event = extractor.extract("我们一起合作很久了", evidence_id="mem_004")
     assert event is not None
-    assert isinstance(event.potential_dimensions, set)
-    assert all(isinstance(d, str) for d in event.potential_dimensions)
+    # Phase 4.2-A：统一 schema 使用 JSON 安全的 list（不再是 set）
+    assert isinstance(event["potential_dimensions"], list)
+    assert all(isinstance(d, str) for d in event["potential_dimensions"])
 
 
 def test_emotional_claim_not_misinterpreted():
@@ -72,7 +74,7 @@ def test_event_id_stable():
     b = extractor.extract("我们一起开发羽依项目")
     assert a is not None
     assert b is not None
-    assert a.event_id == b.event_id
+    assert a["id"] == b["id"]
 
 
 if __name__ == "__main__":

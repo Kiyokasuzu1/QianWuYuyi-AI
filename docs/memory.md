@@ -282,6 +282,110 @@
 
 ---
 
+# Memory Relevance
+
+从 Phase 3.5.16 开始，
+
+记忆系统不仅保存内容，
+
+也会在检索时评估：
+
+- importance
+- query match
+- semantic relevance
+- time decay
+- relationship relevance
+- identity relevance
+- emotional relevance
+
+
+这意味着：
+
+同样被保存的记忆，
+
+在不同问题下会有不同的 retrieval priority。
+
+
+例如：
+
+- 询问“你是谁”时，identity memory 应被提升
+- 询问“我们的关系”时，relationship memory 应被提升
+- 询问“你当时什么感受”时，emotion-relevant memory 应被提升
+
+
+---
+
+# Time Decay
+
+时间衰减不会删除记忆。
+
+它只影响检索优先级。
+
+
+因此：
+
+- 新近事件更容易在普通检索中被召回
+- identity / relationship 等锚定型记忆会有较高 decay floor
+- 核心记忆不会因为时间流逝而被简单淹没
+
+
+---
+
+# Relevance Audit
+
+每次相关性评估都会形成 audit record。
+
+记录包括：
+
+- 评估时间
+- memory_id
+- query
+- factor breakdown
+- final score
+- retrieval priority
+
+
+这保证记忆检索不是黑箱排序。
+
+羽依可以追溯：
+
+为什么这条记忆被排在前面。
+
+
+---
+
+# Long Term Memory
+
+从 Phase 3.5.25 起，
+
+系统在原始 `MemoryStore` 之上增加 `MemoryConsolidationEngine`。
+
+
+它不会删除原始记忆，
+
+只会生成长期记忆视图：
+
+- episodic memory
+- semantic memory
+- identity memory
+- relationship memory
+- emotional memory
+
+
+并支持：
+
+- memory decay
+- memory reinforcement
+- memory conflict resolution
+
+
+这意味着“长期记忆”不再只是把旧记录存久一点，
+
+而是对原始记忆做巩固、分类与冲突审计。
+
+
+---
+
 # Memory Structure
 
 

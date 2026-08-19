@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# =============================================================================
+# rollback — QianWuYuyi-AI 升级回滚脚本（v1.1.0-stable）
+#
+# 用途: 从最近一次升级备份恢复数据与代码，回到升级前状态。
+#
+# 用法: bash upgrade/rollback
+# 前置: 服务已停止
+# =============================================================================
+set -e
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# 1. 定位最近一次备份
+LAST=""
+if [ -f "$ROOT/upgrade/last_backup_path.txt" ]; then
+  LAST="$(cat "$ROOT/upgrade/last_backup_path.txt" 2>/dev/null || true)"
+fi
+if [ -z "$LAST" ] || [ ! -d "$LAST" ]; then
+  LAST="$(ls -d "$ROOT"/backups/upgrade_backup_* 2>/dev/null | sort | tail -n1 || true)"
+fi
+if [ -z "$LAST" ] || [ ! -d "$LAST" ]; then
+  echo "[rollback] 错误: 没有可用备份（backups/upgrade_backup_*）"
+  exit 1
+fi
+echo "[rollback] 使用备份: $LAST"
+
+# 2. 恢复（先删后拷，内容以备份为准）
+for item in \
+  data configs src static local_agent deploy scripts \
+  api_server.py main.py run_server.py requirements.txt VERSION.txt \
+  .env.example start_local_agent.bat start.sh start.bat; do
+  if [ -e "$LAST/$item" ]; then
+    rm -rf "$ROOT/$item"
+    cp -a "$LAST/$item" "$ROOT/"
+    echo "[rollback]   ✓ 恢复 $item"
+  fi
+done
+
+echo "[rollback] 完成。重启服务: systemctl start yuyi-api 或 bash start.sh"
+echo "[rollback] 恢复前的版本记录: $LAST/VERSION_AT_BACKUP.txt"

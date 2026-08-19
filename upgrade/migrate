@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# =============================================================================
+# migrate — QianWuYuyi-AI 升级迁移脚本（v1.1.0-stable）
+#
+# 用途: 将新版本部署包的内容覆盖到当前安装目录。
+#       保留: data/（运行数据）、config.yaml、.env、configs/ 中已存在的文件。
+#
+# 用法: bash upgrade/migrate <新版本包解压目录>
+# 前置: 服务已停止; 已执行 upgrade/backup_before_upgrade
+# =============================================================================
+set -e
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+NEW="${1:-}"
+
+if [ -z "$NEW" ]; then
+  echo "用法: bash upgrade/migrate <新版本包解压目录>"
+  exit 1
+fi
+NEW="$(cd "$NEW" 2>/dev/null && pwd)"
+if [ ! -f "$NEW/VERSION.txt" ]; then
+  echo "[migrate] 错误: $NEW 不是有效部署包目录（缺少 VERSION.txt）"
+  exit 1
+fi
+
+# 版本检查（可选）：确认不是降级
+NEW_VER="$(grep -E '^PACKAGE_VERSION=' "$NEW/upgrade/VERSION_CHECK" 2>/dev/null | cut -d= -f2 || true)"
+CUR_VER="$(grep -E '^PACKAGE_VERSION=' "$ROOT/upgrade/VERSION_CHECK" 2>/dev/null | cut -d= -f2 || true)"
+echo "[migrate] 当前版本: ${CUR_VER:-未知} → 新版本: ${NEW_VER:-未知}"
+if [ -n "$NEW_VER" ] && [ -n "$CUR_VER" ] && [ "$NEW_VER" = "$CUR_VER" ]; then
+  echo "[migrate] 版本相同，仍按全量覆盖执行（仅代码/模板，不动数据）"
+fi
+
+merge_dir() {
+  # 合并目录内容: merge_dir <相对路径>
+  mkdir -p "$ROOT/$1"
+  cp -a "$NEW/$1/." "$ROOT/$1/"
+  echo "[migrate]   ✓ 目录 $1"
+}
+
+merge_dir src
+merge_dir static
+merge_dir local_agent
+merge_dir deploy
+merge_dir scripts
+merge_dir upgrade
+merge_dir docs
+
+for f in api_server.py main.py run_server.py requirements.txt VERSION.txt \
+         .env.example start_local_agent.bat start.sh start.bat; do
+  if [ -f "$NEW/$f" ]; then
+    cp -f "$NEW/$f" "$ROOT/$f"
+    echo "[migrate]   ✓ 文件 $f"
+  fi
+done
+
+# configs/: 只补充缺失的模板，绝不覆盖已有私密配置
+mkdir -p "$ROOT/configs"
+for f in config.example.yaml env.example README.md; do
+  if [ -f "$NEW/configs/$f" ] && [ ! -f "$ROOT/configs/$f" ]; then
+    cp "$NEW/configs/$f" "$ROOT/configs/$f"
+    echo "[migrate]   ✓ 新增模板 configs/$f"
+  fi
+done
+
+echo "[migrate] 完成。后续步骤:"
+echo "  1. source .venv/bin/activate && pip install -r requirements.txt"
+echo "  2. 重启服务 (systemctl start yuyi-api 或 bash start.sh)"
+echo "  3. 验证: curl http://127.0.0.1:5000/health"

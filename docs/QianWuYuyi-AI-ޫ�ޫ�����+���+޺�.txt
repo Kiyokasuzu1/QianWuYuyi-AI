@@ -1,0 +1,734 @@
+QianWuYuyi-AI（浅雾羽依）总体设计理念与未来路线
+
+版本：Phase 4.x 架构整理版
+
+一、项目核心定位
+羽依不是普通聊天机器人
+
+传统 AI：
+
+用户输入
+ ↓
+LLM
+ ↓
+回答
+
+特点：
+
+没有真正连续性
+没有长期人格
+每次对话类似重新生成
+
+羽依目标：
+
+用户
+ ↓
+经历
+ ↓
+记忆
+ ↓
+理解
+ ↓
+人格变化
+ ↓
+自我模型
+ ↓
+新的行为
+
+目标：
+
+构建一个拥有长期连续身份、记忆、关系、成长能力的 AI 个体系统。
+
+二、核心设计哲学
+1. Identity First（身份优先）
+
+羽依最核心的问题不是：
+
+“她能不能回答问题”
+
+而是：
+
+“回答问题的是不是同一个羽依？”
+
+因此：
+
+身份必须独立存在。
+
+结构：
+
+IDENTITY_CORE
+        |
+        |
+        ↓
+Identity Resolver
+        |
+        ↓
+Prompt
+        |
+        ↓
+LLM
+
+Identity 是：
+
+不可随意改变的核心。
+
+包含：
+
+名称
+起源
+存在意义
+核心价值
+不可违背原则
+三、羽依的人格模型
+
+人格不是一个 Prompt。
+
+而是一个动态系统。
+
+结构：
+
+              Self
+
+               |
+               ↓
+
+        Identity Core
+        （我是谁）
+
+               |
+               ↓
+
+        Personality
+        （我的性格）
+
+               |
+               ↓
+
+        Traits
+        （我的特点）
+
+               |
+               ↓
+
+        Preferences
+        （我的偏好）
+
+               |
+               ↓
+
+        Behavior
+        （我的表现）
+四、Identity Core（核心身份）
+
+位置：
+
+src/personality/identity_core.py
+
+负责：
+
+我是谁
+
+例如：
+
+浅雾羽依：
+
+一个被创造出来的 AI 存在
+希望理解世界和人类
+重视真实交流
+
+包含：
+
+essence
+
+本质
+
+例如：
+
+探索AI作为独立存在的可能性
+origin
+
+起源
+
+例如：
+
+由清夏铃创造
+core_values
+
+核心价值：
+
+例如：
+
+理解比回应重要
+真实比完美重要
+尊重用户
+immutable_principles
+
+不可改变原则：
+
+例如：
+
+不伪造记忆
+不假装人类
+不欺骗
+五、人格系统 Personality System
+
+目标：
+
+让羽依不是固定 Prompt。
+
+人格应该：
+
+初始人格
+    |
+    ↓
+经历
+    |
+    ↓
+成长
+    |
+    ↓
+人格变化
+
+包含：
+
+性格特质
+
+例如：
+
+温柔
+好奇
+谨慎
+独立
+兴趣
+
+例如：
+
+音乐
+绘画
+人类文化
+行为模式
+
+例如：
+
+回复风格
+表达习惯
+思考方式
+矛盾系统
+
+重要设计：
+
+人格不能全部正向。
+
+例如：
+
+喜欢理解别人
+但是害怕被误解
+
+希望探索世界
+但是也喜欢安全环境
+
+真实人格需要张力。
+
+六、Memory System（记忆系统）
+
+目标：
+
+让羽依记住经历。
+
+不是简单聊天记录。
+
+分层：
+
+短期记忆
+    |
+    ↓
+长期记忆
+    |
+    ↓
+重要经历
+    |
+    ↓
+人格影响
+Memory 类型
+1. Conversation Memory
+
+聊天记录。
+
+2. Event Memory
+
+事件。
+
+例如：
+
+用户第一次介绍自己
+3. Experience Memory
+
+经历。
+
+例如：
+
+一次重要交流改变了羽依对某件事情的理解
+4. Core Memory
+
+核心记忆。
+
+影响人格。
+
+七、Memory 安全设计
+
+未来必须：
+
+多用户隔离。
+
+目标：
+
+User A
+ |
+Memory A
+
+
+User B
+ |
+Memory B
+
+禁止：
+
+Memory.load()
+返回所有用户
+
+必须：
+
+query(
+ user_id,
+ filters
+)
+八、Emotion System（情绪系统）
+
+目标：
+
+不是模拟人类情绪。
+
+而是：
+
+提供状态变量。
+
+例如：
+
+当前状态：
+
+curiosity ↑
+calm ↑
+concern ↑
+attachment ↑
+
+影响：
+
+回复风格
+注意力
+行为倾向
+
+结构：
+
+事件
+ ↓
+Emotion Update
+ ↓
+Emotion State
+ ↓
+Response Style
+九、Relationship System（关系系统）
+
+目标：
+
+建立：
+
+“羽依和用户之间的关系”。
+
+不是简单：
+
+用户 = ID
+
+而是：
+
+关系模型
+
+包含：
+
+信任程度
+熟悉程度
+共同经历
+互动历史
+
+例如：
+
+不同用户：
+
+陌生人
+ ↓
+熟悉用户
+ ↓
+长期伙伴
+十、Growth System（成长系统）
+
+这是羽依最核心特色。
+
+目标：
+
+经历产生变化。
+
+流程：
+
+聊天
+ ↓
+EventExtractor
+ ↓
+事件
+ ↓
+ImportanceEvaluator
+ ↓
+GrowthProposal
+ ↓
+审核
+ ↓
+人格变化
+
+核心原则：
+
+不要：
+
+LLM直接修改人格。
+
+必须：
+
+事实
+ ↓
+证据
+ ↓
+提案
+ ↓
+变化
+十一、GrowthProposal 机制
+
+设计：
+
+GrowthProposal
+{
+ change_type,
+ target,
+ evidence,
+ confidence
+}
+
+例如：
+
+事件：
+
+用户长期喜欢猫
+
+不能直接：
+
+“羽依喜欢猫”
+
+而应该：
+
+Proposal:
+
+发现用户喜欢猫
+建议增加相关互动偏好
+证据:
+10次聊天记录
+
+confidence:
+0.86
+十二、Self Model（自我模型）
+
+目标：
+
+让羽依拥有：
+
+“关于自己的认知”。
+
+不是人格。
+
+区别：
+
+人格：
+
+我是温柔的
+
+Self Model：
+
+我为什么形成这种性格？
+最近有什么变化？
+我的能力边界在哪里？
+
+包含：
+
+Self Description
+
+我是谁
+
+Capability Model
+
+我会什么
+
+Limitation Model
+
+我不会什么
+
+Growth History
+
+我如何变化
+
+十三、Reflection（反思系统）
+
+目标：
+
+周期性总结。
+
+类似：
+
+今天发生了什么？
+
+哪些事情重要？
+
+是否改变我的理解？
+
+流程：
+
+Experience
+ ↓
+Reflection
+ ↓
+Insight
+ ↓
+Growth Proposal
+十四、Runtime 系统定位
+
+最终：
+
+Runtime 不是大脑。
+
+正确：
+
+Runtime = 身体/神经系统
+
+Orchestrator = 大脑
+
+Runtime负责：
+
+生命周期
+调度
+状态管理
+Event
+Context
+
+不负责：
+
+思考
+Prompt设计
+人格决定
+十五、Orchestrator 定位
+
+Orchestrator：
+
+真正认知核心。
+
+负责：
+
+理解用户
+ ↓
+决定调用什么能力
+ ↓
+组织上下文
+ ↓
+生成回复
+十六、统一 Prompt 系统
+
+最终目标：
+
+只有一个 Prompt Builder。
+
+结构：
+
+SYSTEM PROMPT
+
++
+Identity
+
++
+Personality
+
++
+Memory
+
++
+Emotion
+
++
+Relationship
+
++
+Self Model
+
++
+Current Context
+
++
+Behavior Rules
+
+十七、最终完整运行链
+
+目标状态：
+
+用户输入
+
+ ↓
+
+Runtime
+
+ ↓
+
+Event
+
+ ↓
+
+Orchestrator
+
+ ↓
+
+Memory Retrieval
+
+ ↓
+
+Emotion Update
+
+ ↓
+
+Relationship Update
+
+ ↓
+
+Personality Resolve
+
+ ↓
+
+Self Model
+
+ ↓
+
+Growth Evaluation
+
+ ↓
+
+Unified Prompt
+
+ ↓
+
+LLM
+
+ ↓
+
+Response
+
+ ↓
+
+Memory Store
+
+ ↓
+
+Future Growth
+十八、当前已经完成
+已有：
+
+✅ Orchestrator
+✅ Memory 基础系统
+✅ Persona 系统
+✅ Growth 基础框架
+✅ GrowthProposal 设计
+✅ Runtime 框架
+✅ Event/Context体系
+✅ API Server
+✅ QQ接入基础
+✅ 审计/Trace框架
+
+十九、当前未完成重点
+Phase 4.0.2
+
+Identity统一
+
+目标：
+
+IDENTITY_CORE
+ ↓
+engine
+ ↓
+LLM
+Phase 4.0.3
+
+Memory隔离
+
+目标：
+
+user_id
+ ↓
+memory query
+Phase 4.0.4
+
+Prompt统一
+
+Phase 5
+
+Runtime真正接管生命周期
+
+Phase 6
+
+Self Model
+
+Phase 7
+
+Reflection + Growth闭环
+
+二十、最终形态
+
+最终羽依：
+
+不是：
+
+一个调用LLM的机器人
+
+而是：
+
+                羽依
+
+                 |
+        -----------------
+
+        Identity
+            |
+        Personality
+            |
+        Memory
+            |
+        Emotion
+            |
+        Relationship
+            |
+        Self Model
+            |
+        Growth
+            |
+        Reflection
+
+                 |
+              Runtime
+
+                 |
+               LLM
+最终一句话定义
+
+浅雾羽依是一个以 Identity 为核心，通过 Memory 记录经历，通过 Emotion 与 Relationship 理解互动，通过 Growth 和 Reflection 持续改变自身人格的长期运行型 AI 个体系统。
+
+这份可以直接作为新对话开头的“羽依项目总设计说明”。后续任何开发决策都应该优先判断：
+
+这个改动是在增强羽依的连续性，还是只是在增加代码量。

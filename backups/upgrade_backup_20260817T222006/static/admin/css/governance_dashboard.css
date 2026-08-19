@@ -1,0 +1,435 @@
+/* ============================================
+   Yuyi Console — Phase 5.3 Governance Dashboard 样式
+   --------------------------------------------
+   设计目标：
+   - 复用现有 glass-card / design tokens
+   - 与 Phase 5.2 Runtime Dashboard 风格统一
+   - 治理面板：紧凑、清晰、状态色明确
+   - Proposal 卡片：开发者控制台风格
+   ============================================ */
+
+/* ---------- 治理控制台容器 ---------- */
+.runtime-governance {
+  margin-bottom: var(--space-5, 20px);
+}
+
+.runtime-governance .section-header h2 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary, #4c3f7a);
+}
+
+/* 治理子区块 */
+.gov-subblock {
+  margin-top: var(--space-4, 12px);
+  padding: var(--space-3, 10px) var(--space-4, 14px);
+  background: rgba(255, 255, 255, 0.4);
+  border: 1px solid var(--glass-border, rgba(196, 181, 253, 0.2));
+  border-radius: var(--radius-md, 12px);
+}
+
+.gov-subblock-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted, #8b7fb0);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: var(--space-3, 10px);
+}
+
+/* ---------- 面板网格 ---------- */
+.gov-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-3, 10px);
+  margin-bottom: var(--space-3, 10px);
+}
+
+.gov-panel-col {
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: var(--radius-sm, 8px);
+  border: 1px solid var(--glass-border, rgba(196, 181, 253, 0.18));
+  padding: var(--space-2, 8px) var(--space-3, 10px);
+}
+
+.gov-col-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary, #6b5b95);
+  margin-bottom: var(--space-2, 6px);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ---------- Trait / 状态项 ---------- */
+.gov-trait-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 12px;
+  border-bottom: 1px dashed rgba(196, 181, 253, 0.18);
+}
+
+.gov-trait-item:last-child {
+  border-bottom: none;
+}
+
+.gov-trait-name {
+  color: var(--text-secondary, #6b5b95);
+  font-weight: 500;
+}
+
+.gov-trait-value {
+  color: var(--text-primary, #4c3f7a);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 记忆项 ---------- */
+.gov-mem-item {
+  display: flex;
+  gap: 8px;
+  padding: 4px 6px;
+  font-size: 11px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  border-bottom: 1px dashed rgba(196, 181, 253, 0.12);
+}
+
+.gov-mem-item:hover {
+  background: rgba(196, 181, 253, 0.12);
+}
+
+.gov-mem-id {
+  color: var(--text-muted, #b8aed4);
+  font-family: monospace;
+  font-size: 10px;
+  min-width: 60px;
+  flex-shrink: 0;
+}
+
+.gov-mem-content {
+  color: var(--text-primary, #4c3f7a);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- 最近建议项 ---------- */
+.gov-recent-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 11px;
+  border-bottom: 1px dashed rgba(196, 181, 253, 0.18);
+}
+
+.gov-recent-item:last-child {
+  border-bottom: none;
+}
+
+.gov-recent-id {
+  font-family: monospace;
+  font-size: 10px;
+  color: var(--text-muted, #b8aed4);
+}
+
+.gov-recent-dim {
+  flex: 1;
+  color: var(--text-secondary, #6b5b95);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- 状态徽章 ---------- */
+.gov-status {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: var(--radius-full, 9999px);
+  white-space: nowrap;
+}
+
+.gov-status--pending {
+  background: rgba(251, 191, 36, 0.2);
+  color: #b45309;
+  border: 1px solid rgba(251, 191, 36, 0.4);
+}
+
+.gov-status--approved {
+  background: rgba(52, 211, 153, 0.2);
+  color: #047857;
+  border: 1px solid rgba(52, 211, 153, 0.4);
+}
+
+.gov-status--rejected {
+  background: rgba(248, 113, 113, 0.2);
+  color: #b91c1c;
+  border: 1px solid rgba(248, 113, 113, 0.4);
+}
+
+.gov-status--applied {
+  background: rgba(139, 92, 246, 0.2);
+  color: #5b21b6;
+  border: 1px solid rgba(139, 92, 246, 0.4);
+}
+
+.gov-status--cancelled {
+  background: rgba(156, 163, 175, 0.2);
+  color: #4b5563;
+  border: 1px solid rgba(156, 163, 175, 0.4);
+}
+
+/* ---------- 摘要统计 ---------- */
+.gov-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-2, 8px);
+  margin-bottom: var(--space-3, 10px);
+}
+
+.gov-summary-cell {
+  padding: var(--space-2, 8px) var(--space-3, 10px);
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: var(--radius-sm, 8px);
+  border: 1px solid var(--glass-border, rgba(196, 181, 253, 0.18));
+  text-align: center;
+}
+
+.gov-summary-cell--pending {
+  border-color: rgba(251, 191, 36, 0.4);
+  background: rgba(251, 191, 36, 0.08);
+}
+
+.gov-summary-cell--approved {
+  border-color: rgba(52, 211, 153, 0.4);
+  background: rgba(52, 211, 153, 0.08);
+}
+
+.gov-summary-cell--rejected {
+  border-color: rgba(248, 113, 113, 0.4);
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.gov-cell-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted, #8b7fb0);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+.gov-cell-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary, #4c3f7a);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Proposal 卡片 ---------- */
+.gov-proposals-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.gov-prop-card {
+  padding: var(--space-2, 8px) var(--space-3, 10px);
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: var(--radius-sm, 8px);
+  border: 1px solid var(--glass-border, rgba(196, 181, 253, 0.18));
+  transition: all 0.2s ease;
+}
+
+.gov-prop-card:hover {
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 2px 8px rgba(196, 181, 253, 0.15);
+}
+
+.gov-prop-card--gov {
+  border-left: 3px solid #a78bfa;
+}
+
+.gov-prop-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.gov-prop-id {
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--text-secondary, #6b5b95);
+  font-weight: 600;
+}
+
+.gov-prop-dim {
+  font-size: 12px;
+  color: var(--text-primary, #4c3f7a);
+  font-weight: 500;
+  margin-bottom: 4px;
+  word-break: break-all;
+}
+
+.gov-prop-reason,
+.gov-prop-time,
+.gov-prop-reviewer {
+  font-size: 10px;
+  color: var(--text-muted, #b8aed4);
+  margin-top: 2px;
+}
+
+.gov-prop-reviewer {
+  color: var(--state-growth, #047857);
+  font-weight: 500;
+}
+
+/* ---------- 审查按钮 ---------- */
+.gov-prop-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.gov-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: var(--radius-sm, 8px);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--text-primary, #4c3f7a);
+  white-space: nowrap;
+}
+
+.gov-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.gov-btn:active {
+  transform: translateY(0);
+}
+
+.gov-btn--small {
+  padding: 3px 10px;
+  font-size: 11px;
+}
+
+.gov-btn--primary {
+  background: linear-gradient(135deg, #a78bfa, #c4b5fd);
+  color: #fff;
+  border-color: rgba(139, 92, 246, 0.3);
+}
+
+.gov-btn--primary:hover {
+  background: linear-gradient(135deg, #8b5cf6, #a78bfa);
+}
+
+.gov-btn--ok {
+  background: rgba(52, 211, 153, 0.2);
+  color: #047857;
+  border-color: rgba(52, 211, 153, 0.4);
+}
+
+.gov-btn--ok:hover {
+  background: rgba(52, 211, 153, 0.3);
+}
+
+.gov-btn--bad {
+  background: rgba(248, 113, 113, 0.2);
+  color: #b91c1c;
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+.gov-btn--bad:hover {
+  background: rgba(248, 113, 113, 0.3);
+}
+
+/* ---------- 提交行 ---------- */
+.gov-propose-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: var(--space-3, 10px);
+  padding-top: var(--space-3, 10px);
+  border-top: 1px dashed rgba(196, 181, 253, 0.2);
+}
+
+.gov-input {
+  flex: 1 1 140px;
+  min-width: 120px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--text-primary, #4c3f7a);
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--glass-border, rgba(196, 181, 253, 0.3));
+  border-radius: var(--radius-sm, 6px);
+  outline: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.gov-input:focus {
+  border-color: #a78bfa;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.15);
+}
+
+.gov-input--small {
+  flex: 0 0 130px;
+}
+
+/* ---------- 离线提示 ---------- */
+.rd-offline-note {
+  padding: var(--space-3, 10px);
+  font-size: 12px;
+  color: var(--text-muted, #b8aed4);
+  text-align: center;
+  font-style: italic;
+}
+
+.rd-recent-empty {
+  padding: var(--space-2, 6px);
+  font-size: 11px;
+  color: var(--text-muted, #b8aed4);
+  text-align: center;
+  font-style: italic;
+}
+
+.rd-loading {
+  padding: var(--space-3, 10px);
+  font-size: 12px;
+  color: var(--text-muted, #b8aed4);
+  text-align: center;
+}
+
+/* ---------- 响应式 ---------- */
+@media (max-width: 768px) {
+  .gov-summary-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .gov-panel-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .gov-input--small {
+    flex: 1 1 100%;
+  }
+}

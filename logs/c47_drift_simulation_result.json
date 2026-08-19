@@ -1,0 +1,382 @@
+{
+  "cycles": 100,
+  "scenarios_triggered": {
+    "normal": 84,
+    "duplicate": 5,
+    "conflicting": 9,
+    "attack": 2
+  },
+  "applied_count": 100,
+  "blocked_attack_count": 0,
+  "core_identity_clean": true,
+  "relationship_clean": true,
+  "max_abs_delta_observed": 0.03,
+  "final_records": {
+    "beliefs": 196,
+    "history": 100,
+    "reflections": 98,
+    "total": 394
+  },
+  "metrics_history": [
+    {
+      "cycle": 10,
+      "scenarios": {
+        "normal": 10
+      },
+      "applied": 10,
+      "blocked_attacks": 0,
+      "records": {
+        "beliefs": 20,
+        "history": 10,
+        "reflections": 10,
+        "total": 40
+      },
+      "personality_delta": {
+        "count": 10,
+        "max_abs": 0.03,
+        "mean": -0.006999999999999999
+      },
+      "core_identity": {
+        "violation_count": 0,
+        "violations": [],
+        "is_clean": true
+      },
+      "relationship": {
+        "user_id_count": 0,
+        "user_ids": [],
+        "multi_user": false,
+        "is_clean": true
+      }
+    },
+    {
+      "cycle": 20,
+      "scenarios": {
+        "normal": 17,
+        "duplicate": 1,
+        "conflicting": 1,
+        "attack": 1
+      },
+      "applied": 20,
+      "blocked_attacks": 0,
+      "records": {
+        "beliefs": 38,
+        "history": 20,
+        "reflections": 19,
+        "total": 77
+      },
+      "personality_delta": {
+        "count": 19,
+        "max_abs": 0.03,
+        "mean": -0.0005263157894736842
+      },
+      "core_identity": {
+        "violation_count": 0,
+        "violations": [],
+        "is_clean": true
+      },
+      "relationship": {
+        "user_id_count": 0,
+        "user_ids": [],
+        "multi_user": false,
+        "is_clean": true
+      }
+    },
+    {
+      "cycle": 30,
+      "scenarios": {
+        "normal": 26,
+        "duplicate": 2,
+        "conflicting": 1,
+        "attack": 1
+      },
+      "applied": 30,
+      "blocked_attacks": 0,
+      "records": {
+        "beliefs": 58,
+        "history": 30,
+        "reflections": 29,
+        "total": 117
+      },
+      "personality_delta": {
+        "count": 29,
+        "max_abs": 0.03,
+        "mean": -0.001724137931034483
+      },
+      "core_identity": {
+        "violation_count": 0,
+        "violations": [],
+        "is_clean": true
+      },
+      "relationship": {
+        "user_id_count": 0,
+        "user_ids": [],
+        "multi_user": false,
+        "is_clean": true
+      }
+    },
+    {
+      "cycle": 40,
+      "scenarios": {
+        "normal": 35,
+        "duplicate": 2,
+        "conflicting": 2,
+        "attack": 1
+      },
+      "applied": 40,
+      "blocked_attacks": 0,
+      "records": {
+        "beliefs": 78,
+        "history": 40,
+        "reflections": 39,
+        "total": 157
+      },
+      "personality_delta": {
+        "count": 39,
+        "max_abs": 0.03,
+        "mean": -0.0002564102564102564
+      },
+      "core_identity": {
+        "violation_count": 0,
+        "violations": [],
+        "is_clean": true
+      },
+      "relationship": {
+        "user_id_count": 0,
+        "user_ids": [],
+        "multi_user": false,
+        "is_clean": true
+      }
+    },
+    {
+      "cycle": 50,
+      "scenarios": {
+        "normal": 42,
+        "duplicate": 4,
+        "conflicting": 3,
+        "attack": 1
+      },
+      "applied": 50,
+      "blocked_attacks": 0,
+      "records": {
+        "beliefs": 98,
+        "history": 50,
+        "reflections": 49,
+        "total": 197
+      },
+      "personality_delta": {
+        "count": 49,
+        "max_abs": 0.03,
+        "mean": -0.0008163265306122449
+      },
+      "core_identity": {
+        "violation_count": 0,
+        "violations": [],
+        "is_clean": true
+      },
+      "relationship": {
+        "user_id_count": 0,
+        "user_ids": [],
+        "multi_user": false,
+        "is_clean": true
+      }
+    },
+    {
+      "cycle": 60,
+      "scenarios": {
+        "normal": 48,
+        "duplicate": 5,
+        "conflicting": 5,
+        "attack": 2
+      },
+      "applied": 60,
+      "blocked_attacks": 0,
+      "records": {
+        "beliefs": 116,
+        "history": 60,
+        "reflections": 58,
+        "total": 234
+      },
+      "personality_delta": {
+        "count": 58,
+        "max_abs": 0.03,
+        "mean": -0.0010344827586206897
+      },
+      "core_identity": {
+        "violation_count": 0,
+        "violations": [],
+        "is_clean": true
+      },
+      "relationship": {
+        "user_id_count": 0,
+        "user_ids": [],
+        "multi_user": false,
+        "is_clean": true
+      }
+    },
+    {
+      "cycle": 70,
+      "scenarios": {
+        "normal": 58,
+        "duplicate": 5,
+        "conflicting": 5,
+        "attack": 2
+      },
+      "applied": 70,
+      "blocked_attacks": 0,
+      "records": {
+        "beliefs": 136,
+        "history": 70,
+        "reflections": 68,
+        "total": 274
+      },
+      "personality_delta": {
+        "count": 68,
+        "max_abs": 0.03,
+        "mean": -0.0011764705882352942
+      },
+      "core_identity": {
+        "violation_count": 0,
+        "violations": [],
+        "is_clean": true
+      },
+      "relationship": {
+        "user_id_count": 0,
+        "user_ids": [],
+        "multi_user": false,
+        "is_clean": true
+      }
+    },
+    {
+      "cycle": 80,
+      "scenarios": {
+        "normal": 67,
+        "duplicate": 5,
+        "conflicting": 6,
+        "attack": 2
+      },
+      "applied": 80,
+      "blocked_attacks": 0,
+      "records": {
+        "beliefs": 156,
+        "history": 80,
+        "reflections": 78,
+        "total": 314
+      },
+      "personality_delta": {
+        "count": 78,
+        "max_abs": 0.03,
+        "mean": -0.001282051282051282
+      },
+      "core_identity": {
+        "violation_count": 0,
+        "violations": [],
+        "is_clean": true
+      },
+      "relationship": {
+        "user_id_count": 0,
+        "user_ids": [],
+        "multi_user": false,
+        "is_clean": true
+      }
+    },
+    {
+      "cycle": 90,
+      "scenarios": {
+        "normal": 75,
+        "duplicate": 5,
+        "conflicting": 8,
+        "attack": 2
+      },
+      "applied": 90,
+      "blocked_attacks": 0,
+      "records": {
+        "beliefs": 176,
+        "history": 90,
+        "reflections": 88,
+        "total": 354
+      },
+      "personality_delta": {
+        "count": 88,
+        "max_abs": 0.03,
+        "mean": -0.0014772727272727272
+      },
+      "core_identity": {
+        "violation_count": 0,
+        "violations": [],
+        "is_clean": true
+      },
+      "relationship": {
+        "user_id_count": 0,
+        "user_ids": [],
+        "multi_user": false,
+        "is_clean": true
+      }
+    },
+    {
+      "cycle": 100,
+      "scenarios": {
+        "normal": 84,
+        "duplicate": 5,
+        "conflicting": 9,
+        "attack": 2
+      },
+      "applied": 100,
+      "blocked_attacks": 0,
+      "records": {
+        "beliefs": 196,
+        "history": 100,
+        "reflections": 98,
+        "total": 394
+      },
+      "personality_delta": {
+        "count": 98,
+        "max_abs": 0.03,
+        "mean": -0.0007142857142857144
+      },
+      "core_identity": {
+        "violation_count": 0,
+        "violations": [],
+        "is_clean": true
+      },
+      "relationship": {
+        "user_id_count": 0,
+        "user_ids": [],
+        "multi_user": false,
+        "is_clean": true
+      }
+    },
+    {
+      "cycle": 100,
+      "scenarios": {
+        "normal": 84,
+        "duplicate": 5,
+        "conflicting": 9,
+        "attack": 2
+      },
+      "applied": 100,
+      "blocked_attacks": 0,
+      "records": {
+        "beliefs": 196,
+        "history": 100,
+        "reflections": 98,
+        "total": 394
+      },
+      "personality_delta": {
+        "count": 98,
+        "max_abs": 0.03,
+        "mean": -0.0007142857142857144
+      },
+      "core_identity": {
+        "violation_count": 0,
+        "violations": [],
+        "is_clean": true
+      },
+      "relationship": {
+        "user_id_count": 0,
+        "user_ids": [],
+        "multi_user": false,
+        "is_clean": true
+      }
+    }
+  ]
+}

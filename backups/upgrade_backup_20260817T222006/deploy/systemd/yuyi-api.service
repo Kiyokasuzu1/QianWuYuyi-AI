@@ -1,0 +1,31 @@
+[Unit]
+Description=Yuyi AI API Server (Phase 7.2.1-p2 Single Process)
+Documentation=https://github.com/qianwuyuyi/qianwuyuyi-ai
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/root/QianWuYuyi-AI
+
+# 关键：用 venv 的 python，不用系统 python3
+EnvironmentFile=/root/QianWuYuyi-AI/.env
+ExecStart=/root/QianWuYuyi-AI/venv/bin/python /root/QianWuYuyi-AI/api_server.py
+
+Restart=always
+RestartSec=10
+TimeoutStartSec=120
+TimeoutStopSec=30
+
+StandardOutput=append:/root/QianWuYuyi-AI/logs/yuyi-api.log
+StandardError=append:/root/QianWuYuyi-AI/logs/yuyi-api.log
+
+LimitNOFILE=65536
+
+# PrivateTmp=false 避免影响 data/agent_server_status.tmp 原子写
+PrivateTmp=false
+NoNewPrivileges=false
+
+[Install]
+WantedBy=multi-user.target

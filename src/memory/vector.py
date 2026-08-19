@@ -1,4 +1,5 @@
 import json
+import logging
 from pathlib import Path
 from typing import List, Dict, Optional
 
@@ -6,7 +7,10 @@ import chromadb
 from chromadb.utils import embedding_functions
 
 from src.config import get
+from src.memory.atomic_write import atomic_write_json
 from src.utils.text import clean_content
+
+logger = logging.getLogger(__name__)
 
 VECTOR_INDEX_VERSION = "0.3.0"
 
@@ -31,8 +35,13 @@ class VectorMemory:
 
     def _get_status(self) -> Dict:
         if self.status_file.exists():
-            with open(self.status_file, "r", encoding="utf-8") as f:
-                return json.load(f)
+            try:
+                with open(self.status_file, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                logger.warning(
+                    "[VectorMemory] index_status.json 读取失败,使用安全默认值"
+                )
         return {"version": None, "indexed": False, "count": 0}
 
     def _set_status(self, indexed: bool, count: int = 0):
@@ -42,8 +51,7 @@ class VectorMemory:
             "count": count,
             "updated": str(Path(__file__).stat().st_mtime)
         }
-        with open(self.status_file, "w", encoding="utf-8") as f:
-            json.dump(status, f, indent=2)
+        atomic_write_json(self.status_file, status)
 
     def _check_and_rebuild(self):
         """检查版本和索引状态，决定是否重建"""
@@ -99,7 +107,10 @@ class VectorMemory:
                     metadatas=[{
                         "id": mem_id,
                         "role": "user",
-                        "timestamp": mem.get("timestamp", "")
+                        "timestamp": mem.get("timestamp", ""),
+                        # Phase 4.0.3-P3: 与 add_memory 一致记录归属用户，
+                        # 支撑 search(user_id=...) 隔离过滤
+                        "user_id": str(mem.get("user_id") or target),
                     }],
                     ids=[mem_id]
                 )
@@ -134,7 +145,10 @@ class VectorMemory:
                 metadatas=[{
                     "id": mem_id,
                     "role": "user",
-                    "timestamp": memory.get("timestamp", "")
+                    "timestamp": memory.get("timestamp", ""),
+                    # Phase 4.0.3-P3: 记录归属用户，支撑跨用户召回隔离（章程：禁止跨用户召回）。
+                    # 无 user_id 的旧数据按单用户历史归属 target_user_id。
+                    "user_id": str(memory.get("user_id") or self.target_user_id),
                 }],
                 ids=[mem_id]
             )
@@ -143,7 +157,7 @@ class VectorMemory:
         except Exception as e:
             print(f"⚠️ 添加向量索引失败: {e}")
 
-    def search(self, query: str, top_k: int = None) -> List[Dict]:
+    def search(self, query: str, top_k: int = None, user_id: str = None) -> List[Dict]:
         if self.collection.count() == 0:
             return []
 
@@ -154,9 +168,13 @@ class VectorMemory:
         top_k = top_k or self.search_top_k
 
         try:
+            # Phase 4.0.3-P3: 指定 user_id 时扩大候选池，补偿隔离过滤的损耗
+            n_candidates = min(top_k * 2, self.collection.count())
+            if user_id:
+                n_candidates = min(top_k * 4, self.collection.count())
             results = self.collection.query(
                 query_texts=[query],
-                n_results=min(top_k * 2, self.collection.count())
+                n_results=n_candidates
             )
         except Exception as e:
             print(f"Search failed: {e}")
@@ -171,6 +189,14 @@ class VectorMemory:
             meta = results['metadatas'][0][i]
             distance = results['distances'][0][i] if results.get('distances') else 1.0
 
+            # Phase 4.0.3-P3: 跨用户召回隔离（章程：禁止跨用户召回）。
+            # 指定 user_id 时仅返回该用户的记忆；旧索引条目无 user_id 元数据，
+            # 按单用户历史归属 target_user_id 处理，保证旧库行为不变。
+            if user_id:
+                mem_owner = str(meta.get("user_id") or self.target_user_id)
+                if mem_owner != str(user_id):
+                    continue
+
             relevance = 1.0 - distance
             if relevance < self.min_relevance:
                 continue
@@ -179,7 +205,9 @@ class VectorMemory:
                 "role": meta.get("role", "user"),
                 "timestamp": meta.get("timestamp", ""),
                 "relevance": relevance,
-                "mem_id": meta.get("id", -1)
+                "mem_id": meta.get("id", -1),
+                # Phase 2.5-B: 透传归属用户,供 Prompt 主体标注使用
+                "user_id": str(meta.get("user_id") or self.target_user_id),
             })
 
         scored.sort(key=lambda x: x['relevance'], reverse=True)

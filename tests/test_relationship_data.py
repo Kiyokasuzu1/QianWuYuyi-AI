@@ -49,15 +49,15 @@ def test_profile_candidate_and_confirmed():
 
 
 def test_event_potential_dimensions():
-    """事件只声明潜在影响维度，使用 signal_strength 而非 confidence"""
+    """事件只声明潜在影响维度（Phase 4.2-A：统一 TypedDict 契约键名）"""
     event = RelationshipEvent(
-        event_type="collaboration",
+        type="collaboration",
         evidence_ids=["mem_001"],
-        signal_strength=0.85,                              # 修正：confidence → signal_strength
-        potential_dimensions={"collaboration", "trust"},
+        confidence=0.85,
+        potential_dimensions=["collaboration", "trust"],
     )
-    assert "collaboration" in event.potential_dimensions
-    assert "trust" in event.potential_dimensions
+    assert "collaboration" in event["potential_dimensions"]
+    assert "trust" in event["potential_dimensions"]
 
 
 def test_change_previous_new_value():

@@ -1,0 +1,173 @@
+{
+  "data/memory.json": {
+    "exists": true,
+    "size": 931651,
+    "hash": "8bf64a32567f8348",
+    "type": "list",
+    "count": 141,
+    "first_ts": "2026-07-26T08:15:22.032298",
+    "last_ts": "2026-07-30T17:43:15.218501"
+  },
+  "data/chroma_db/chroma.sqlite3": {
+    "exists": true,
+    "size": 188416,
+    "hash": "93b742e869cc8f14",
+    "type": "binary"
+  },
+  "data/chroma_db/index_status.json": {
+    "exists": true,
+    "size": 97,
+    "hash": "8c3993315418924a",
+    "type": "dict",
+    "keys": [
+      "version",
+      "indexed",
+      "count",
+      "updated"
+    ]
+  },
+  "data/growth_state.json": {
+    "exists": true,
+    "size": 532,
+    "hash": "8699a8d216842fc4",
+    "type": "dict",
+    "keys": [
+      "version",
+      "last_updated",
+      "metrics",
+      "milestones",
+      "identities",
+      "behaviors",
+      "processed_events",
+      "processed_growth_events",
+      "daily_growth_count",
+      "last_growth_date",
+      "last_decay_date"
+    ]
+  },
+  "data/emotion_state.json": {
+    "exists": true,
+    "size": 231,
+    "hash": "fd815ef26fa490f8",
+    "type": "dict",
+    "keys": [
+      "valence",
+      "arousal",
+      "curiosity",
+      "anxiety",
+      "confidence",
+      "energy",
+      "updated_at",
+      "dominant",
+      "intensity"
+    ]
+  },
+  "data/relationship_state.json": {
+    "exists": true,
+    "size": 294,
+    "hash": "08fb66eb9dc9be0a",
+    "type": "dict",
+    "keys": [
+      "version",
+      "last_updated",
+      "last_decay",
+      "bond_strength",
+      "trust",
+      "familiarity",
+      "promise_level",
+      "shared_history",
+      "activity_level",
+      "milestones",
+      "important_events"
+    ]
+  },
+  "data/runtime_state.json": {
+    "exists": true,
+    "size": 16037,
+    "hash": "93e7b0f80c711929",
+    "type": "dict",
+    "keys": [
+      "world_state",
+      "self_state",
+      "last_saved"
+    ]
+  },
+  "data/emotional_traces.json": {
+    "exists": true,
+    "size": 15579,
+    "hash": "fd2974d756c904ae",
+    "type": "list",
+    "count": 66
+  },
+  "data/audit/audit_logs.json": {
+    "exists": true,
+    "size": 0,
+    "hash": "e3b0c44298fc1c14",
+    "error": "Expecting value: line 1 column 1 (char 0)"
+  },
+  "data/proposals/growth_proposals.json": {
+    "exists": true,
+    "size": 1790,
+    "hash": "9bd5ce76598ef9b2",
+    "type": "list",
+    "count": 2,
+    "first_ts": "2026-07-29T09:33:30.499625Z",
+    "last_ts": "2026-07-29T09:33:30.519592Z"
+  },
+  "data/growth/proposals/proposals.json": {
+    "exists": true,
+    "size": 42892,
+    "hash": "1f1b65173b988715",
+    "type": "dict",
+    "keys": [
+      "version",
+      "proposals"
+    ]
+  },
+  "data/growth/sync/dead_letter_queue.json": {
+    "exists": true,
+    "size": 42,
+    "hash": "70798237ab151ef0",
+    "type": "dict",
+    "keys": [
+      "version",
+      "records"
+    ]
+  },
+  "data/growth/limiter/limiter_state.json": {
+    "exists": true,
+    "size": 802,
+    "hash": "82d0fc9701e96ffa",
+    "type": "dict",
+    "keys": [
+      "version",
+      "drift_history",
+      "daily_counts"
+    ]
+  },
+  "data/llm_failures/failures.jsonl": {
+    "exists": true,
+    "size": 122,
+    "hash": "9c0d7d151fee3162",
+    "type": "jsonl",
+    "count": 1
+  },
+  "config.yaml": {
+    "exists": true,
+    "size": 2889,
+    "hash": "91b8a59bf6094009",
+    "error": "Expecting value: line 1 column 1 (char 0)"
+  },
+  "config.yaml.example": {
+    "exists": true,
+    "size": 1238,
+    "hash": "2b7e58ff9810e575",
+    "error": "Expecting value: line 1 column 1 (char 0)"
+  },
+  "config.yaml.save": {
+    "exists": true,
+    "size": 1245,
+    "hash": "7d76ac5bbe0d21eb",
+    "error": "Expecting value: line 1 column 1 (char 0)"
+  }
+}

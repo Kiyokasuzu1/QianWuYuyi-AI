@@ -1,0 +1,1 @@
+{"phase": "C.1 P1-3", "generated_at": "2026-08-02T10:00:00Z", "source": "test", "total": 6, "summary": {"normal_user": 0, "system_pollution": 2, "ai_internal_pollution": 1, "invalid": 3}, "phases": [], "quarantine_ids": {"system_pollution": ["m1", "m2"], "ai_internal_pollution": ["m3"], "invalid": ["m4", "m5", "m6"]}}

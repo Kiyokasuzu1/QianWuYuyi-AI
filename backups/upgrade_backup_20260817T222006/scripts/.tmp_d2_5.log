@@ -1,0 +1,60 @@
+﻿python : 2026-08-05 02:44:43,900 [INFO] yuyi_desktop.core.desktop_context: DesktopContext: token_provider 已绑定 (source=n
+one)
+At C:\Users\29553\AppData\Local\Temp\trae-agent-toolhost\jobs\job-3efe0c69717b4e6882347fccce804aab\command.ps1:15 char:
+6385
++ ... ATH = "." ; python scripts/verify_phase_d2_5.py > scripts/.tmp_d2_5.l ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (2026-08-05 02:4...定 (source=none):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+2026-08-05 02:44:44,012 [INFO] yuyi_desktop.ui.widgets.dashboard_widget: [DashboardWidget] fetch_start
+2026-08-05 02:44:44,027 [INFO] yuyi_desktop.ui.widgets.personality_widget: [PersonalityWidget] fetch_start
+2026-08-05 02:44:44,030 [INFO] yuyi_desktop.services.personality_service: [PersonalityService] get_overview start (para
+llel)
+2026-08-05 02:44:58,191 [INFO] yuyi_desktop.ui.widgets.dashboard_widget: [DashboardWidget] fetch_step runtime=14179ms
+2026-08-05 02:45:05,248 [INFO] yuyi_desktop.ui.widgets.dashboard_widget: [DashboardWidget] fetch_step memory=7058ms
+2026-08-05 02:45:12,317 [INFO] yuyi_desktop.ui.widgets.dashboard_widget: [DashboardWidget] fetch_step growth=7068ms
+2026-08-05 02:45:12,324 [INFO] yuyi_desktop.services.personality_service: [PersonalityService] get_overview start (para
+llel)
+2026-08-05 02:45:13,295 [INFO] yuyi_desktop.ui.widgets.initiative_widget: [InitiativeWidget] fetch_start
+2026-08-05 02:45:13,296 [INFO] yuyi_desktop.services.initiative_service: [InitiativeService] get_overview start
+2026-08-05 02:45:13,296 [INFO] yuyi_desktop.services.initiative_service: [InitiativeService] fetching initiative status
+2026-08-05 02:45:13,296 [INFO] yuyi_desktop.ui.widgets.growth_widget: [GrowthWidget] fetch_start
+2026-08-05 02:45:15,697 [INFO] yuyi_desktop.services.initiative_service: [InitiativeService] status response ok=None st
+atus=None error=None
+2026-08-05 02:45:15,697 [INFO] yuyi_desktop.services.initiative_service: [InitiativeService] fetching initiative summar
+y
+2026-08-05 02:45:20,404 [INFO] yuyi_desktop.services.initiative_service: [InitiativeService] summary response ok=None s
+tatus=None total=None task_count=None interest_count=None
+2026-08-05 02:45:20,404 [INFO] yuyi_desktop.services.initiative_service: [InitiativeService] overview result available=
+False degraded=True
+2026-08-05 02:45:20,663 [INFO] yuyi_desktop.ui.widgets.growth_widget: [GrowthWidget] fetch_end total=7367ms available=F
+alse degraded=True total=0
+2026-08-05 02:45:20,719 [INFO] yuyi_desktop.ui.widgets.initiative_widget: [InitiativeWidget] fetch_end total=7424ms ava
+ilable=False degraded=True interest=0
+======================================================================
+Phase D.2.5 验证: Dashboard 不再显示『仅 health 端点可访问』
+======================================================================
+
+[Auth] has_token=False
+[ApiClient] _token_provider bound: True
+
+[Tab] 已切到主页面 (index=0, title='Dashboard 主页')
+
+[Qt] 进入主事件循环 (20s)...
+
+[监控] 20s 到期, 退出
+
+[Qt] 退出 rc=0
+
+======================================================================
+Phase D.2.5 验证结果汇总
+======================================================================
+运行时长: 20s
+采样数:   0
+
+[OK] 未检测到禁用文案 '仅 health 端点可访问'
+
+[WARN] 以下卡片未拿到数据: ['_card_name', '_card_running', '_card_health']
+
+=== Phase D.2.5 验证完成 ===

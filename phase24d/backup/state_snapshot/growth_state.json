@@ -1,0 +1,62 @@
+{
+  "version": "0.2",
+  "last_updated": "2026-08-15T22:58:22.174283",
+  "metrics": {
+    "trust": 0.276,
+    "closeness": 0.177,
+    "safety": 0.276,
+    "self_awareness": 0.2,
+    "self_confidence": 0.169
+  },
+  "milestones": [],
+  "identities": [],
+  "behaviors": {
+    "active_care": false,
+    "use_nickname": false,
+    "initiate_topic": false
+  },
+  "processed_events": [],
+  "processed_growth_events": [],
+  "daily_growth_count": {
+    "self_confidence": 1
+  },
+  "last_growth_date": "2026-08-15",
+  "last_decay_date": "2026-08-18",
+  "growth_history": [
+    {
+      "proposal_id": "prop_c35ac5ea0667",
+      "source_event_id": "evt_yuyi_birth_f621aa72",
+      "mode": "proposal",
+      "before": {
+        "relationship_orientation": 0.0
+      },
+      "delta": {
+        "relationship_orientation": 0.0011
+      },
+      "confidence": 0.84,
+      "time": "2026-08-15T22:51:55.898152"
+    },
+    {
+      "meaning": "creation",
+      "topic": "第一次情感表达",
+      "event_identity": "ai_image_creation",
+      "history_key": "ai_image_creation",
+      "mode": "first",
+      "reinforcement_count": 0,
+      "last_reinforced_at": null,
+      "before": {
+        "self_confidence": 0.1,
+        "self_expression": 0.0,
+        "initiative": 0.0,
+        "creativity": 0.0
+      },
+      "delta": {
+        "self_confidence": 0.072,
+        "self_expression": 0.1,
+        "initiative": 0.06,
+        "creativity": 0.08
+      },
+      "time": "2026-08-15T22:58:22.174267"
+    }
+  ]
+}

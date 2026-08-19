@@ -4,6 +4,7 @@ __pycache__/
 *.pyo
 venv/
 .env
+.env.local
 
 # 数据
 data/
@@ -17,3 +18,47 @@ data/
 # Private config
 config/
 config.yaml
+config.local.yaml
+
+# Deploy (运行时生成)
+deploy/systemd/installed/
+*.pid
+*.sock
+deploy/nginx/yuyi.conf
+
+# 日志 (运行后由 systemd 接管)
+logs/*.log
+logs/*.err
+!logs/.gitkeep
+
+# 测试输出 (来自 tests/ 目录)
+data/cog_test_*.json
+data/_e2e_tmp_should_not_exist/
+data/runtime_context/
+
+# 备份/临时文件 (R2.7.6 清理)
+*.bak
+*.backup
+*.old
+*.tmp
+*.tmp.*
+*.save
+*.save.*
+*.swp
+*~
+
+# Agent Server 跨进程状态文件 (由 initiative_sender 运行时生成)
+data/agent_server_status.json
+data/agent_server_status.tmp
+
+# Runtime Trace 链路追踪文件 (Phase 7.0,由 RuntimePipeline 运行时生成)
+data/runtime_trace/
+data/runtime_events/
+
+# 迁移脚本缓存
+migration/__pycache__/
+
+# v1.0 release: large archive artifacts excluded from git tracking
+*.zip
+*.rar
+backup_p7211_*/

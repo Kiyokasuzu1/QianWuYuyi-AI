@@ -1,0 +1,218 @@
+/* ========================================================
+   Yuyi Design System — Design Tokens
+   ========================================================
+   所有视觉值统一管理。禁止在业务 CSS 中直接写颜色/尺寸。
+   引用方式：var(--token-name)
+   ======================================================== */
+
+:root {
+
+  /* ============================================
+     01. Yuyi Core Palette — 羽依核心色
+     以淡蓝、淡紫、粉色为基调，温柔但有识别度
+     ============================================ */
+
+  --yuyi-blue-50: #eef4ff;
+  --yuyi-blue-100: #e0ebff;
+  --yuyi-blue-200: #c7d9ff;
+  --yuyi-blue-300: #a5c2ff;
+  --yuyi-blue-400: #81a8ff;
+  --yuyi-blue-500: #6890ff;
+  --yuyi-blue-600: #5572e0;
+
+  --yuyi-purple-50: #f5f3ff;
+  --yuyi-purple-100: #ede9fe;
+  --yuyi-purple-200: #ddd6fe;
+  --yuyi-purple-300: #c4b5fd;
+  --yuyi-purple-400: #a78bfa;
+  --yuyi-purple-500: #8b5cf6;
+  --yuyi-purple-600: #7c3aed;
+
+  --yuyi-pink-50: #fdf2f8;
+  --yuyi-pink-100: #fce7f3;
+  --yuyi-pink-200: #fbcfe8;
+  --yuyi-pink-300: #f9a8d4;
+  --yuyi-pink-400: #f472b6;
+  --yuyi-pink-500: #ec4899;
+
+  --yuyi-mint-50: #ecfdf5;
+  --yuyi-mint-100: #d1fae5;
+  --yuyi-mint-200: #a7f3d0;
+  --yuyi-mint-300: #6ee7b7;
+  --yuyi-mint-400: #34d399;
+
+  --yuyi-amber-50: #fffbeb;
+  --yuyi-amber-100: #fef3c7;
+  --yuyi-amber-200: #fde68a;
+  --yuyi-amber-300: #fcd34d;
+  --yuyi-amber-400: #fbbf24;
+
+  /* ============================================
+     02. Semantic Colors — 语义色（羽依人格化）
+     不使用"绿色=成功"，而是"平静=雾蓝"等
+     ============================================ */
+
+  /* 平静 / 正常 / 运行中 */
+  --state-calm: var(--yuyi-blue-400);
+  --state-calm-soft: var(--yuyi-blue-100);
+  --state-calm-glow: rgba(104, 144, 255, 0.3);
+
+  /* 开心 / 成功 / 良好 */
+  --state-happy: var(--yuyi-pink-400);
+  --state-happy-soft: var(--yuyi-pink-100);
+  --state-happy-glow: rgba(244, 114, 182, 0.3);
+
+  /* 思考 / 加载 / 进行中 */
+  --state-thinking: var(--yuyi-purple-400);
+  --state-thinking-soft: var(--yuyi-purple-100);
+  --state-thinking-glow: rgba(167, 139, 250, 0.3);
+
+  /* 提醒 / 注意 / 警告 */
+  --state-notice: var(--yuyi-amber-400);
+  --state-notice-soft: var(--yuyi-amber-100);
+  --state-notice-glow: rgba(251, 191, 36, 0.3);
+
+  /* 不安 / 错误 / 异常 */
+  --state-worry: #f87171;
+  --state-worry-soft: #fee2e2;
+  --state-worry-glow: rgba(248, 113, 113, 0.25);
+
+  /* 成长 / 正向 / 提升 */
+  --state-growth: var(--yuyi-mint-400);
+  --state-growth-soft: var(--yuyi-mint-100);
+  --state-growth-glow: rgba(52, 211, 153, 0.3);
+
+  /* ============================================
+     03. Background & Surface — 背景与表层
+     ============================================ */
+
+  --bg-page: linear-gradient(135deg, #f0f4ff 0%, #faf5ff 50%, #fff1f9 100%);
+  --bg-page-top: #eef4ff;
+  --bg-page-bottom: #fff1f9;
+
+  /* 玻璃材质梯度：数值越大越"实" */
+  --glass-1: rgba(255, 255, 255, 0.45);   /* 最透：背景装饰 */
+  --glass-2: rgba(255, 255, 255, 0.65);   /* 卡片基底 */
+  --glass-3: rgba(255, 255, 255, 0.80);   /* 弹窗/浮层 */
+  --glass-4: rgba(255, 255, 255, 0.92);   /* 最实：输入框等 */
+
+  /* 玻璃边框 */
+  --glass-border: rgba(196, 181, 253, 0.25);
+  --glass-border-strong: rgba(167, 139, 250, 0.35);
+
+  /* 玻璃模糊度 */
+  --glass-blur-soft: blur(8px);
+  --glass-blur: blur(16px);
+  --glass-blur-strong: blur(24px);
+
+  /* ============================================
+     04. Typography — 文字
+     ============================================ */
+
+  --font-family: "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", Consolas, Monaco, monospace;
+
+  --text-primary: #3b3a5a;
+  --text-secondary: #6b6a8a;
+  --text-muted: #a09bbf;
+  --text-on-dark: #ffffff;
+  --text-link: var(--yuyi-purple-500);
+
+  --font-xs: 10px;
+  --font-sm: 12px;
+  --font-base: 13px;
+  --font-md: 14px;
+  --font-lg: 16px;
+  --font-xl: 20px;
+  --font-2xl: 24px;
+  --font-3xl: 32px;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --line-height-tight: 1.2;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.7;
+
+  /* ============================================
+     05. Spacing — 间距（4px 基准）
+     ============================================ */
+
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 10px;
+  --space-6: 12px;
+  --space-8: 16px;
+  --space-10: 20px;
+  --space-12: 24px;
+  --space-16: 32px;
+  --space-20: 40px;
+  --space-24: 48px;
+
+  /* ============================================
+     06. Radius — 圆角（羽依风格：圆润柔和）
+     ============================================ */
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 24px;
+  --radius-full: 9999px;
+
+  /* ============================================
+     07. Shadows — 阴影（柔和、紫色调）
+     ============================================ */
+
+  --shadow-xs: 0 1px 2px rgba(167, 139, 250, 0.06);
+  --shadow-sm: 0 2px 8px rgba(167, 139, 250, 0.08);
+  --shadow-md: 0 4px 16px rgba(167, 139, 250, 0.12);
+  --shadow-lg: 0 8px 32px rgba(167, 139, 250, 0.16);
+  --shadow-xl: 0 16px 48px rgba(167, 139, 250, 0.20);
+  --shadow-glow: 0 0 20px rgba(167, 139, 250, 0.3);
+  --shadow-glow-strong: 0 0 32px rgba(167, 139, 250, 0.45);
+
+  /* ============================================
+     08. Easing & Motion — 动画曲线（温柔）
+     ============================================ */
+
+  --ease-soft: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+  --duration-fast: 0.15s;
+  --duration-normal: 0.25s;
+  --duration-slow: 0.4s;
+  --duration-slower: 0.6s;
+  --duration-slowest: 1s;
+
+  /* ============================================
+     09. Glow & Light — 光效系统
+     ============================================ */
+
+  --glow-primary: rgba(167, 139, 250, 0.4);
+  --glow-blue: rgba(104, 144, 255, 0.35);
+  --glow-pink: rgba(244, 114, 182, 0.35);
+  --glow-amber: rgba(251, 191, 36, 0.35);
+  --glow-mint: rgba(52, 211, 153, 0.35);
+
+  /* ============================================
+     10. Layout — 布局尺寸
+     ============================================ */
+
+  --sidebar-width: 220px;
+  --header-height: 56px;
+  --bottom-bar-height: 52px;
+  --content-max-width: 1400px;
+  --card-min-width: 220px;
+
+  --z-base: 1;
+  --z-card: 10;
+  --z-dropdown: 50;
+  --z-toast: 100;
+  --z-modal: 200;
+}

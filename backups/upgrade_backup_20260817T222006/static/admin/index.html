@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>羽依 Yuyi · AI 控制中心</title>
+<link rel="stylesheet" href="/admin/css/design-tokens.css">
+<link rel="stylesheet" href="/admin/css/components/card.css">
+<link rel="stylesheet" href="/admin/css/components/button.css">
+<link rel="stylesheet" href="/admin/css/components/status.css">
+<link rel="stylesheet" href="/admin/css/components/toast.css">
+<link rel="stylesheet" href="/admin/css/style.css">
+<!-- Phase 5.2: Runtime Dashboard 样式 -->
+<link rel="stylesheet" href="/admin/css/runtime_dashboard.css">
+<!-- Phase 5.3: Governance Dashboard 样式 -->
+<link rel="stylesheet" href="/admin/css/governance_dashboard.css">
+<!-- Phase 6.5: SelfModel Dashboard 样式 -->
+<link rel="stylesheet" href="/admin/css/selfmodel_dashboard.css">
+<!-- Phase 6.5 Step 5.3: SelfModel Evolution Timeline 样式 -->
+<link rel="stylesheet" href="/admin/css/selfmodel_timeline.css">
+<!-- Phase 6.5 Step 5.4: SelfModel Health + Retention 样式 -->
+<link rel="stylesheet" href="/admin/css/selfmodel_health.css">
+</head>
+<body>
+
+<!-- 背景装饰 -->
+<div class="bg-decoration">
+  <canvas id="particle-canvas"></canvas>
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  <div class="blob blob-3"></div>
+  <div class="stars"></div>
+</div>
+
+<!-- 顶部状态栏 -->
+<header class="top-bar glass">
+  <div class="logo-area">
+    <div class="logo-icon">
+      <svg viewBox="0 0 48 48" width="36" height="36">
+        <defs>
+          <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#a5b4fc;stop-opacity:1" />
+            <stop offset="50%" style="stop-color:#c4b5fd;stop-opacity:1" />
+            <stop offset="100%" style="stop-color:#f0abfc;stop-opacity:1" />
+          </linearGradient>
+        </defs>
+        <circle cx="24" cy="24" r="20" fill="url(#logoGrad)" opacity="0.8"/>
+        <circle cx="18" cy="22" r="3" fill="#fff"/>
+        <circle cx="30" cy="22" r="3" fill="#fff"/>
+        <circle cx="18" cy="22" r="1.5" fill="#4c3f7a"/>
+        <circle cx="30" cy="22" r="1.5" fill="#4c3f7a"/>
+        <path d="M18 30 Q24 34 30 30" stroke="#fff" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+        <!-- 猫耳 -->
+        <polygon points="12,10 18,18 10,20" fill="url(#logoGrad)" opacity="0.8"/>
+        <polygon points="36,10 30,18 38,20" fill="url(#logoGrad)" opacity="0.8"/>
+      </svg>
+    </div>
+    <div class="logo-text">
+      <h1>羽依</h1>
+      <span class="subtitle">Yuyi Console</span>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <div class="status-item" title="运行时长">
+      <svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span id="uptime">--</span>
+    </div>
+    <div class="status-item" title="在线代理">
+      <svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span id="agent-count">0</span>
+    </div>
+    <div class="status-item" title="系统健康度">
+      <svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 21s-7-4.5-9-10C1.5 7 4 3 8 3c2 0 3.5 1 4 2s1 2 2 2 1-1 2-2 2-2 4-2c4 0 6.5 4 5 8-2 5.5-9 10-9 10z" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+      <span id="health-status">--</span>
+    </div>
+    <div class="status-item" title="CPU 占用">
+      <svg viewBox="0 0 24 24" width="16" height="16"><rect x="4" y="4" width="16" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="9" y="9" width="6" height="6" fill="currentColor" opacity="0.6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span id="cpu-usage">--</span>
+    </div>
+    <div class="status-item" title="内存占用">
+      <svg viewBox="0 0 24 24" width="16" height="16"><rect x="3" y="7" width="18" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 7v10M11 7v10M15 7v10M19 7v10" stroke="currentColor" stroke-width="2"/></svg>
+      <span id="memory-usage">--</span>
+    </div>
+    <div class="status-item status-item-time">
+      <span id="current-time">--:--:--</span>
+    </div>
+  </div>
+
+  <div class="header-actions">
+    <button class="icon-btn" id="refresh-btn" title="刷新" onclick="refreshDashboard()">
+      <svg viewBox="0 0 24 24" width="20" height="20"><path d="M23 4v6h-6M1 20v-6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </div>
+</header>
+
+<!-- 主体布局 -->
+<div class="main-layout">
+
+  <!-- 左侧导航 -->
+  <aside class="sidebar glass">
+    <nav class="nav-section">
+      <div class="nav-title">仪表板</div>
+      <a href="#" class="nav-item active" data-view="dashboard" onclick="switchView('dashboard')">
+        <svg viewBox="0 0 24 24" width="18" height="18"><rect x="3" y="3" width="7" height="9" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><rect x="14" y="3" width="7" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><rect x="14" y="12" width="7" height="9" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><rect x="3" y="16" width="7" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+        <span>首页</span>
+      </a>
+      <a href="#" class="nav-item" data-view="modules" onclick="switchView('modules')">
+        <svg viewBox="0 0 24 24" width="18" height="18"><rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18" stroke="currentColor" stroke-width="2"/></svg>
+        <span>模块</span>
+      </a>
+    </nav>
+
+    <nav class="nav-section">
+      <div class="nav-title">羽依心智</div>
+      <a href="#" class="nav-item" data-view="cognitive" onclick="switchView('cognitive')">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>认知</span>
+      </a>
+      <a href="#" class="nav-item" data-view="selfmodel" onclick="switchView('selfmodel')">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 2a10 10 0 100 20 10 10 0 000-20z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="10" r="2" fill="currentColor"/><path d="M12 14c-3 0-5 1.5-5 3.5M17 17.5c0-2-2-3.5-5-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <span>自我模型</span>
+      </a>
+      <a href="#" class="nav-item" data-view="selfmodel-timeline" onclick="switchView('selfmodel-timeline')">
+        <svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><polyline points="12,6 12,12 16,14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <span>演化时间线</span>
+      </a>
+      <a href="#" class="nav-item" data-view="selfmodel-health" onclick="switchView('selfmodel-health')">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 21s-7-4.5-9-10C1.5 7 4 3 8 3c2 0 3.5 1 4 2s1 2 2 2 1-1 2-2 2-2 4-2c4 0 6.5 4 5 8-2 5.5-9 10-9 10z" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+        <span>健康与配额</span>
+      </a>
+      <a href="#" class="nav-item" data-view="autonomous" onclick="switchView('autonomous')">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 2a10 10 0 100 20 10 10 0 000-20z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 8v8M8 12h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <span>自主智能</span>
+      </a>
+    </nav>
+
+    <nav class="nav-section">
+      <div class="nav-title">陪伴</div>
+      <a href="#" class="nav-item" data-view="remote" onclick="switchView('remote')">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M15 10l-5 5-3-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+        <span>远程陪伴</span>
+      </a>
+      <a href="#" class="nav-item" data-view="agents" onclick="switchView('agents')">
+        <svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="18" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+        <span>代理管理</span>
+      </a>
+    </nav>
+
+    <nav class="nav-section">
+      <div class="nav-title">系统</div>
+      <a href="#" class="nav-item" data-view="logs" onclick="switchView('logs')">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 4h16v16H4z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 8h8M8 12h8M8 16h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <span>日志</span>
+      </a>
+      <a href="#" class="nav-item" data-view="config" onclick="switchView('config')">
+        <svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 1v6M12 17v6M4.22 4.22l4.24 4.24M15.54 15.54l4.24 4.24M1 12h6M17 12h6M4.22 19.78l4.24-4.24M15.54 8.46l4.24-4.24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <span>设置</span>
+      </a>
+      <a href="#" class="nav-item" data-view="audit" onclick="switchView('audit')">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <span>操作日志</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="yuyi-mini">
+        <svg viewBox="0 0 48 48" width="60" height="60">
+          <defs>
+            <linearGradient id="miniGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" style="stop-color:#a5b4fc"/>
+              <stop offset="100%" style="stop-color:#f0abfc"/>
+            </linearGradient>
+          </defs>
+          <!-- 猫耳 -->
+          <polygon points="12,12 20,22 10,24" fill="url(#miniGrad)" opacity="0.8"/>
+          <polygon points="36,12 28,22 38,24" fill="url(#miniGrad)" opacity="0.8"/>
+          <polygon points="14,16 18,22 12,23" fill="#fce7f3" opacity="0.6"/>
+          <polygon points="34,16 30,22 36,23" fill="#fce7f3" opacity="0.6"/>
+          <!-- 脸 -->
+          <ellipse cx="24" cy="30" rx="14" ry="14" fill="#fdf4ff" opacity="0.9"/>
+          <!-- 头发 -->
+          <ellipse cx="24" cy="24" rx="16" ry="12" fill="url(#miniGrad)" opacity="0.5"/>
+          <!-- 眼睛 -->
+          <path d="M18 30 Q20 28 22 30" stroke="#4c3f7a" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.7"/>
+          <path d="M26 30 Q28 28 30 30" stroke="#4c3f7a" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.7"/>
+          <!-- 小鱼装饰 -->
+          <circle cx="30" cy="20" r="3" fill="#93c5fd" opacity="0.6"/>
+          <polygon points="32,20 35,17 35,23" fill="#93c5fd" opacity="0.6"/>
+          <!-- 腮红 -->
+          <ellipse cx="16" cy="32" rx="3" ry="2" fill="#f9a8d4" opacity="0.4"/>
+          <ellipse cx="32" cy="32" rx="3" ry="2" fill="#f9a8d4" opacity="0.4"/>
+          <!-- 嘴巴 -->
+          <path d="M22 36 Q24 37 26 36" stroke="#c084fc" stroke-width="1" fill="none" stroke-linecap="round" opacity="0.7"/>
+        </svg>
+        <div class="mini-text">
+          <div class="mini-name">羽依</div>
+          <div class="mini-status">陪伴中 ♡</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 内容区 -->
+  <main class="content">
+
+    <!-- 欢迎 + 羽依区域 -->
+    <section class="welcome-section glass-card" id="welcome-section">
+      <div class="welcome-text">
+        <div class="greeting" id="greeting">加载中...</div>
+        <div class="welcome-sub">
+          <span class="sparkle">✦</span>
+          羽依正在为您工作中，随时待命~
+        </div>
+        <div class="quick-actions">
+          <button class="chip-btn" onclick="apiAction('reload_config')">
+            <svg viewBox="0 0 24 24" width="14" height="14"><path d="M23 4v6h-6M1 20v-6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            重载配置
+          </button>
+          <button class="chip-btn" onclick="apiAction('save_backup')">
+            <svg viewBox="0 0 24 24" width="14" height="14"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" fill="none" stroke="currentColor" stroke-width="2"/><polyline points="17,21 17,13 7,13 7,21" fill="none" stroke="currentColor" stroke-width="2"/><polyline points="7,3 7,8 15,8" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+            保存备份
+          </button>
+          <button class="chip-btn" onclick="apiAction('system_check')">
+            <svg viewBox="0 0 24 24" width="14" height="14"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="22,4 12,14.01 9,11.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            系统检查
+          </button>
+        </div>
+      </div>
+
+      <div class="yuyi-illustration">
+        <div class="yuyi-scene">
+          <!-- 云朵 -->
+          <div class="cloud cloud-1"></div>
+          <div class="cloud cloud-2"></div>
+          <!-- 星星 -->
+          <div class="star star-1">✦</div>
+          <div class="star star-2">✧</div>
+          <!-- 羽依角色 -->
+          <div class="yuyi-character" id="yuyi-character-main">
+            <!-- 角色立绘图片 -->
+            <img src="/admin/images/yuyi-character.jpg" alt="羽依" class="yuyi-character-img" id="yuyi-character-img" onerror="this.style.display='none';document.getElementById('yuyi-character-svg').style.display='block';">
+            <!-- SVG 备用（图片加载失败时显示） -->
+            <svg id="yuyi-character-svg" viewBox="0 0 120 160" width="120" height="160" style="display:none">
+              <defs>
+                <linearGradient id="hairGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" style="stop-color:#e0e7ff"/>
+                  <stop offset="100%" style="stop-color:#c4b5fd"/>
+                </linearGradient>
+                <linearGradient id="dressGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" style="stop-color:#fce7f3"/>
+                  <stop offset="100%" style="stop-color:#f0abfc"/>
+                </linearGradient>
+                <radialGradient id="cheekGrad">
+                  <stop offset="0%" style="stop-color:#f9a8d4;stop-opacity:0.6"/>
+                  <stop offset="100%" style="stop-color:#f9a8d4;stop-opacity:0"/>
+                </radialGradient>
+              </defs>
+              <ellipse cx="60" cy="60" rx="32" ry="38" fill="url(#hairGrad)"/>
+              <polygon points="35,28 45,48 28,44" fill="url(#hairGrad)"/>
+              <polygon points="85,28 75,48 92,44" fill="url(#hairGrad)"/>
+              <polygon points="37,34 43,46 33,44" fill="#fce7f3"/>
+              <polygon points="83,34 77,46 87,44" fill="#fce7f3"/>
+              <ellipse cx="60" cy="62" rx="22" ry="26" fill="#fdf4ff"/>
+              <path d="M38 50 Q50 38 60 42 Q70 38 82 50 Q78 56 72 52 Q66 56 60 52 Q54 56 48 52 Q42 56 38 50" fill="url(#hairGrad)"/>
+              <path id="char-eye-left" d="M48 60 Q50 56 52 60" stroke="#4c3f7a" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+              <path id="char-eye-right" d="M68 60 Q70 56 72 60" stroke="#4c3f7a" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+              <ellipse cx="44" cy="70" rx="5" ry="3" fill="url(#cheekGrad)"/>
+              <ellipse cx="76" cy="70" rx="5" ry="3" fill="url(#cheekGrad)"/>
+              <path id="char-mouth" d="M55 74 Q60 78 65 74" stroke="#c084fc" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+              <path d="M38 92 Q30 110 40 150 L80 150 Q90 110 82 92 Z" fill="url(#dressGrad)"/>
+              <circle cx="60" cy="88" r="4" fill="#f0abfc"/>
+              <polygon points="54,86 60,90 54,94" fill="#f0abfc"/>
+              <polygon points="66,86 60,90 66,94" fill="#f0abfc"/>
+            </svg>
+            <!-- 情绪状态指示器 -->
+            <div class="character-mood-indicator" id="character-mood-indicator">
+              <span class="mood-emoji" id="mood-emoji">💤</span>
+            </div>
+            <!-- 角色消息气泡 -->
+            <div class="character-message" id="character-message">正在为您待命~</div>
+          </div>
+          <!-- 能量条 -->
+          <div class="character-energy">
+            <div class="energy-bar-wrap">
+              <div class="energy-bar" id="character-energy-bar" style="width:50%"></div>
+            </div>
+            <span class="energy-label" id="character-energy-label">能量 50%</span>
+          </div>
+          <!-- 小鱼装饰 -->
+          <div class="fish fish-1">
+            <svg viewBox="0 0 40 24" width="30" height="18">
+              <ellipse cx="18" cy="12" rx="12" ry="7" fill="#93c5fd" opacity="0.6"/>
+              <polygon points="30,12 38,5 38,19" fill="#93c5fd" opacity="0.6"/>
+              <circle cx="12" cy="10" r="1.5" fill="#fff"/>
+            </svg>
+          </div>
+          <div class="fish fish-2">
+            <svg viewBox="0 0 40 24" width="24" height="14">
+              <ellipse cx="18" cy="12" rx="12" ry="7" fill="#fbcfe8" opacity="0.6"/>
+              <polygon points="30,12 38,5 38,19" fill="#fbcfe8" opacity="0.6"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Phase 5.2: Runtime 状态总览（基于 Phase 5.1 RuntimeProvider API） -->
+    <section class="section runtime-dashboard-section glass-card" id="runtime-dashboard-section">
+      <div class="section-header">
+        <h2>Runtime 状态</h2>
+        <div class="section-actions">
+          <span class="badge" id="rd-runtime-status" title="RuntimeCore 在线状态">
+            <span class="yuyi-status-dot yuyi-status-dot--thinking" id="rd-runtime-status-dot"></span>
+            <span id="rd-runtime-status-text">--</span>
+          </span>
+          <button class="icon-btn-sm" id="rd-refresh-btn" title="手动刷新">
+            <svg viewBox="0 0 24 24" width="14" height="14"><path d="M23 4v6h-6M1 20v-6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+          <span class="runtime-updated" id="rd-last-updated">尚未刷新</span>
+        </div>
+      </div>
+
+      <!-- Authority 组件就绪状态 -->
+      <div class="rd-subblock">
+        <div class="rd-subblock-title">Authority</div>
+        <div class="rd-authority-grid" id="rd-authority-grid">
+          <div class="rd-loading">加载中...</div>
+        </div>
+      </div>
+
+      <!-- RuntimeCore 基础信息 -->
+      <div class="rd-subblock">
+        <div class="rd-subblock-title">RuntimeCore</div>
+        <div class="rd-runtime-core-row">
+          <div class="rd-core-cell">
+            <div class="rd-cell-label">initialized</div>
+            <div class="rd-cell-value" id="rd-runtime-initialized">--</div>
+          </div>
+          <div class="rd-core-cell">
+            <div class="rd-cell-label">running</div>
+            <div class="rd-cell-value" id="rd-runtime-running">--</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 模块状态区 -->
+    <section class="section modules-section glass-card" id="modules-section">
+      <div class="section-header">
+        <h2>模块状态管理</h2>
+        <div class="section-actions">
+          <span class="badge" id="module-count">0 个模块</span>
+        </div>
+      </div>
+      <div class="modules-grid" id="modules-grid">
+        <!-- 模块卡片由 JS 生成 -->
+        <div class="loading">加载模块中...</div>
+      </div>
+    </section>
+
+    <!-- 下方区域：左日志 + 右快捷操作 -->
+    <div class="bottom-grid">
+
+      <!-- 实时日志 -->
+      <section class="section logs-section glass-card">
+        <div class="section-header">
+          <h2>实时日志</h2>
+          <div class="section-actions">
+            <button class="icon-btn-sm" onclick="refreshLogs()" title="刷新">
+              <svg viewBox="0 0 24 24" width="14" height="14"><path d="M23 4v6h-6M1 20v-6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
+            <button class="chip-btn" id="log-filter-info" onclick="setLogFilter('INFO')">INFO</button>
+            <button class="chip-btn" id="log-filter-warn" onclick="setLogFilter('WARN')">WARN</button>
+            <button class="chip-btn" id="log-filter-error" onclick="setLogFilter('ERROR')">ERROR</button>
+          </div>
+        </div>
+        <div class="logs-container" id="logs-container">
+          <div class="loading">等待日志...</div>
+        </div>
+      </section>
+
+      <!-- 快捷操作 + 人格 -->
+      <div class="right-column">
+
+        <!-- 快捷操作 -->
+        <section class="section quick-actions glass-card">
+          <div class="section-header">
+            <h2>快捷操作</h2>
+          </div>
+          <div class="quick-actions-grid">
+            <button class="action-btn" onclick="apiAction('reload_config')">
+              <div class="action-icon" style="background:linear-gradient(135deg,#dbeafe,#bfdbfe)">
+                <svg viewBox="0 0 24 24" width="20" height="20"><path d="M23 4v6h-6M1 20v-6h6" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/></svg>
+              </div>
+              <span>重载配置</span>
+            </button>
+            <button class="action-btn" onclick="apiAction('save_backup')">
+              <div class="action-icon" style="background:linear-gradient(135deg,#fce7f3,#fbcfe8)">
+                <svg viewBox="0 0 24 24" width="20" height="20"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" fill="none" stroke="#ec4899" stroke-width="2"/><polyline points="17,21 17,13 7,13 7,21" fill="none" stroke="#ec4899" stroke-width="2"/></svg>
+              </div>
+              <span>保存备份</span>
+            </button>
+            <button class="action-btn" onclick="apiAction('system_check')">
+              <div class="action-icon" style="background:linear-gradient(135deg,#dcfce7,#bbf7d0)">
+                <svg viewBox="0 0 24 24" width="20" height="20"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round"/><polyline points="22,4 12,14.01 9,11.01" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round"/></svg>
+              </div>
+              <span>系统检查</span>
+            </button>
+            <button class="action-btn" onclick="apiAction('clear_cache')">
+              <div class="action-icon" style="background:linear-gradient(135deg,#fef3c7,#fde68a)">
+                <svg viewBox="0 0 24 24" width="20" height="20"><polyline points="3,6 5,6 21,6" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6m5 0V4a2 2 0 012-2h0a2 2 0 012 2v2" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round"/></svg>
+              </div>
+              <span>清理缓存</span>
+            </button>
+            <button class="action-btn" onclick="switchView('config')">
+              <div class="action-icon" style="background:linear-gradient(135deg,#e0e7ff,#c7d2fe)">
+                <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="3" fill="none" stroke="#6366f1" stroke-width="2"/><path d="M12 1v6M12 17v6M4.22 4.22l4.24 4.24M15.54 15.54l4.24 4.24M1 12h6M17 12h6M4.22 19.78l4.24-4.24M15.54 8.46l4.24-4.24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round"/></svg>
+              </div>
+              <span>配置面板</span>
+            </button>
+            <button class="action-btn" onclick="switchView('audit')">
+              <div class="action-icon" style="background:linear-gradient(135deg,#fee2e2,#fecaca)">
+                <svg viewBox="0 0 24 24" width="20" height="20"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" fill="none" stroke="#ef4444" stroke-width="2"/><path d="M14 2v6h6" fill="none" stroke="#ef4444" stroke-width="2"/></svg>
+              </div>
+              <span>审计日志</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- 羽依核心生命状态 -->
+        <section class="section personality-snap glass-card">
+          <div class="section-header">
+            <h2>羽依核心状态</h2>
+          </div>
+          <div class="emotion-display" id="emotion-display">
+            <div class="emotion-card">
+              <div class="emotion-label">当前情绪</div>
+              <div class="emotion-value" id="emotion-primary">♡ 平静</div>
+              <div class="emotion-meter">
+                <div class="meter-bar">
+                  <div class="meter-fill" id="emotion-intensity-bar" style="width:50%"></div>
+                </div>
+                <span class="meter-label" id="emotion-intensity-label">强度 50%</span>
+              </div>
+            </div>
+          </div>
+          <div class="yuyi-core-display" id="yuyi-core-display">
+            <div class="loading" style="font-size:13px;color:var(--c-text-muted);">加载中...</div>
+          </div>
+          <div class="traits-display" id="traits-display">
+            <div class="loading" style="font-size:13px;color:var(--c-text-muted);">加载中...</div>
+          </div>
+        </section>
+
+        <!-- Phase 5.2: 人格状态面板（基于 Phase 5.1 RuntimeProvider API） -->
+        <section class="section runtime-personality glass-card" id="runtime-personality-section">
+          <div class="section-header">
+            <h2>人格状态</h2>
+          </div>
+          <div class="rd-personality-content" id="rd-personality-content">
+            <div class="rd-loading">加载中...</div>
+          </div>
+          <div class="rd-subblock-title rd-growth-title">Growth 指标</div>
+          <div class="rd-growth-metrics" id="rd-growth-metrics">
+            <div class="rd-loading">加载中...</div>
+          </div>
+        </section>
+
+        <!-- Phase 5.2: Emotion 面板（基于 Phase 5.1 RuntimeProvider API） -->
+        <section class="section runtime-emotion glass-card" id="runtime-emotion-section">
+          <div class="section-header">
+            <h2>当前情绪</h2>
+          </div>
+          <div class="rd-emotion-content" id="rd-emotion-content">
+            <div class="rd-loading">加载中...</div>
+          </div>
+        </section>
+
+        <!-- Phase 5.2: Memory 概览面板（基于 Phase 5.1 RuntimeProvider API） -->
+        <section class="section runtime-memory glass-card" id="runtime-memory-section">
+          <div class="section-header">
+            <h2>记忆概览</h2>
+          </div>
+          <div class="rd-memory-content" id="rd-memory-content">
+            <div class="rd-loading">加载中...</div>
+          </div>
+        </section>
+
+        <!-- Phase 5.3: Admin Governance 面板（基于 GovernanceProvider API） -->
+        <section class="section runtime-governance glass-card" id="runtime-governance-section">
+          <div class="section-header">
+            <h2>治理控制台</h2>
+            <div class="section-actions">
+              <button class="icon-btn-sm" id="gov-refresh-btn" title="刷新治理面板">
+                <svg viewBox="0 0 24 24" width="14" height="14"><path d="M23 4v6h-6M1 20v-6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              </button>
+              <span class="runtime-updated" id="gov-last-updated">尚未刷新</span>
+            </div>
+          </div>
+
+          <!-- Personality Governance 面板 -->
+          <div class="gov-subblock">
+            <div class="gov-subblock-title">人格治理 (Personality Governance)</div>
+            <div class="gov-personality-content" id="gov-personality-content">
+              <div class="rd-loading">加载中...</div>
+            </div>
+            <div class="gov-propose-row">
+              <input type="text" id="gov-personality-trait-input" placeholder="特质名（如 开放性）" class="gov-input gov-input--small" />
+              <input type="number" id="gov-personality-delta-input" placeholder="Δ 调整量" step="0.01" class="gov-input gov-input--small" />
+              <input type="text" id="gov-personality-reason-input" placeholder="原因" class="gov-input" />
+              <button class="gov-btn gov-btn--primary" id="gov-personality-propose-btn">提交成长建议</button>
+            </div>
+          </div>
+
+          <!-- Memory Governance 面板 -->
+          <div class="gov-subblock">
+            <div class="gov-subblock-title">记忆治理 (Memory Governance)</div>
+            <div class="gov-memory-content" id="gov-memory-content">
+              <div class="rd-loading">加载中...</div>
+            </div>
+            <div class="gov-propose-row">
+              <input type="text" id="gov-memory-id-input" placeholder="memory_id" class="gov-input gov-input--small" />
+              <select id="gov-memory-action-input" class="gov-input gov-input--small">
+                <option value="mark_incorrect">标记错误</option>
+                <option value="delete">申请删除</option>
+                <option value="merge">申请合并</option>
+              </select>
+              <input type="text" id="gov-memory-target-input" placeholder="目标 memory_id (merge)" class="gov-input gov-input--small" />
+              <input type="text" id="gov-memory-reason-input" placeholder="原因" class="gov-input" />
+              <button class="gov-btn gov-btn--primary" id="gov-memory-propose-btn">提交处理申请</button>
+            </div>
+          </div>
+
+          <!-- Growth Proposal 面板 -->
+          <div class="gov-subblock">
+            <div class="gov-subblock-title">成长方案审查 (Growth Proposals)</div>
+            <div class="gov-growth-summary" id="gov-growth-summary">
+              <div class="rd-loading">加载中...</div>
+            </div>
+            <div class="gov-proposals-list" id="gov-proposals-list">
+              <div class="rd-loading">加载中...</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 羽依时间线 -->
+        <section class="section timeline-section glass-card">
+          <div class="section-header">
+            <h2>羽依的轨迹</h2>
+            <div class="section-actions">
+              <span class="badge" id="timeline-count">0 记录</span>
+            </div>
+          </div>
+          <div id="timeline-container" class="timeline-container">
+            <div class="timeline-empty">
+              <div class="timeline-empty-icon">✦</div>
+              <div class="timeline-empty-text">还没有活动记录哦~</div>
+              <div class="timeline-empty-hint">开始操作后，这里会记录羽依的活动轨迹</div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+
+    <!-- 远程陪伴视图 -->
+    <section class="section glass-card remote-view" id="remote-section" style="display:none;">
+      <div class="section-header">
+        <h2>远程陪伴</h2>
+        <div class="section-actions">
+          <span class="badge" id="remote-tagline">羽依陪在你身边 ♡</span>
+        </div>
+      </div>
+
+      <!-- 状态指示条 -->
+      <div class="remote-status-bar" id="remote-status-bar">
+        <div class="remote-status-item" id="remote-status-screen">
+          <span class="remote-dot"></span>
+          <span class="remote-status-label">屏幕模块</span>
+          <span class="remote-status-value">--</span>
+        </div>
+        <div class="remote-status-item" id="remote-status-control">
+          <span class="remote-dot"></span>
+          <span class="remote-status-label">控制模块</span>
+          <span class="remote-status-value">--</span>
+        </div>
+        <div class="remote-status-item" id="remote-status-agent">
+          <span class="remote-dot"></span>
+          <span class="remote-status-label">代理在线</span>
+          <span class="remote-status-value">--</span>
+        </div>
+      </div>
+
+      <!-- 主体两栏：屏幕查看 + 控制面板 -->
+      <div class="remote-main">
+        <!-- 屏幕查看区 -->
+        <div class="remote-screen-card">
+          <div class="remote-card-header">
+            <h3>屏幕画面</h3>
+            <div class="remote-card-actions">
+              <label class="remote-toggle">
+                <input type="checkbox" id="remote-auto-refresh">
+                <span class="remote-toggle-slider"></span>
+                <span class="remote-toggle-text">自动刷新</span>
+              </label>
+              <button class="chip-btn" id="remote-refresh-btn" title="刷新截图">
+                <svg viewBox="0 0 24 24" width="14" height="14"><path d="M23 4v6h-6M1 20v-6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                刷新截图
+              </button>
+            </div>
+          </div>
+          <div class="remote-screen-wrap" id="remote-screen-wrap">
+            <div class="remote-screen-placeholder" id="remote-screen-placeholder">
+              <div class="remote-placeholder-icon">✦</div>
+              <div class="remote-placeholder-text">点击「刷新截图」查看屏幕~</div>
+              <div class="remote-placeholder-hint">羽依正在待命，随时为你呈现画面</div>
+            </div>
+            <img id="remote-screen-image" class="remote-screen-image" style="display:none;" alt="屏幕截图">
+          </div>
+          <div class="remote-screen-meta" id="remote-screen-meta"></div>
+          <div class="remote-ocr-box">
+            <div class="remote-ocr-title">OCR 文字</div>
+            <div class="remote-ocr-text" id="remote-ocr-text">暂无内容</div>
+          </div>
+        </div>
+
+        <!-- 控制面板 -->
+        <div class="remote-control-card">
+          <div class="remote-card-header">
+            <h3>陪伴操作</h3>
+          </div>
+
+          <!-- 鼠标点击 -->
+          <div class="remote-control-group">
+            <div class="remote-control-label">鼠标点击</div>
+            <div class="remote-control-row">
+              <input type="number" id="remote-click-x" class="remote-input" placeholder="X 坐标" min="0">
+              <input type="number" id="remote-click-y" class="remote-input" placeholder="Y 坐标" min="0">
+              <select id="remote-click-button" class="remote-input remote-select">
+                <option value="left">左键</option>
+                <option value="right">右键</option>
+                <option value="middle">中键</option>
+              </select>
+            </div>
+            <button class="remote-btn" id="remote-click-btn">点击</button>
+          </div>
+
+          <!-- 文本输入 -->
+          <div class="remote-control-group">
+            <div class="remote-control-label">文本输入</div>
+            <textarea id="remote-type-text" class="remote-textarea" placeholder="想输入的文字~" rows="2"></textarea>
+            <button class="remote-btn" id="remote-type-btn">发送文本</button>
+          </div>
+
+          <!-- 按键 -->
+          <div class="remote-control-group">
+            <div class="remote-control-label">按键</div>
+            <div class="remote-control-row">
+              <input type="text" id="remote-key-input" class="remote-input" placeholder="如 enter / escape / tab">
+            </div>
+            <button class="remote-btn" id="remote-key-btn">发送按键</button>
+          </div>
+
+          <!-- 操作记录 -->
+          <div class="remote-log-box">
+            <div class="remote-log-title">操作记录</div>
+            <div class="remote-log-list" id="remote-log-list">
+              <div class="remote-log-empty">还没有操作记录哦~</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 代理管理视图 -->
+    <section class="section glass-card agents-view" id="agents-section" style="display:none;">
+      <div class="section-header">
+        <h2>代理管理</h2>
+        <div class="section-actions">
+          <label class="agents-toggle" title="自动刷新">
+            <input type="checkbox" id="agents-auto-refresh" checked>
+            <span class="agents-toggle-slider"></span>
+            <span class="agents-toggle-text">自动刷新</span>
+          </label>
+          <button class="icon-btn-sm" id="agents-refresh-btn" title="手动刷新">
+            <svg viewBox="0 0 24 24" width="14" height="14"><path d="M23 4v6h-6M1 20v-6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 顶部状态卡：4 个数字卡片 -->
+      <div class="agents-status-grid" id="agents-status-grid">
+        <div class="agents-stat-card">
+          <div class="agents-stat-icon agents-stat-icon-enabled">
+            <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 12l3 3 5-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div class="agents-stat-body">
+            <div class="agents-stat-label">服务状态</div>
+            <div class="agents-stat-value" id="agents-stat-enabled">--</div>
+            <div class="agents-stat-hint" id="agents-stat-enabled-hint">代理服务</div>
+          </div>
+        </div>
+        <div class="agents-stat-card">
+          <div class="agents-stat-icon agents-stat-icon-running">
+            <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
+          </div>
+          <div class="agents-stat-body">
+            <div class="agents-stat-label">运行状态</div>
+            <div class="agents-stat-value" id="agents-stat-running">--</div>
+            <div class="agents-stat-hint" id="agents-stat-running-hint">服务进程</div>
+          </div>
+        </div>
+        <div class="agents-stat-card">
+          <div class="agents-stat-icon agents-stat-icon-total">
+            <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </div>
+          <div class="agents-stat-body">
+            <div class="agents-stat-label">总代理数</div>
+            <div class="agents-stat-value" id="agents-stat-total">0</div>
+            <div class="agents-stat-hint">在线连接</div>
+          </div>
+        </div>
+        <div class="agents-stat-card">
+          <div class="agents-stat-icon agents-stat-icon-auth">
+            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 2l9 4v6c0 5-4 9-9 10-5-1-9-5-9-10V6l9-4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M9 12l2 2 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div class="agents-stat-body">
+            <div class="agents-stat-label">已认证</div>
+            <div class="agents-stat-value" id="agents-stat-auth">0</div>
+            <div class="agents-stat-hint">受信任代理</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 代理列表 -->
+      <div class="agents-list-section">
+        <h3 class="agents-section-title">📡 在线代理</h3>
+        <div class="agents-list" id="agents-list">
+          <!-- 代理卡片由 JS 生成 -->
+          <div class="agents-loading">加载中...</div>
+        </div>
+      </div>
+
+      <!-- 最后刷新时间 -->
+      <div class="agents-footer" id="agents-footer">
+        <span class="agents-footer-text">尚未刷新</span>
+      </div>
+    </section>
+
+    <!-- Phase 6.5: SelfModel 可视化（只读视图） -->
+    <section class="section glass-card selfmodel-view" id="selfmodel-section" style="display:none;">
+      <div class="section-header">
+        <h2>自我模型</h2>
+        <div class="section-actions">
+          <span class="badge" id="sm-runtime-badge" title="SelfModel Runtime 状态">
+            <span class="yuyi-status-dot" id="sm-runtime-dot"></span>
+            <span id="sm-runtime-text">--</span>
+          </span>
+          <button class="icon-btn-sm" id="sm-refresh-btn" title="刷新 SelfModel 视图">
+            <svg viewBox="0 0 24 24" width="14" height="14"><path d="M23 4v6h-6M1 20v-6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+          <span class="runtime-updated" id="sm-last-updated">尚未刷新</span>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="sm-tabs">
+        <button class="sm-tab sm-tab--active" data-tab="overview">✦ 概览</button>
+        <button class="sm-tab" data-tab="identity">♡ 身份</button>
+        <button class="sm-tab" data-tab="beliefs">▦ Beliefs</button>
+      </div>
+
+      <!-- 子视图 -->
+      <div class="sm-subview" id="sm-view-overview">
+        <div class="sm-loading">加载中</div>
+      </div>
+      <div class="sm-subview" id="sm-view-identity" style="display:none;">
+        <div class="sm-loading">加载中</div>
+      </div>
+      <div class="sm-subview" id="sm-view-beliefs" style="display:none;">
+        <div class="sm-loading">加载中</div>
+      </div>
+    </section>
+
+    <!-- Phase 6.5 Step 5.3: SelfModel Evolution Timeline（只读视图） -->
+    <section class="section glass-card smtl-view" id="selfmodel-timeline-section" style="display:none;">
+      <div class="section-header">
+        <h2>演化时间线</h2>
+        <div class="section-actions">
+          <span class="badge" id="smtl-runtime-badge" title="SelfModel 演化时间线">
+            <span class="yuyi-status-dot" id="smtl-runtime-dot"></span>
+            <span id="smtl-runtime-text">--</span>
+          </span>
+          <button class="icon-btn-sm" id="smtl-refresh-btn" title="刷新演化时间线">
+            <svg viewBox="0 0 24 24" width="14" height="14"><path d="M23 4v6h-6M1 20v-6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+          <span class="runtime-updated" id="smtl-last-updated">尚未刷新</span>
+        </div>
+      </div>
+
+      <!-- 顶部统计 -->
+      <div class="smtl-stats-row" id="smtl-stats">
+        <div class="smtl-stat-card">
+          <div class="smtl-stat-label">总事件</div>
+          <div class="smtl-stat-value">--</div>
+          <div class="smtl-stat-hint">来自所有来源</div>
+        </div>
+      </div>
+
+      <!-- 工具栏 -->
+      <div id="smtl-toolbar"></div>
+
+      <!-- 时间线列表 -->
+      <div id="smtl-list">
+        <div class="smtl-loading">加载中</div>
+      </div>
+    </section>
+
+    <!-- Phase 6.5 Step 5.4: SelfModel Health + Retention（只读视图） -->
+    <section class="section glass-card smhealth-view" id="selfmodel-health-section" style="display:none;">
+      <div class="section-header">
+        <h2>健康与配额</h2>
+        <div class="section-actions">
+          <span class="badge" id="smh-runtime-badge" title="SelfModel Health Runtime 状态">
+            <span class="yuyi-status-dot" id="smh-runtime-dot"></span>
+            <span id="smh-runtime-text">--</span>
+          </span>
+          <button class="icon-btn-sm" id="smh-refresh-btn" title="刷新 Health / Retention">
+            <svg viewBox="0 0 24 24" width="14" height="14"><path d="M23 4v6h-6M1 20v-6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+          <span class="runtime-updated" id="smh-last-updated">尚未刷新</span>
+        </div>
+      </div>
+
+      <!-- Health Overview -->
+      <div class="smhealth-block">
+        <div class="smhealth-block-title">♡ Health Overview</div>
+        <div class="smhealth-overview" id="smh-health-overview">
+          <div class="smhealth-loading">加载中</div>
+        </div>
+      </div>
+
+      <!-- Issue List -->
+      <div class="smhealth-block">
+        <div class="smhealth-block-title">⚠ Issue List</div>
+        <div id="smh-issues-toolbar"></div>
+        <div id="smh-issues">
+          <div class="smhealth-loading">加载中</div>
+        </div>
+      </div>
+
+      <!-- Persistence 状态 -->
+      <div class="smhealth-block">
+        <div class="smhealth-block-title">▦ Persistence 状态</div>
+        <div id="smh-persistence">
+          <div class="smhealth-loading">加载中</div>
+        </div>
+      </div>
+
+      <!-- Retention 当前容量 -->
+      <div class="smhealth-block">
+        <div class="smhealth-block-title">✦ 当前容量</div>
+        <div id="smh-capacity">
+          <div class="smhealth-loading">加载中</div>
+        </div>
+      </div>
+
+      <!-- Quota 使用情况 -->
+      <div class="smhealth-block">
+        <div class="smhealth-block-title">▦ Quota 使用情况</div>
+        <div id="smh-quota">
+          <div class="smhealth-loading">加载中</div>
+        </div>
+      </div>
+
+      <!-- Retention Dry Run -->
+      <div class="smhealth-block">
+        <div class="smhealth-block-title">⏳ Retention Dry Run</div>
+        <div class="smhealth-dryrun">
+          <div class="smhealth-dryrun-row">
+            <div class="smhealth-dryrun-text">
+              点击「模拟整理」会调用 <code style="font-family:JetBrains Mono,Consolas,monospace;">POST /admin/api/admin/selfmodel/retention/dry_run</code>，
+              仅做 <b>dry_run=True</b> 模拟，不会修改任何 belief / history / reflection 数据。
+            </div>
+            <button class="smhealth-dryrun-btn" id="smh-dryrun-btn">
+              ✦ 模拟整理
+            </button>
+          </div>
+          <div id="smh-dryrun-result"></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- Toast 通知 -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- 模板：模块卡片 -->
+<template id="module-card-template">
+  <div class="module-card">
+    <div class="module-header">
+      <div class="module-icon">
+        <svg viewBox="0 0 24 24" width="18" height="18"><rect x="3" y="3" width="7" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><rect x="14" y="3" width="7" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><rect x="3" y="14" width="7" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><rect x="14" y="14" width="7" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+      </div>
+      <div class="module-title">
+        <div class="module-name">模块名</div>
+        <div class="module-version">v0.1.0</div>
+      </div>
+      <div class="module-menu">
+        <svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="5" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="19" r="1.5" fill="currentColor"/></svg>
+      </div>
+    </div>
+    <div class="module-status-row">
+      <span class="status-dot"></span>
+      <span class="status-text">运行中</span>
+      <span class="status-uptime">2秒前</span>
+    </div>
+    <div class="module-info">
+      <div class="info-row">
+        <span class="info-label">重载</span>
+        <span class="info-value reload-mode">hot</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">错误</span>
+        <span class="info-value error-count">0</span>
+      </div>
+    </div>
+    <div class="module-deps"></div>
+    <div class="module-actions">
+      <button class="module-toggle">
+        <span class="toggle-icon">⏻</span>
+        <span class="toggle-text">关闭</span>
+      </button>
+      <button class="module-reload" title="重载">
+        <svg viewBox="0 0 24 24" width="16" height="16"><path d="M23 4v6h-6M1 20v-6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </div>
+</template>
+
+<script src="/admin/js/theme-manager.js"></script>
+<script src="/admin/js/toast.js"></script>
+<script src="/admin/js/yuyi-background.js"></script>
+<script src="/admin/js/yuyi-character.js"></script>
+<script src="/admin/js/yuyi-state-manager.js"></script>
+<script src="/admin/js/yuyi-avatar.js"></script>
+<script src="/admin/js/yuyi-audio.js"></script>
+<script src="/admin/js/yuyi-replies.js"></script>
+<script src="/admin/js/yuyi-timeline.js"></script>
+<script src="/admin/js/yuyi-cognitive.js"></script>
+<script src="/admin/js/yuyi-radar.js"></script>
+<script src="/admin/js/yuyi-reasoning.js"></script>
+<script src="/admin/js/yuyi-relationship-timeline.js"></script>
+<script src="/admin/js/yuyi-growth-preview.js"></script>
+<script src="/admin/js/yuyi-memory-graph.js"></script>
+<script src="/admin/js/yuyi-autonomous.js"></script>
+<script src="/admin/js/yuyi-remote.js"></script>
+<script src="/admin/js/yuyi-agents.js"></script>
+<script src="/admin/js/app.js"></script>
+<script src="/admin/js/dashboard.js"></script>
+<!-- Phase 5.2: Runtime Dashboard（仅通过 Phase 5.1 RuntimeProvider API 拉取数据） -->
+<script src="/admin/js/runtime_dashboard.js"></script>
+<!-- Phase 5.3: Admin Governance Dashboard（只读视图 + 受控 Proposal 提交） -->
+<script src="/admin/js/governance_dashboard.js"></script>
+<!-- Phase 6.5: SelfModel Dashboard（只读视图：Overview / Identity / Beliefs / Why） -->
+<script src="/admin/js/selfmodel_dashboard.js"></script>
+<!-- Phase 6.5 Step 5.3: SelfModel Evolution Timeline（只读视图） -->
+<script src="/admin/js/selfmodel_timeline.js"></script>
+<!-- Phase 6.5 Step 5.4: SelfModel Health + Retention（只读视图：GET + POST dry_run） -->
+<script src="/admin/js/selfmodel_health.js"></script>
+</body>
+</html>

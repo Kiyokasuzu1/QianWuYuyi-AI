@@ -1,0 +1,139 @@
+/* ========================================================
+   Yuyi Design System — Card Component
+   ========================================================
+   玻璃卡片组件：普通 / 悬浮 / 选中 / 异常 四种状态
+   用法：
+   <div class="yuyi-card">内容</div>
+   <div class="yuyi-card yuyi-card--hoverable">可悬停卡片</div>
+   <div class="yuyi-card yuyi-card--active">选中状态</div>
+   <div class="yuyi-card yuyi-card--warning">柔和脉冲警告</div>
+   ======================================================== */
+
+.yuyi-card {
+  background: var(--glass-2, rgba(255, 255, 255, 0.65));
+  backdrop-filter: var(--glass-blur, blur(16px));
+  -webkit-backdrop-filter: var(--glass-blur, blur(16px));
+  border: 1px solid var(--glass-border, rgba(196, 181, 253, 0.25));
+  border-radius: var(--radius-lg, 16px);
+  box-shadow: var(--shadow-md, 0 4px 16px rgba(167, 139, 250, 0.12));
+  padding: var(--space-5, 20px);
+  transition: all var(--duration-normal, 0.25s) var(--ease-soft, ease);
+  position: relative;
+  overflow: hidden;
+}
+
+/* 卡片顶部微光装饰 */
+.yuyi-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(167, 139, 250, 0.3) 50%,
+    transparent 100%);
+  opacity: 0;
+  transition: opacity var(--duration-normal, 0.25s) var(--ease-soft, ease);
+}
+
+/* ---------- 悬停态 ---------- */
+.yuyi-card--hoverable:hover,
+.yuyi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg, 0 8px 32px rgba(167, 139, 250, 0.16));
+  border-color: var(--glass-border-strong, rgba(167, 139, 250, 0.35));
+}
+.yuyi-card--hoverable:hover::before,
+.yuyi-card:hover::before {
+  opacity: 1;
+}
+
+/* ---------- 选中/激活态 ---------- */
+.yuyi-card--active {
+  border-color: var(--yuyi-purple-300, #c4b5fd);
+  box-shadow:
+    var(--shadow-lg, 0 8px 32px rgba(167, 139, 250, 0.2)),
+    0 0 24px var(--glow-primary, rgba(167, 139, 250, 0.4));
+  background: var(--glass-3, rgba(255, 255, 255, 0.8));
+}
+.yuyi-card--active::before {
+  opacity: 1;
+  height: 2px;
+  background: linear-gradient(90deg,
+    var(--yuyi-purple-300) 0%,
+    var(--yuyi-pink-300) 100%);
+}
+
+/* ---------- 警告/异常态（柔和脉冲） ---------- */
+.yuyi-card--warning {
+  border-color: rgba(251, 191, 36, 0.5);
+  animation: yuyi-card-pulse 2.5s ease-in-out infinite;
+}
+
+@keyframes yuyi-card-pulse {
+  0%, 100% {
+    box-shadow:
+      var(--shadow-md, 0 4px 16px rgba(167, 139, 250, 0.12)),
+      0 0 0 0 var(--state-notice-glow, rgba(251, 191, 36, 0.3));
+  }
+  50% {
+    box-shadow:
+      var(--shadow-md, 0 4px 16px rgba(167, 139, 250, 0.12)),
+      0 0 0 8px rgba(251, 191, 36, 0);
+  }
+}
+
+/* ---------- 错误态 ---------- */
+.yuyi-card--error {
+  border-color: rgba(248, 113, 113, 0.5);
+  animation: yuyi-card-error-pulse 3s ease-in-out infinite;
+}
+
+@keyframes yuyi-card-error-pulse {
+  0%, 100% {
+    box-shadow:
+      var(--shadow-md, 0 4px 16px rgba(167, 139, 250, 0.12)),
+      0 0 0 0 var(--state-worry-glow, rgba(248, 113, 113, 0.25));
+  }
+  50% {
+    box-shadow:
+      var(--shadow-md, 0 4px 16px rgba(167, 139, 250, 0.12)),
+      0 0 0 6px rgba(248, 113, 113, 0);
+  }
+}
+
+/* ---------- 尺寸变体 ---------- */
+.yuyi-card--sm {
+  padding: var(--space-4, 12px);
+  border-radius: var(--radius-md, 12px);
+}
+
+.yuyi-card--lg {
+  padding: var(--space-8, 32px);
+  border-radius: var(--radius-xl, 20px);
+}
+
+/* ---------- 卡片头部 ---------- */
+.yuyi-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4, 16px);
+  padding-bottom: var(--space-3, 12px);
+  border-bottom: 1px solid var(--glass-border, rgba(196, 181, 253, 0.2));
+}
+
+.yuyi-card__title {
+  font-size: var(--font-md, 14px);
+  font-weight: var(--font-weight-semibold, 600);
+  color: var(--text-primary, #3b3a5a);
+  margin: 0;
+}
+
+.yuyi-card__subtitle {
+  font-size: var(--font-sm, 12px);
+  color: var(--text-muted, #a09bbf);
+  margin-top: 2px;
+}

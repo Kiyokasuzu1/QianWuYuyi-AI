@@ -1,0 +1,27 @@
+[Unit]
+Description=Yuyi AI API Server (QianWuYuyi-AI)
+Documentation=https://github.com/qianwuyuyi/qianwuyuyi-ai
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/root/QianWuYuyi-AI
+EnvironmentFile=/root/QianWuYuyi-AI/.env
+ExecStart=/usr/bin/python3 -m api_server
+Restart=always
+RestartSec=10
+StandardOutput=append:/root/QianWuYuyi-AI/logs/yuyi-api.log
+StandardError=append:/root/QianWuYuyi-AI/logs/yuyi-api.log
+
+# 资源限制 (生产环境推荐, 可按需调整)
+LimitNOFILE=65536
+TimeoutStopSec=20
+
+# 安全加固
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

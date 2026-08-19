@@ -1,0 +1,1576 @@
+# -*- coding: utf-8 -*-
+"""
+src/runtime/runtime_pipeline.py
+
+Phase 6.3 —— Runtime Orchestration Integration(编排层)。
+
+职责:
+    提供一次完整运行入口 ``RuntimePipeline.run(input_data)``,
+    把"用户输入 → RuntimeContext → Orchestrator → 收集结果 → 持久化 → 事件"
+    串成一条可执行链路。
+
+设计原则:
+    1. Pipeline 是**编排层**,不实现任何业务逻辑(不复制 Memory/Emotion/
+       Growth/Personality/Response 的实现)。
+    2. Orchestrator / persistence_hook / event_sink / token_optimizer
+       全部**构造注入**,便于测试替换为 fake。
+    3. 任意模块失败都被隔离,Pipeline 总能返回 RuntimeContext(failed 终态)。
+    4. 不修改 Authority(Memory/Emotion/Growth/Personality/...) 内部代码。
+    5. 不调用 LLM、不引入新事件系统、不引入新数据库。
+
+依赖:
+    - stdlib (logging, threading, time, uuid)
+    - RuntimeContext (Phase 6.0,仅 import)
+    - RuntimePersistenceHook (Phase 6.2,可选)
+    - RuntimeTokenOptimizer / NoOpTokenOptimizer (Phase 6.5,可选)
+    - 业务模块:Orchestrator(仅通过 OrchestratorLike 协议使用)
+"""
+from __future__ import annotations
+
+import logging
+import threading
+import time
+import uuid
+from typing import TYPE_CHECKING, Any, Dict, Optional, Protocol, TypedDict
+
+if TYPE_CHECKING:  # pragma: no cover
+    from src.runtime.lifecycle_context import RuntimeContext
+
+logger = logging.getLogger(__name__)
+
+
+# ============================================================
+# Schema 版本常量
+# ============================================================
+RUNTIME_PIPELINE_SCHEMA_VERSION = "1.0"
+# Phase 4.0-R2.1 RuntimePathAudit schema 版本，冻结 v1.0
+RUNTIME_PATH_AUDIT_SCHEMA_VERSION = "1.0"
+
+
+# ============================================================
+# Phase 4.0-R2.1 —— RuntimePathAudit 结构化审计（只追加，不修改执行路径）
+# ============================================================
+class RuntimePathAudit(TypedDict, total=False):
+    """RuntimePipeline 每次运行的结构化路径审计。
+
+    Phase 4.0-R2.1 规范：
+    - 验收必须字段（8 个）: schema_version / entry / path / fallback /
+      runtime_attempted / runtime_succeeded / orchestrator_invoked / lifecycle_id
+    - 所有审计字段的写入必须通过下面 4 个 `_runtime_path_audit_*` 辅助函数完成，
+      不允许散落 ``audit["xxx"] = ...`` 形式的直接赋值（R2.1 审查要求）。
+    """
+    # ── schema & identity ──────────────────────────────────
+    schema_version: str
+    lifecycle_id: str
+    session_id: str
+    timestamp_iso: str
+    duration_ms: int
+
+    # ── R2.1 验收 8 字段（用户 review 时明确要求保留） ──
+    entry: str                     # "RuntimePipeline" / "Orchestrator.direct" / "Unknown"
+    path: str                      # "full_runtime" / "orchestrator_pipeline_fallback" / "orchestrator_direct" / "empty_reply"
+    fallback: bool                 # True = 任何一次 legacy orchestrator 被调用（pipeline 内或外）
+    runtime_attempted: bool        # 是否尝试过 Runtime.process()
+    runtime_succeeded: bool        # Runtime.process() 是否返回非空 reply
+    orchestrator_invoked: bool     # 是否实际调用 Orchestrator.process()
+
+    # ── 诊断辅助字段 ──────────────────────────────────────
+    orchestrator_invoked_outside_pipeline: bool  # DANGER: pipeline.run() 之外裸调 orchestrator
+    reply_source: Optional[str]    # "runtime" / "orchestrator_fallback_pipeline" / "orchestrator_direct_outside_pipeline" / None
+    reply_empty: bool
+
+    # ── 错误追踪 ──────────────────────────────────────────
+    runtime_error: Optional[str]
+    orchestrator_error: Optional[str]
+
+
+def _runtime_path_audit_create(
+    lifecycle_id: str,
+    session_id: str,
+    *,
+    entry: str = "RuntimePipeline",
+    timestamp_iso: Optional[str] = None,
+) -> Dict[str, Any]:
+    """创建 RuntimePathAudit 骨架（R2.1：禁止散落 audit[...] 初始化）。"""
+    ts: str = timestamp_iso
+    if not ts:
+        try:
+            from datetime import datetime, timezone
+            ts = datetime.now(timezone.utc).isoformat()
+        except Exception:  # noqa: BLE001
+            ts = ""
+    audit: Dict[str, Any] = {
+        "schema_version": RUNTIME_PATH_AUDIT_SCHEMA_VERSION,
+        "lifecycle_id": lifecycle_id,
+        "session_id": session_id,
+        "timestamp_iso": ts,
+        "duration_ms": 0,
+        # R2.1 验收 8 字段（entry 立即填，其余默认 False/None 等 helper 更新）
+        "entry": entry,
+        "path": "",
+        "fallback": False,
+        "runtime_attempted": False,
+        "runtime_succeeded": False,
+        "orchestrator_invoked": False,
+        # 诊断辅助默认值
+        "orchestrator_invoked_outside_pipeline": False,
+        "reply_source": None,
+        "reply_empty": True,
+        "runtime_error": None,
+        "orchestrator_error": None,
+    }
+    return audit
+
+
+def _runtime_path_audit_mark_runtime(
+    audit: Dict[str, Any],
+    *,
+    attempted: bool,
+    succeeded: bool,
+    runtime_error: Optional[str] = None,
+) -> Dict[str, Any]:
+    """R2.1：标记 Runtime.process() 尝试/成功状态；禁止直接修改 audit。"""
+    audit["runtime_attempted"] = bool(attempted)
+    audit["runtime_succeeded"] = bool(succeeded)
+    if runtime_error is not None:
+        # 只记录第一次 runtime 错误，不覆盖
+        if audit.get("runtime_error") is None:
+            audit["runtime_error"] = runtime_error
+    return audit
+
+
+def _runtime_path_audit_mark_orchestrator(
+    audit: Dict[str, Any],
+    *,
+    invoked: bool,
+    outside_pipeline: bool = False,
+    orchestrator_error: Optional[str] = None,
+) -> Dict[str, Any]:
+    """R2.1：标记 Orchestrator.process() 调用状态；禁止直接修改 audit。"""
+    if invoked:
+        audit["orchestrator_invoked"] = True
+        audit["fallback"] = audit.get("fallback") or True  # 任何 orchestrator 调用 = fallback=True
+    if outside_pipeline:
+        audit["orchestrator_invoked_outside_pipeline"] = True
+    if orchestrator_error is not None:
+        if audit.get("orchestrator_error") is None:
+            audit["orchestrator_error"] = orchestrator_error
+    return audit
+
+
+def _runtime_path_audit_finalize(
+    audit: Dict[str, Any],
+    *,
+    reply_source: Optional[str],
+    reply_empty: bool,
+    duration_ms: int,
+) -> Dict[str, Any]:
+    """R2.1：运行结束时最终确定 reply_source / path / fallback / reply_empty / duration_ms。
+
+    路径判定优先级（R2.1 冻结逻辑，R2.2+ 才改执行路径，本函数只改审计的"判定"，不改执行）：
+    1. reply_empty=True                                   → path="empty_reply"
+    2. orchestrator_invoked_outside_pipeline=True          → path="orchestrator_direct"
+    3. runtime_succeeded=True, reply_source=="runtime"     → path="full_runtime"
+    4. orchestrator_invoked=True（pipeline 内 fallback）   → path="orchestrator_pipeline_fallback"
+    5. 兜底                                                → path="empty_reply"
+    """
+    audit["duration_ms"] = max(0, int(duration_ms))
+    audit["reply_empty"] = bool(reply_empty)
+    if reply_source:
+        audit["reply_source"] = reply_source
+    # 判定 path（只基于审计状态，不影响执行）
+    if reply_empty:
+        audit["path"] = "empty_reply"
+    elif audit.get("orchestrator_invoked_outside_pipeline"):
+        audit["path"] = "orchestrator_direct"
+    elif audit.get("runtime_succeeded") and audit.get("reply_source") == "runtime":
+        audit["path"] = "full_runtime"
+    elif audit.get("orchestrator_invoked"):
+        audit["path"] = "orchestrator_pipeline_fallback"
+    else:
+        audit["path"] = "empty_reply"
+    return audit
+
+
+# ============================================================
+# 协议(允许测试 fake)
+# ============================================================
+class OrchestratorLike(Protocol):
+    """Pipeline 所需的最小 Orchestrator 接口(Protocol)。
+
+    任何实现 ``process(user_message: str) -> str`` 的对象都可注入。
+    src.orchestrator.Orchestrator 满足此协议(且 process() 内部已做
+    异常隔离,返回字符串或兜底文本)。
+    """
+
+    def process(self, user_message: str) -> str:  # pragma: no cover
+        ...
+
+
+class RuntimeLike(Protocol):
+    """Pipeline 所需的最小 Runtime 接口（Phase 4.0.2 新增）。
+
+    任何实现 ``process(event: Any, ctx: Optional[Any]) -> Any`` 的对象
+    都可注入；返回结果需支持 ``._final_reply`` 属性读取。
+    src.runtime.runtime_core.RuntimeCore / src.runtime.runtime.RuntimeCore
+    均满足此协议。
+
+    设计原则：
+    - Pipeline 只做编排，不修改 Runtime 内部状态
+    - runtime=None 时，完全退化为旧 Orchestrator 路径（向后兼容）
+    - Runtime 任何异常自动 fallback 到 orchestrator.process()
+    """
+
+    def process(self, event: Any, ctx: Optional[Any] = None) -> Any:  # pragma: no cover
+        ...
+
+
+class EventSinkLike(Protocol):
+    """可选事件 sink 协议。
+
+    Pipeline 在终态后调用 ``sink.emit(event_dict)`` 写入事件流。
+    任何实现 ``emit(event: Dict) -> None`` 的对象都可注入。
+    sink=None 表示无事件发布(纯运行,不写事件)。
+    """
+
+    def emit(self, event: Dict[str, Any]) -> None:  # pragma: no cover
+        ...
+
+
+class TokenOptimizerLike(Protocol):
+    """Phase 6.5 —— 可选 Token 优化器协议。
+
+    Pipeline 在 user_message 进入 Orchestrator 之前调用
+    ``optimizer.optimize(user_message, history, memories)``,
+    返回 dict(至少含 ``content`` 字段)。
+    optimizer=None 时 Pipeline 跳过优化,行为与 Phase 6.3 完全一致。
+    """
+
+    def optimize(  # pragma: no cover
+        self,
+        user_message: str,
+        history: Optional[Any] = None,
+        memories: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        ...
+
+
+# ============================================================
+# 异常
+# ============================================================
+class RuntimePipelineError(Exception):
+    """Pipeline 错误基类。"""
+
+
+# ============================================================
+# 主类
+# ============================================================
+class RuntimePipeline:
+    """Runtime 编排入口。
+
+    典型用法:
+        from src.orchestrator import Orchestrator
+        from src.runtime.context_storage import RuntimeContextStorage
+        from src.runtime.lifecycle.persistence_hook import RuntimePersistenceHook
+        from src.runtime.runtime_pipeline import RuntimePipeline
+
+        orch = Orchestrator()
+        storage = RuntimeContextStorage()
+        hook = RuntimePersistenceHook(storage)
+
+        pipeline = RuntimePipeline(orchestrator=orch, persistence_hook=hook)
+        ctx = pipeline.run({"user_message": "你好"})
+
+    失败隔离:
+        Orchestrator 抛错 -> context 进入 failed 终态,仍返回。
+        persistence_hook 抛错 -> 已隔离,不影响主流程。
+        event_sink 抛错 -> 已隔离,不影响主流程。
+    """
+
+    def __init__(
+        self,
+        orchestrator: Any,
+        *,
+        runtime: Optional[Any] = None,
+        persistence_hook: Optional[Any] = None,
+        event_sink: Optional[Any] = None,
+        lifecycle_name: str = "runtime_pipeline",
+        token_optimizer: Optional[Any] = None,
+        interaction_recorder: Optional[Any] = None,
+        trace_recorder: Optional[Any] = None,
+        status_tracker: Optional[Any] = None,
+    ) -> None:
+        """构造 Pipeline。
+
+        Args:
+            orchestrator: 实现 ``process(user_message: str) -> str`` 的对象；
+                Runtime 失败时作为 fallback legacy 路径使用。
+            runtime: （Phase 4.0.2 新增）实现 ``process(event, ctx) -> ctx``
+                的 RuntimeCore 对象；优先用于生成回复。None 表示完全走
+                旧 orchestrator 路径（向后兼容）。
+            persistence_hook: 可选 RuntimePersistenceHook(Phase 6.2)。
+            event_sink: 可选事件 sink,emit(event: dict) -> None。
+            lifecycle_name: 写入 context.outputs.lifecycle.name。
+            token_optimizer: 可选 Token 优化器(Phase 6.5)。
+                任何实现 ``optimize(user_message, history, memories) -> dict``
+                的对象即可。None 表示不启用,行为与 Phase 6.3 完全一致。
+            interaction_recorder: （Phase 4.0-R2.4.1 新增）可选交互记录器，
+                实现 ``record(ctx) -> Optional[str]`` 的对象。None 时自动
+                创建默认 InteractionRecorder。传入 False（布尔）可禁用。
+            trace_recorder: (Phase 7.0 新增) 可选 RuntimeTraceRecorder,
+                实现 ``start_trace(trace_id, session_id, user_message) -> ctx``
+                的对象。None 表示不启用 trace 记录,行为与之前完全一致。
+            status_tracker: (Phase 7.0 新增) 可选 RuntimeStatusTracker,
+                实现 ``record_request_start(...)`` 和 ``record_response(...)``。
+                None 表示不追踪状态,行为与之前完全一致。
+        """
+        if orchestrator is None:
+            raise RuntimePipelineError("orchestrator 不能为 None")
+        # 校验最小接口
+        if not callable(getattr(orchestrator, "process", None)):
+            raise RuntimePipelineError(
+                f"orchestrator 必须实现 process(user_message) 方法,"
+                f"实际: {type(orchestrator).__name__}"
+            )
+        self._orchestrator = orchestrator
+        # Phase 4.0.2: Runtime 优先路径（None=完全走 legacy，向后兼容）
+        self._runtime = runtime
+        if runtime is not None and not callable(getattr(runtime, "process", None)):
+            logger.warning(
+                "[RuntimePipeline] 传入的 runtime 缺少 process(event,ctx) 方法,"
+                "将被忽略（回退纯 orchestrator 路径）"
+            )
+            self._runtime = None
+        self._persistence_hook = persistence_hook
+        self._event_sink = event_sink
+        self._lifecycle_name = str(lifecycle_name or "runtime_pipeline")
+        self._token_optimizer = token_optimizer
+        self._lock = threading.RLock()
+        # 统计
+        self._run_count: int = 0
+        self._success_count: int = 0
+        self._failure_count: int = 0
+        # Phase 4.0.2: 路径来源统计（用于 Gate 断言）
+        self._runtime_reply_count: int = 0
+        self._legacy_reply_count: int = 0
+        self._last_reply_source: Optional[str] = None  # "runtime" / "legacy" / None
+        # Phase 4.0-R2.4.1: InteractionRecorder（经历记录器）
+        # None → 延迟创建默认 InteractionRecorder；False → 禁用
+        if interaction_recorder is False:
+            self._interaction_recorder = None
+        elif interaction_recorder is None:
+            self._interaction_recorder = None  # 延迟创建（首次 record 时）
+            self._interaction_recorder_lazy = True
+        else:
+            self._interaction_recorder = interaction_recorder
+            self._interaction_recorder_lazy = False
+        # Phase 7.0: 轻量 Trace + Status 钩子(可选,默认 None = 完全向后兼容)
+        # 任何 hook 异常都被隔离,绝不影响主链路。
+        self._trace_recorder = trace_recorder
+        self._status_tracker = status_tracker
+
+    # --------------------------------------------------------
+    # 属性
+    # --------------------------------------------------------
+    @property
+    def orchestrator(self) -> Any:
+        return self._orchestrator
+
+    @property
+    def runtime(self) -> Optional[Any]:
+        """Phase 4.0.2: 注入的 RuntimeCore（只读，未注入时 None）。"""
+        return self._runtime
+
+    @property
+    def persistence_hook(self) -> Optional[Any]:
+        return self._persistence_hook
+
+    @property
+    def event_sink(self) -> Optional[Any]:
+        return self._event_sink
+
+    @property
+    def token_optimizer(self) -> Optional[Any]:
+        return self._token_optimizer
+
+    @property
+    def run_count(self) -> int:
+        with self._lock:
+            return self._run_count
+
+    @property
+    def success_count(self) -> int:
+        with self._lock:
+            return self._success_count
+
+    @property
+    def failure_count(self) -> int:
+        with self._lock:
+            return self._failure_count
+
+    @property
+    def runtime_reply_count(self) -> int:
+        """Phase 4.0.2: Runtime 成功产出回复的次数（用于 Gate 断言）。"""
+        with self._lock:
+            return self._runtime_reply_count
+
+    @property
+    def legacy_reply_count(self) -> int:
+        """Phase 4.0.2: 走 legacy orchestrator 路径的次数。"""
+        with self._lock:
+            return self._legacy_reply_count
+
+    @property
+    def last_reply_source(self) -> Optional[str]:
+        """Phase 4.0.2: 最近一次回复来源 "runtime" / "legacy" / None。"""
+        return self._last_reply_source
+
+    @property
+    def trace_recorder(self) -> Optional[Any]:
+        """Phase 7.0: 注入的 RuntimeTraceRecorder(只读,未注入时 None)。"""
+        return self._trace_recorder
+
+    @property
+    def status_tracker(self) -> Optional[Any]:
+        """Phase 7.0: 注入的 RuntimeStatusTracker(只读,未注入时 None)。"""
+        return self._status_tracker
+
+    @property
+    def event_sink(self) -> Optional[Any]:
+        """Phase 7.1: 注入的 ObservationEventSink(只读,未注入时 None)。"""
+        return self._event_sink
+
+    # --------------------------------------------------------
+    # Phase 7.0: 轻量 Trace / Status 钩子(异常隔离,绝不影响主链路)
+    # --------------------------------------------------------
+    def _safe_trace_start(
+        self, trace_id: str, session_id: str, user_message: str,
+    ) -> Optional[Any]:
+        """安全启动 trace(异常隔离)。"""
+        if self._trace_recorder is None:
+            return None
+        try:
+            return self._trace_recorder.start_trace(
+                trace_id=trace_id, session_id=session_id, user_message=user_message,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[RuntimePipeline] trace start 失败(已隔离): %s", exc)
+            return None
+
+    def _safe_trace_stage(
+        self, trace_ctx: Optional[Any], name: str, *,
+        error: Optional[str] = None,
+    ) -> None:
+        """安全记录 trace stage(异常隔离)。"""
+        if trace_ctx is None:
+            return
+        try:
+            trace_ctx.record_stage(name, error=error)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[RuntimePipeline] trace stage 失败(已隔离): %s", exc)
+
+    def _safe_trace_finalize(
+        self, trace_ctx: Optional[Any], *,
+        reply: str = "", reply_source: Optional[str] = None,
+        success: bool = True, error: Optional[str] = None,
+    ) -> None:
+        """安全结束 trace(异常隔离)。"""
+        if trace_ctx is None:
+            return
+        try:
+            trace_ctx.finalize(
+                reply=reply, reply_source=reply_source,
+                success=success, error=error,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[RuntimePipeline] trace finalize 失败(已隔离): %s", exc)
+
+    def _safe_status_request_start(
+        self, trace_id: Optional[str], user_message: str,
+    ) -> None:
+        """安全标记请求开始(异常隔离)。"""
+        if self._status_tracker is None:
+            return
+        try:
+            self._status_tracker.record_request_start(
+                trace_id=trace_id, user_message=user_message,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[RuntimePipeline] status request_start 失败(已隔离): %s", exc)
+
+    def _safe_status_response(
+        self, *, reply: str = "", success: bool = True,
+        error: Optional[str] = None, trace_id: Optional[str] = None,
+    ) -> None:
+        """安全标记回复完成(异常隔离)。"""
+        if self._status_tracker is None:
+            return
+        try:
+            self._status_tracker.record_response(
+                reply=reply, success=success, error=error, trace_id=trace_id,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[RuntimePipeline] status response 失败(已隔离): %s", exc)
+
+    # --------------------------------------------------------
+    # Phase 7.1: 观察事件钩子(异常隔离,绝不影响主链路)
+    # --------------------------------------------------------
+    def _safe_emit_event(
+        self, event_type: str, *, trace_id: str, session_id: str,
+        stage: str = "", level: str = "info", data: Optional[Any] = None,
+    ) -> None:
+        """Phase 7.1: 发射流式观察事件(只给支持 keyword 的 sink)。
+
+        - ObservationEventSink 走这条路径: emit(event_type, trace_id=..., data=...)
+        - 老风格单参数 sink(emit(event_dict)) 直接被跳过;老 sink 只在 run() 结束时
+          通过 _safe_emit(context) 拿到 1 次完成事件 —— 保持 Phase 7.0 契约。
+        """
+        if self._event_sink is None:
+            return
+        try:
+            emit_fn = getattr(self._event_sink, "emit", None)
+            if not callable(emit_fn):
+                return
+            # 用 inspect 判定签名是否能接受 keyword 参数;
+            # 不具备则 skip（走 legacy 路径 _safe_emit(context) 已足够）。
+            try:
+                import inspect
+                sig = inspect.signature(emit_fn)
+                params = list(sig.parameters.values())
+                # 若存在 **kwargs → 肯定兼容;
+                # 若存在同名 keyword 参数(trace_id/session_id/data/level/stage) → 兼容;
+                # 若只有 1 个非 self 参数且非 VAR_KEYWORD → 典型 legacy 单参数 sink,跳过。
+                has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params)
+                if not has_var_keyword:
+                    # 去掉 self(如果是方法)
+                    expected_keywords = {"trace_id", "session_id", "data", "level", "stage"}
+                    param_names = {p.name for p in params if p.kind in (
+                        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                        inspect.Parameter.KEYWORD_ONLY,
+                    )}
+                    overlap = param_names & expected_keywords
+                    if len(params) <= 1 and not overlap:
+                        # 只有 0 或 1 个参数,且没有任何关键字参数名 → 视为 legacy,跳过流式
+                        return
+            except (TypeError, ValueError):
+                # 内建/不可 inspect 的函数,继续尝试真实调用,见下面 try/except
+                pass
+            try:
+                emit_fn(
+                    event_type,
+                    trace_id=trace_id, session_id=session_id,
+                    stage=stage, level=level,
+                    data=dict(data) if isinstance(data, dict) else {},
+                )
+            except TypeError:
+                # 老 sink 签名: 不报错,静默跳过
+                pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[RuntimePipeline] _safe_emit_event 失败(已隔离): %s", exc)
+
+    def _safe_emit_stage(
+        self, *, stage_name: str, stage_event_type: str,
+        trace_id: str, session_id: str,
+        duration_ms: Optional[int] = None,
+        error: Optional[str] = None,
+        extra_data: Optional[Any] = None,
+    ) -> None:
+        """Phase 7.1: 阶段完成事件(自动组装 stage_name/duration/error)。"""
+        if self._event_sink is None:
+            return
+        level = "info" if not error else "error"
+        data: Any = {}
+        if duration_ms is not None:
+            data["duration_ms"] = int(duration_ms)
+        if error:
+            data["error"] = str(error)
+        if isinstance(extra_data, dict):
+            data.update(extra_data)
+        self._safe_emit_event(
+            stage_event_type,
+            trace_id=trace_id, session_id=session_id,
+            stage=stage_name, level=level, data=data,
+        )
+
+    # --------------------------------------------------------
+    # 核心入口
+    # --------------------------------------------------------
+    def run(self, input_data: Any) -> "RuntimeContext":
+        """执行一次完整生命周期。
+
+        Args:
+            input_data: dict / str / 任意。Pipeline 期望 dict 含 ``user_message``,
+                也可接受 str(直接作为 user_message)。
+
+        Returns:
+            RuntimeContext 实例(永远返回,失败时 state=failed)。
+
+        流程（Phase 4.0.2 升级）:
+            1) 解析 user_message
+            2) 创建 RuntimeContext (state=initial)
+            3) state -> running
+            4) 【Phase 6.5】token_optimizer.optimize(user_message)  (可选)
+               任何异常 -> fallback 原始输入,不影响主流程。
+            5) 【Phase 4.0.2 优先路径】Runtime.process(event)
+               - 成功且 _final_reply 非空 → source="runtime",直接使用
+               - 失败 / 空回复 → 不抛错，回退 legacy
+            6) 【legacy fallback】Orchestrator.process(effective_user_message)
+            7) 写入 context.outputs(契约结构 v1.0)
+            8) success / failed 终态
+            9) persistence_hook.persist(context)  (可选)
+            10) event_sink.emit(...)                  (可选)
+        """
+        # 0) 延迟 import RuntimeContext
+        from src.runtime.lifecycle_context import (
+            LIFECYCLE_STATE_FAILED,
+            LIFECYCLE_STATE_RUNNING,
+            LIFECYCLE_STATE_SUCCESS,
+            RuntimeContext,
+        )
+
+        # 1) 解析 user_message
+        user_message = self._extract_user_message(input_data)
+
+        # 1.5) Phase 4.0.1 Step 02-A: 解析 user_id（向后兼容；缺失则 None，不抛错）
+        user_id = self._extract_user_id(input_data)
+
+        # 2) 创建 RuntimeContext
+        session_id = self._build_session_id()
+        lifecycle_id = self._build_lifecycle_id()
+        # ── Phase 7.0: 轻量 Trace + Status 钩子(异常隔离,绝不影响主链路) ──
+        # 使用 lifecycle_id 作为 trace_id,便于与 RuntimePathAudit 对齐
+        _trace_ctx = self._safe_trace_start(lifecycle_id, session_id, user_message)
+        self._safe_status_request_start(lifecycle_id, user_message)
+        # ── Phase 7.2: 把 trace(session) 上下文放到 thread-local ──
+        # 核心模块(Memory/Personality/Emotion)的 cognitive hook 从这里取 trace_id
+        try:
+            from src.runtime.observer.cognitive_hooks import set_cognitive_context
+            set_cognitive_context(trace_id=lifecycle_id, session_id=session_id)
+        except Exception:  # noqa: BLE001
+            pass
+        # ── Phase 7.1: 观察事件(用户消息接收 + Pipeline 启动) ──
+        try:
+            from src.runtime.observer import RuntimeEventType as _RET71
+            self._safe_emit_event(
+                _RET71.USER_MESSAGE_RECEIVED,
+                trace_id=lifecycle_id, session_id=session_id,
+                stage="receive",
+                data={"preview": user_message[:200]},
+            )
+            self._safe_emit_event(
+                _RET71.PIPELINE_STARTED,
+                trace_id=lifecycle_id, session_id=session_id,
+                stage="pipeline_start",
+                data={"lifecycle_name": self._lifecycle_name},
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        # ── Phase 4.0-R2.1: 创建 RuntimePathAudit（只审计，不改变执行路径） ──
+        # 所有 audit 字段的写入仅通过 4 个 helper 完成（审查要求禁止散落赋值）
+        audit: Dict[str, Any] = _runtime_path_audit_create(
+            lifecycle_id, session_id, entry="RuntimePipeline",
+        )
+        try:
+            # Phase 4.0.1 Step 02-A: 构建 inputs（仅当 user_id 非空时写入）
+            runtime_inputs: Dict[str, Any] = {"user_message": user_message}
+            if user_id:
+                runtime_inputs["user_id"] = user_id
+            context = RuntimeContext(
+                session_id=session_id,
+                lifecycle_id=lifecycle_id,
+                inputs=runtime_inputs,
+                metadata={
+                    "pipeline": "runtime_pipeline",
+                    "schema_version": RUNTIME_PIPELINE_SCHEMA_VERSION,
+                    # Phase 4.0-R2.1：结构化运行路径审计（只读，用于收敛诊断）
+                    "runtime_path_audit": audit,
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            # 极端:context 创建失败
+            logger.error("[RuntimePipeline] RuntimeContext 创建失败: %s", exc)
+            raise RuntimePipelineError(f"无法创建 RuntimeContext: {exc}") from exc
+
+        with self._lock:
+            self._run_count += 1
+
+        # 3) state -> running
+        try:
+            context = context.with_update(state=LIFECYCLE_STATE_RUNNING)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[RuntimePipeline] 无法切到 running: %s", exc,
+            )
+
+        started = time.time()
+        reply: str = ""
+        orch_error: Optional[str] = None
+        # Phase 6.5: token 优化结果(由 _safe_optimize_tokens 写入)
+        token_usage: Optional[Dict[str, Any]] = None
+        # Phase 6.5: 实际送入 Orchestrator 的 user_message(可能被优化)
+        effective_user_message: str = user_message
+        try:
+            # 4) 【Phase 6.5】Token 优化(异常隔离)
+            effective_user_message, token_usage = self._safe_optimize_tokens(
+                user_message, input_data,
+            )
+            # Phase 7.0: trace 记录 token 优化阶段
+            self._safe_trace_stage(_trace_ctx, "token_optimization")
+            # ── Phase 7.1: Token 优化阶段完成事件 ──
+            try:
+                from src.runtime.observer import RuntimeEventType as _RET71_b
+                _toks = int(token_usage.get("total_tokens", 0)) if isinstance(token_usage, dict) else 0
+                self._safe_emit_stage(
+                    stage_name="token_optimization",
+                    stage_event_type=_RET71_b.TOKEN_OPTIMIZATION_DONE,
+                    trace_id=lifecycle_id, session_id=session_id,
+                    duration_ms=max(0, int((time.time() - started) * 1000)),
+                    extra_data={"tokens_after": _toks, "message_changed": effective_user_message != user_message},
+                )
+            except Exception:  # noqa: BLE001
+                pass
+
+            # Phase 4.0.2: 清空来源标记，本次运行后确定
+            self._last_reply_source = None
+
+            # 5A) 【Phase 4.0.2 优先】Runtime.process(event) → 生命循环 17 阶段
+            if self._runtime is not None:
+                runtime_reply = self._try_runtime_path(
+                    effective_user_message, context,
+                )
+                runtime_ok = bool(
+                    runtime_reply
+                    and isinstance(runtime_reply, str)
+                    and runtime_reply.strip()
+                )
+                # R2.1：只更新 audit（helper，禁止散落赋值）；不改变执行顺序/优先级
+                _runtime_path_audit_mark_runtime(
+                    audit,
+                    attempted=True,
+                    succeeded=runtime_ok,
+                )
+                # Phase 7.0: trace 记录 runtime 路径阶段
+                self._safe_trace_stage(
+                    _trace_ctx, "runtime_path",
+                    error=None if runtime_ok else "runtime_no_reply",
+                )
+                # ── Phase 7.1: Runtime 路径阶段完成事件 ──
+                try:
+                    from src.runtime.observer import RuntimeEventType as _RET71_c
+                    self._safe_emit_stage(
+                        stage_name="runtime_path",
+                        stage_event_type=_RET71_c.RUNTIME_PATH_DONE,
+                        trace_id=lifecycle_id, session_id=session_id,
+                        duration_ms=max(0, int((time.time() - started) * 1000)),
+                        error=None if runtime_ok else "runtime_no_reply",
+                        extra_data={"runtime_attempted": True, "runtime_succeeded": runtime_ok},
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+                if runtime_ok:
+                    assert isinstance(runtime_reply, str)  # mypy 协助
+                    reply = runtime_reply
+                    self._last_reply_source = "runtime"
+                    with self._lock:
+                        self._runtime_reply_count += 1
+                    # Phase 4.0.4-Pre: RuntimeCore 路径不写 Orchestrator.history，
+                    # 必须在此同步，否则下一轮对话时 Orchestrator 读 history
+                    # 缺失上一轮 → "两个人在说话"
+                    try:
+                        self._orchestrator.record_conversation_turn(
+                            effective_user_message, reply,
+                        )
+                    except Exception as exc_hist:  # noqa: BLE001
+                        logger.warning(
+                            "[RuntimePipeline] 同步 Orchestrator.history 失败（已隔离）: %s",
+                            exc_hist,
+                        )
+
+            # 5B) 【legacy fallback】Orchestrator.process 或 Runtime 未产生回复
+            if not reply:
+                try:
+                    # Phase 4.0.1 Step 02-B R-3: 传递 user_id 给 orchestrator，
+                    # 避免 fallback 路径丢失身份（user_id 为 None 时兼容旧行为）
+                    raw_reply = self._orchestrator.process(
+                        effective_user_message,
+                        user_id=user_id,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    # Orchestrator.process 内部已隔离,理论上不会抛;兜底
+                    logger.warning(
+                        "[RuntimePipeline] orchestrator.process 抛错(已隔离): %s", exc,
+                    )
+                    raw_reply = ""
+                    try:
+                        orch_error = f"{type(exc).__name__}: {exc}"
+                    except Exception:  # noqa: BLE001
+                        orch_error = "unknown orchestrator error"
+
+                # 规范化 reply
+                if isinstance(raw_reply, str) and raw_reply.strip():
+                    reply = raw_reply
+                else:
+                    reply = ""
+
+                # R2.1：标记 pipeline 内 orchestrator fallback（inside pipeline = outside=False）
+                _runtime_path_audit_mark_orchestrator(
+                    audit,
+                    invoked=True,
+                    outside_pipeline=False,
+                    orchestrator_error=orch_error,
+                )
+                # Phase 7.0: trace 记录 orchestrator fallback 阶段
+                self._safe_trace_stage(
+                    _trace_ctx, "orchestrator_fallback",
+                    error=orch_error,
+                )
+                # ── Phase 7.1: Orchestrator fallback 触发事件 ──
+                try:
+                    from src.runtime.observer import RuntimeEventType as _RET71_d
+                    self._safe_emit_stage(
+                        stage_name="orchestrator_fallback",
+                        stage_event_type=_RET71_d.ORCHESTRATOR_FALLBACK_TRIGGERED,
+                        trace_id=lifecycle_id, session_id=session_id,
+                        duration_ms=max(0, int((time.time() - started) * 1000)),
+                        error=orch_error,
+                        extra_data={"reply_nonempty": bool(reply and reply.strip())},
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+
+                # 统计 legacy 路径（无论 runtime 之前是否尝试过）
+                if self._last_reply_source is None:
+                    self._last_reply_source = "legacy"
+                with self._lock:
+                    self._legacy_reply_count += 1
+
+            # ── Phase 4.0-R2.1: finalize audit（helper，不散落赋值） ──
+            # 审计 reply_source 使用 pipeline 内部规范 "runtime" / "orchestrator_fallback_pipeline"
+            if self._last_reply_source == "runtime":
+                audit_reply_source = "runtime"
+            elif self._last_reply_source == "legacy":
+                audit_reply_source = "orchestrator_fallback_pipeline"
+            else:
+                audit_reply_source = None
+            duration_ms = max(0, int((time.time() - started) * 1000))
+            audit = _runtime_path_audit_finalize(
+                audit,
+                reply_source=audit_reply_source,
+                reply_empty=not (reply and reply.strip()),
+                duration_ms=duration_ms,
+            )
+            # 同步写回 context.metadata["runtime_path_audit"]（用户 review 明确要求保留该命名）
+            try:
+                md = context.metadata or {}
+                md["runtime_path_audit"] = audit
+                try:
+                    context = context.with_update(metadata=md)
+                except Exception:  # noqa: BLE001
+                    pass
+            except Exception:  # noqa: BLE001
+                pass
+
+            # 6) 写入 context.outputs（把 finalize 后的 audit 同时放到 outputs 内，便于消费方统一读取）
+            outputs = self._build_outputs(
+                user_message=user_message,
+                effective_user_message=effective_user_message,
+                reply=reply,
+                duration_ms=duration_ms,
+                orchestrator=getattr(self._orchestrator, "__class__", type(self._orchestrator)).__name__,
+                token_usage=token_usage,
+                reply_source=self._last_reply_source,
+            )
+            outputs["runtime_path_audit"] = audit
+            try:
+                context = context.with_update(outputs=outputs)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("[RuntimePipeline] 写入 outputs 失败: %s", exc)
+
+            # 7) 判定终态
+            if reply and not orch_error:
+                try:
+                    context = context.mark_success(outputs=outputs)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("[RuntimePipeline] mark_success 失败: %s", exc)
+                    context = self._force_failed(context, str(exc))
+                with self._lock:
+                    self._success_count += 1
+                # Phase 7.0: trace finalize + status response(成功)
+                self._safe_trace_finalize(
+                    _trace_ctx, reply=reply,
+                    reply_source=self._last_reply_source,
+                    success=True, error=None,
+                )
+                self._safe_status_response(
+                    reply=reply, success=True,
+                    trace_id=lifecycle_id,
+                )
+                # ── Phase 7.1: 回复发送 + Pipeline 完成(成功)事件 ──
+                try:
+                    from src.runtime.observer import RuntimeEventType as _RET71_ok
+                    self._safe_emit_stage(
+                        stage_name="response",
+                        stage_event_type=_RET71_ok.RESPONSE_SENT,
+                        trace_id=lifecycle_id, session_id=session_id,
+                        duration_ms=max(0, int((time.time() - started) * 1000)),
+                        extra_data={"reply_preview": reply[:200], "reply_source": self._last_reply_source or "", "length_chars": len(reply)},
+                    )
+                    self._safe_emit_event(
+                        _RET71_ok.PIPELINE_FINISHED,
+                        trace_id=lifecycle_id, session_id=session_id,
+                        stage="pipeline_finish", level="info",
+                        data={"duration_ms": max(0, int((time.time() - started) * 1000)), "state": "success", "reply_source": self._last_reply_source or ""},
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+            else:
+                err = orch_error or "empty reply from orchestrator"
+                try:
+                    context = context.mark_failed(err)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("[RuntimePipeline] mark_failed 失败: %s", exc)
+                    context = self._force_failed(context, str(exc))
+                with self._lock:
+                    self._failure_count += 1
+                # Phase 7.0: trace finalize + status response(失败)
+                self._safe_trace_finalize(
+                    _trace_ctx, reply=reply,
+                    reply_source=self._last_reply_source,
+                    success=False, error=err,
+                )
+                self._safe_status_response(
+                    reply=reply, success=False, error=err,
+                    trace_id=lifecycle_id,
+                )
+                # ── Phase 7.1: Pipeline 失败事件(非回复) ──
+                try:
+                    from src.runtime.observer import RuntimeEventType as _RET71_err
+                    self._safe_emit_event(
+                        _RET71_err.PIPELINE_ERROR,
+                        trace_id=lifecycle_id, session_id=session_id,
+                        stage="pipeline_error", level="error",
+                        data={"error": str(err), "duration_ms": max(0, int((time.time() - started) * 1000)), "reply_source": self._last_reply_source or ""},
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+
+        except Exception as exc:  # noqa: BLE001
+            # 极端兜底：也 finalize audit，保证 8 字段永远存在
+            logger.exception("[RuntimePipeline] 未知异常: %s", exc)
+            try:
+                err_str = f"{type(exc).__name__}: {exc}"
+            except Exception:  # noqa: BLE001
+                err_str = "unknown error"
+            try:
+                duration_ms = max(0, int((time.time() - started) * 1000))
+                audit = _runtime_path_audit_finalize(
+                    audit,
+                    reply_source=None,
+                    reply_empty=True,
+                    duration_ms=duration_ms,
+                )
+                md = context.metadata or {}
+                md["runtime_path_audit"] = audit
+                try:
+                    context = context.with_update(metadata=md)
+                except Exception:  # noqa: BLE001
+                    pass
+                try:
+                    out: Dict[str, Any] = getattr(context, "outputs", None) or {}
+                    out["runtime_path_audit"] = audit
+                    context = context.with_update(outputs=out)
+                except Exception:  # noqa: BLE001
+                    pass
+            except Exception:  # noqa: BLE001
+                pass
+            context = self._force_failed(context, err_str)
+            with self._lock:
+                self._failure_count += 1
+            # Phase 7.0: 异常路径也要 finalize trace + status(失败)
+            self._safe_trace_finalize(
+                _trace_ctx, reply="",
+                reply_source=None, success=False, error=err_str,
+            )
+            self._safe_status_response(
+                reply="", success=False, error=err_str,
+                trace_id=lifecycle_id,
+            )
+            # ── Phase 7.1: Pipeline 异常兜底(未知异常)事件 ──
+            try:
+                from src.runtime.observer import RuntimeEventType as _RET71_exc
+                self._safe_emit_event(
+                    _RET71_exc.PIPELINE_ERROR,
+                    trace_id=lifecycle_id, session_id=session_id,
+                    stage="pipeline_exception", level="error",
+                    data={"error": str(err_str), "duration_ms": max(0, int((time.time() - started) * 1000)), "unexpected_exception": True},
+                )
+            except Exception:  # noqa: BLE001
+                pass
+
+        # 8) 持久化(异常隔离)
+        if self._persistence_hook is not None:
+            self._safe_persist(context)
+
+        # 9) 事件发布 —— 两套契约并存：
+        #    a) Phase 7.1 新流式契约 = 各阶段 _safe_emit_event(按关键字参数)
+        #    b) Phase 7.0 遗留契约 = 完成后 _safe_emit(context)(1 次单事件 dict)
+        #    后者用于兼容老 pipeline 测试 & 外部老样式 sink
+        if self._event_sink is not None:
+            self._safe_emit(context)
+
+        # 10) Phase 4.0-R2.4.1: 记录交互到 Memory（异常隔离）
+        #     把这次对话变成羽依的"经历"，写入统一 MemoryProvider + 发布 MemoryCreatedEvent
+        self._safe_record_interaction(context)
+
+        # ── Phase 7.2: 最终生成路径事件 + 清理 thread-local context ──
+        try:
+            from src.runtime.observer.cognitive_hooks import (
+                emit_response_path_decided,
+                clear_cognitive_context,
+            )
+            # 判断走了哪条路径
+            _path = "unknown"
+            _reply_len = 0
+            _error_code = ""
+            try:
+                outputs = getattr(context, "outputs", {}) or {}
+                _reply_len = len(str(outputs.get("reply", "")))
+                if getattr(context, "state", "") == "failed":
+                    _error_code = str(outputs.get("error", "unknown"))
+                    _path = "error_fallback"
+                elif outputs.get("reply_source") == "runtime":
+                    _path = "runtime_orchestrator"
+                elif outputs.get("reply_source") == "orchestrator":
+                    _path = "orchestrator_fallback"
+                elif not outputs.get("reply"):
+                    _path = "legacy_empty_fallback"
+                else:
+                    _path = "orchestrator_fallback"
+            except Exception:  # noqa: BLE001
+                pass
+
+            emit_response_path_decided(
+                trace_id=lifecycle_id, session_id=session_id,
+                path=_path,
+                reply_length_chars=_reply_len,
+                error_code=_error_code,
+            )
+            # 清理 thread-local(防止线程复用污染)
+            clear_cognitive_context()
+        except Exception:  # noqa: BLE001
+            # 即使 clear 失败也要保证 return 不受影响
+            try:
+                clear_cognitive_context()
+            except Exception:  # noqa: BLE001
+                pass
+
+        return context
+
+    # --------------------------------------------------------
+    # Phase 4.0.2: Runtime 优先路径（异常隔离 + 不修改 Runtime 状态）
+    # --------------------------------------------------------
+    def _try_runtime_path(
+        self,
+        user_message: str,
+        context: "RuntimeContext",
+    ) -> Optional[str]:
+        """尝试 Runtime.process(event) 路径，返回回复或 None。
+
+        设计原则:
+        - 完全异常隔离：任何 Runtime 内部错误都返回 None，
+          让外层自动回退 legacy 路径。
+        - Pipeline 只做数据编排：不调用 inject_event / 修改 Runtime 内部状态，
+          所有状态修改由 Runtime.process() 自己的 Stage 1 触发。
+        - 仅读取 ctx._final_reply / ctx.finalized_reply：若存在且非空字符串
+          直接返回。
+        """
+        if not user_message:
+            return None
+        runtime = self._runtime
+        if runtime is None:
+            return None
+        process_fn = getattr(runtime, "process", None)
+        if not callable(process_fn):
+            return None
+
+        # 构造 Event 对象（duck-typed，不强依赖 runtime.events.Event import）
+        try:
+            from src.runtime.events import Event
+
+            # Phase 4.0.1 Step 02-A: Event payload 携带 user_id（仅当 pipeline context
+            # inputs 里已写入 user_id 时；否则只保留 text/content 以保持向后兼容）
+            event_payload: Dict[str, Any] = {
+                "text": user_message,
+                "content": user_message,
+            }
+            pipeline_uid = (
+                (context.inputs or {}).get("user_id")
+                if context is not None else None
+            )
+            if pipeline_uid:
+                event_payload["user_id"] = pipeline_uid
+
+            event = Event(
+                type="user_input",
+                source="user",
+                payload=event_payload,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[RuntimePipeline] Event 创建失败（跳过 Runtime 路径）: %s", exc,
+            )
+            return None
+
+        try:
+            # Phase 4.0.2 SPEC: Pipeline 不做任何状态修改，仅将 event 传入
+            # Runtime.process()，由其内部 Stage 1 触发 _on_event exactly once。
+            #
+            # Phase 4.0.1 Step 02-A: 同时把 pipeline 创建的外部 context 作为第 2
+            # 个参数传入，确保 RuntimeCore.process() 内 `ctx = ctx or RuntimeContext()`
+            # 复用外部对象，**不重建空 context**——否则 user_id 会被丢弃。
+            ctx = process_fn(event, context)
+            # 从返回 ctx 中提取 _final_reply / finalized_reply
+            final_reply = getattr(ctx, "finalized_reply", None)
+            if not (isinstance(final_reply, str) and final_reply.strip()):
+                final_reply = getattr(ctx, "_final_reply", None)
+            if isinstance(final_reply, str) and final_reply.strip():
+                # 记录到 pipeline context 上（便于诊断）
+                try:
+                    context._runtime_process_ctx = ctx  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+                logger.info(
+                    "[RuntimePipeline] Runtime.process() 成功产出回复（%d chars）",
+                    len(final_reply),
+                )
+                return final_reply
+            # 无回复：记录原因
+            logger.debug(
+                "[RuntimePipeline] Runtime.process() 未产生 _final_reply，"
+                "回退 legacy Orchestrator 路径"
+            )
+            return None
+        except Exception as exc:  # noqa: BLE001  (fail-soft)
+            logger.warning(
+                "[RuntimePipeline] Runtime.process() 路径异常（已隔离，回退 legacy）: %s",
+                exc,
+            )
+            return None
+
+    # --------------------------------------------------------
+    # 辅助
+    # --------------------------------------------------------
+    def _extract_user_message(self, input_data: Any) -> str:
+        """从 input_data 提取 user_message。"""
+        if isinstance(input_data, str):
+            return input_data
+        if isinstance(input_data, dict):
+            um = input_data.get("user_message")
+            if isinstance(um, str):
+                return um
+            # 退化:取 dict 第一个 str 值
+            for v in input_data.values():
+                if isinstance(v, str):
+                    return v
+        return str(input_data) if input_data is not None else ""
+
+    def _extract_user_id(self, input_data: Any) -> Optional[str]:
+        """从 input_data 提取 user_id（Phase 4.0.1 Step 02-A）。
+
+        约束:
+        - 仅当 input_data 是 dict 且 ``user_id`` 为**非空字符串**时返回该值。
+        - 其他任何情况（缺字段、非字符串、空字符串、input_data 不是 dict）
+          返回 None，保证**向后兼容**（旧调用方只传 user_message 不会报错）。
+        """
+        if isinstance(input_data, dict):
+            uid = input_data.get("user_id")
+            if isinstance(uid, str) and uid:
+                return uid
+        return None
+
+    def _build_session_id(self) -> str:
+        return f"pipe_{uuid.uuid4().hex[:12]}"
+
+    def _build_lifecycle_id(self) -> str:
+        return f"pipeline_{uuid.uuid4().hex[:12]}"
+
+    def _build_outputs(
+        self,
+        *,
+        user_message: str,
+        reply: str,
+        duration_ms: int,
+        orchestrator: str,
+        effective_user_message: Optional[str] = None,
+        token_usage: Optional[Dict[str, Any]] = None,
+        reply_source: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """构造 context.outputs(契约结构 v1.0,与 Bridge 保持一致)。
+
+        Phase 6.5 扩展:
+            - ``effective_user_message`` 经 token 优化后实际送入
+              Orchestrator 的 user_message;若未启用 token_optimizer,
+              与 ``user_message`` 相同,字段省略不输出。
+            - ``token_usage`` 仅在启用 token_optimizer 时写入,结构:
+              {before_tokens, after_tokens, saved_tokens,
+               compression_ratio, applied?, fallback_reason?}
+              未启用时,字段不写入,保持向后兼容。
+
+        Phase 4.0.2 扩展:
+            - ``reply_source`` (可选): "runtime" / "legacy" / None。
+              存在时写入 snapshot.reply_source,不存在时省略。
+              完全向后兼容（旧调用不传,不输出该字段）。
+        """
+        snapshot: Dict[str, Any] = {
+            "user_message": user_message,
+            "reply": reply,
+            "orchestrator": orchestrator,
+        }
+        # Phase 4.0.2: 仅当显式传入 reply_source 时记录（避免污染历史契约）
+        if reply_source:
+            snapshot["reply_source"] = reply_source
+        # Phase 6.5: 仅在 token_optimizer 启用(且产生了 effective_user_message)时
+        # 才记录,避免污染历史 outputs 契约
+        if effective_user_message is not None and effective_user_message != user_message:
+            snapshot["effective_user_message"] = effective_user_message
+        if token_usage is not None and isinstance(token_usage, dict):
+            snapshot["token_usage"] = token_usage
+
+        return {
+            "lifecycle": {
+                "name": self._lifecycle_name,
+                "status": "success" if reply else "failed",
+                "duration_ms": duration_ms,
+                "summary": {
+                    "total": 1,
+                    "success": 1 if reply else 0,
+                    "failed": 0 if reply else 1,
+                    "skipped": 0,
+                    "fatal": 0,
+                    "timeout": 0,
+                    "cancelled": 0,
+                    "task_ids": [orchestrator],
+                    "errors": [],
+                },
+            },
+            "snapshot": snapshot,
+        }
+
+    def _force_failed(self, context: Any, err: str) -> Any:
+        """强制将 context 切到 failed(兜底)。"""
+        from src.runtime.lifecycle_context import LIFECYCLE_STATE_FAILED
+        try:
+            return context.with_update(
+                state=LIFECYCLE_STATE_FAILED, error=err,
+            ).mark_failed(err)
+        except Exception:  # noqa: BLE001
+            return context
+
+    def _safe_optimize_tokens(
+        self,
+        user_message: str,
+        input_data: Any,
+    ) -> tuple:
+        """Phase 6.5 —— 安全调用 token_optimizer(异常隔离)。
+
+        行为契约:
+            - token_optimizer 为 None -> 返回 (user_message, None),
+              不修改 context.outputs(零侵入)。
+            - token_optimizer.optimize() 抛错 -> 兜底返回 (user_message,
+              fallback 标记),**绝不**让异常影响主流程。
+            - 返回的 tuple:
+                (
+                    effective_user_message: str,
+                    token_usage: Optional[Dict[str, Any]]
+                )
+
+        Args:
+            user_message: 已提取的原始 user_message(必定为 str)
+            input_data: Pipeline.run() 接收的原始 input(供 optimizer 透传
+                history / memories 等辅助输入使用)。
+
+        Returns:
+            (effective_user_message, token_usage_dict or None)
+        """
+        # 1) 禁用路径
+        if self._token_optimizer is None:
+            return user_message, None
+
+        # 2) 校验:必须有 optimize 方法
+        optimize_fn = getattr(self._token_optimizer, "optimize", None)
+        if not callable(optimize_fn):
+            logger.warning(
+                "[RuntimePipeline] token_optimizer 缺少 optimize() 方法,"
+                "已忽略(原始 user_message 直接送入 Orchestrator)",
+            )
+            return user_message, None
+
+        # 3) 收集 history / memories(从 input_data 中尽量提取)
+        history: Optional[list] = None
+        memories: Optional[list] = None
+        try:
+            if isinstance(input_data, dict):
+                h = input_data.get("history")
+                if isinstance(h, list):
+                    history = h
+                m = input_data.get("memories")
+                if isinstance(m, list):
+                    memories = m
+        except Exception:  # noqa: BLE001
+            history = None
+            memories = None
+
+        # 4) 调用 optimize(异常隔离)
+        try:
+            result = optimize_fn(user_message, history, memories)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[RuntimePipeline] token_optimizer.optimize 抛错(已隔离,使用原始输入): %s",
+                exc,
+            )
+            # 兜底:写入 fallback token_usage,但不修改 user_message
+            return user_message, {
+                "before_tokens": 0,
+                "after_tokens": 0,
+                "saved_tokens": 0,
+                "compression_ratio": 1.0,
+                "applied": False,
+                "fallback_reason": (
+                    f"optimizer_exception: {type(exc).__name__}: {str(exc)[:120]}"
+                ),
+            }
+
+        # 5) 防御性解析结果
+        if not isinstance(result, dict):
+            logger.warning(
+                "[RuntimePipeline] token_optimizer 返回非 dict(%s),"
+                "已忽略(原始 user_message 直接送入 Orchestrator)",
+                type(result).__name__,
+            )
+            return user_message, None
+
+        # 5.1) 提取 content(允许空字符串)
+        content = result.get("content")
+        if not isinstance(content, str):
+            # 缺/非 str -> 视为 NoOp
+            content = user_message
+
+        # 5.2) 提取 token_usage(委托给 adapter)
+        try:
+            from src.runtime.token_optimizer import build_token_usage
+            token_usage = build_token_usage(result)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[RuntimePipeline] build_token_usage 抛错(已隔离): %s", exc,
+            )
+            token_usage = {
+                "before_tokens": 0,
+                "after_tokens": 0,
+                "saved_tokens": 0,
+                "compression_ratio": 1.0,
+                "applied": False,
+                "fallback_reason": "build_token_usage_exception",
+            }
+
+        return content, token_usage
+
+    def _safe_persist(self, context: Any) -> None:
+        """安全调用 persistence_hook(异常隔离)。"""
+        try:
+            persist_fn = getattr(self._persistence_hook, "persist", None)
+            if not callable(persist_fn):
+                return
+            try:
+                persist_fn(context)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "[RuntimePipeline] persistence_hook.persist 抛错(已隔离): %s", exc,
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[RuntimePipeline] persistence_hook 调用异常(已隔离): %s", exc,
+            )
+
+    def _safe_emit(self, context: Any) -> None:
+        """安全调用 event_sink(异常隔离)。"""
+        try:
+            emit_fn = getattr(self._event_sink, "emit", None)
+            if not callable(emit_fn):
+                return
+            event_data = {
+                "event_type": "runtime.pipeline.completed",
+                "lifecycle_id": getattr(context, "lifecycle_id", ""),
+                "session_id": getattr(context, "session_id", ""),
+                "state": getattr(context, "state", ""),
+                "timestamp": time.time(),
+                "schema_version": RUNTIME_PIPELINE_SCHEMA_VERSION,
+            }
+            try:
+                emit_fn(
+                    "runtime.pipeline.completed",
+                    trace_id=str(getattr(context, "trace_id", "") or getattr(context, "lifecycle_id", "") or ""),
+                    session_id=str(getattr(context, "session_id", "") or ""),
+                    stage="pipeline",
+                    level="info",
+                    data=event_data,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "[RuntimePipeline] event_sink.emit 抛错(已隔离): %s", exc,
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[RuntimePipeline] event_sink 调用异常(已隔离): %s", exc,
+            )
+
+    # ============================================================
+    # Phase 4.0-R2.4.1: InteractionRecorder 调用（异常隔离）
+    # ============================================================
+    def _safe_record_interaction(self, context: Any) -> None:
+        """安全调用 InteractionRecorder.record()（异常隔离）。
+
+        Pipeline 不直接操作 Memory / EventBus，而是委托给 InteractionRecorder。
+        这样 Pipeline 保持纯粹的 Stage 调度职责。
+        """
+        try:
+            # 延迟创建默认 InteractionRecorder（首次调用时）
+            if self._interaction_recorder is None and getattr(self, "_interaction_recorder_lazy", False):
+                try:
+                    from src.runtime.interaction_recorder import InteractionRecorder
+                    self._interaction_recorder = InteractionRecorder()
+                    self._interaction_recorder_lazy = False
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "[RuntimePipeline] InteractionRecorder 延迟创建失败(已隔离): %s", exc,
+                    )
+                    self._interaction_recorder_lazy = False
+                    return
+
+            recorder = self._interaction_recorder
+            if recorder is None:
+                return
+
+            record_fn = getattr(recorder, "record", None)
+            if not callable(record_fn):
+                return
+
+            try:
+                record_fn(context)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "[RuntimePipeline] InteractionRecorder.record() 抛错(已隔离): %s", exc,
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[RuntimePipeline] InteractionRecorder 调用异常(已隔离): %s", exc,
+            )
+
+    # ============================================================
+    # Phase 4.0-R2.1: api_server 外部 fallback 审计标记入口
+    # ============================================================
+    @classmethod
+    def mark_orchestrator_invoked_outside_pipeline(
+        cls,
+        context: Any,
+        *,
+        reply_source: str = "orchestrator_direct_outside_pipeline",
+    ) -> Dict[str, Any]:
+        """R2.1 专用：pipeline.run() 之外裸调 orchestrator.process() 时，
+        将该行为写入 context 上的 ``runtime_path_audit``（metadata + outputs 双写）。
+
+        审计不变量（R2.1 冻结）：
+        - ``fallback=True``（任何 orchestrator 调用都算 legacy）
+        - ``orchestrator_invoked_outside_pipeline=True``（高危标记，R2.2 将关闭此路径）
+        - ``path="orchestrator_direct"``（最终判定）
+
+        R2.2+ 将逐步删除 api_server.py 外部 fallback 调用，到时删除本方法。
+
+        Args:
+            context: ``RuntimePipeline.run()`` 返回的 RuntimeContext 对象。
+            reply_source: 默认 "orchestrator_direct_outside_pipeline"，
+                如调用方有更具体来源可覆盖，但建议保留默认值。
+
+        Returns:
+            更新后的 runtime_path_audit dict（方便消费方再次读取/断言）。
+        """
+        audit_in: Optional[Dict[str, Any]] = None
+        try:
+            md: Any = getattr(context, "metadata", None) or {}
+            if isinstance(md, dict):
+                audit_in = md.get("runtime_path_audit")
+        except Exception:  # noqa: BLE001
+            audit_in = None
+        if audit_in is None:
+            # 极端兜底：context 完全没有 audit（R2.1 理论上不发生）。构造最小骨架。
+            try:
+                session_id = str(getattr(context, "session_id", "") or "")
+                lifecycle_id = str(getattr(context, "lifecycle_id", "") or "")
+                entry = "RuntimePipeline"
+            except Exception:  # noqa: BLE001
+                session_id = ""
+                lifecycle_id = ""
+                entry = "Unknown"
+            audit_in = _runtime_path_audit_create(lifecycle_id, session_id, entry=entry)
+
+        # R2.1：所有 audit 修改统一走 helper（审查要求禁止散落赋值）
+        audit: Dict[str, Any] = _runtime_path_audit_mark_orchestrator(
+            audit_in, invoked=True, outside_pipeline=True,
+        )
+        # 保持 run() 时已计算的 duration_ms（如不存在则 0）
+        existing_duration: int = 0
+        try:
+            v = audit.get("duration_ms")
+            if v is not None:
+                existing_duration = int(v)
+        except Exception:  # noqa: BLE001
+            existing_duration = 0
+        audit = _runtime_path_audit_finalize(
+            audit,
+            reply_source=reply_source,
+            reply_empty=False,
+            duration_ms=existing_duration,
+        )
+
+        # 双写回 context：metadata["runtime_path_audit"] + outputs["runtime_path_audit"]
+        try:
+            md = getattr(context, "metadata", None) or {}
+            if isinstance(md, dict):
+                md["runtime_path_audit"] = audit
+                try:
+                    context = context.with_update(metadata=md)
+                except Exception:  # noqa: BLE001
+                    pass
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            out = getattr(context, "outputs", None) or {}
+            if isinstance(out, dict):
+                out["runtime_path_audit"] = audit
+                try:
+                    context = context.with_update(outputs=out)
+                except Exception:  # noqa: BLE001
+                    pass
+        except Exception:  # noqa: BLE001
+            pass
+        return audit
+
+    def __repr__(self) -> str:
+        return (
+            f"RuntimePipeline("
+            f"orchestrator={type(self._orchestrator).__name__}, "
+            f"runtime={'yes' if self._runtime else 'no'}, "
+            f"persistence={'yes' if self._persistence_hook else 'no'}, "
+            f"event_sink={'yes' if self._event_sink else 'no'}, "
+            f"token_optimizer={'yes' if self._token_optimizer else 'no'})"
+        )
+
+
+__all__ = [
+    "RUNTIME_PIPELINE_SCHEMA_VERSION",
+    "OrchestratorLike",
+    "RuntimeLike",
+    "EventSinkLike",
+    "TokenOptimizerLike",
+    "RuntimePipelineError",
+    "RuntimePipeline",
+]

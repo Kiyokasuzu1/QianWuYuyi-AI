@@ -1,0 +1,519 @@
+/* ============================================
+   羽依 Yuyi Console — Phase 6.5 Step 5.3
+   SelfModel Evolution Timeline 专用样式
+   --------------------------------------------
+   - 时间线列表 / 节点 / 详情抽屉
+   - 来源色（belief / history / reflection / audit）
+   - 时间范围筛选 / 排序 / 空状态
+   - 严格只读视觉强调
+   ============================================ */
+
+/* ============ 视图容器 ============ */
+.smtl-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.smtl-view .section-header h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.smtl-view .section-header h2::before {
+  content: "⏳";
+  color: var(--c-accent-2);
+  font-size: 20px;
+}
+
+/* ============ 顶部状态条 ============ */
+.smtl-stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.smtl-stat-card {
+  background: var(--c-glass);
+  border: 1px solid var(--c-glass-border);
+  border-radius: var(--r-md, 12px);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.smtl-stat-label {
+  font-size: 11px;
+  color: var(--c-text-muted);
+  font-weight: 500;
+  letter-spacing: 0.3px;
+}
+
+.smtl-stat-value {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--c-text);
+  line-height: 1.1;
+}
+
+.smtl-stat-value--small {
+  font-size: 15px;
+}
+
+.smtl-stat-hint {
+  font-size: 11px;
+  color: var(--c-text-light);
+}
+
+/* ============ 工具栏（来源过滤 / 时间范围 / 排序） ============ */
+.smtl-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--c-glass);
+  border: 1px solid var(--c-glass-border);
+  border-radius: var(--r-md, 12px);
+}
+
+.smtl-toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.smtl-toolbar-label {
+  font-size: 11px;
+  color: var(--c-text-muted);
+  font-weight: 600;
+  margin-right: 4px;
+  letter-spacing: 0.4px;
+}
+
+.smtl-chip {
+  appearance: none;
+  border: 1px solid var(--c-glass-border);
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--c-text);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all var(--t-fast, 0.15s);
+}
+
+.smtl-chip:hover {
+  border-color: var(--c-accent);
+}
+
+.smtl-chip--active {
+  background: linear-gradient(135deg, rgba(165, 180, 252, 0.25), rgba(240, 171, 252, 0.25));
+  border-color: var(--c-accent);
+  color: var(--c-text);
+}
+
+.smtl-source-chip--history    { color: #1d4ed8; }
+.smtl-source-chip--belief     { color: #be185d; }
+.smtl-source-chip--reflection { color: #15803d; }
+.smtl-source-chip--audit      { color: #b45309; }
+
+.smtl-select,
+.smtl-input {
+  appearance: none;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid var(--c-glass-border);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--c-text);
+}
+
+.smtl-select:focus,
+.smtl-input:focus {
+  outline: none;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 3px rgba(165, 180, 252, 0.2);
+}
+
+.smtl-input {
+  min-width: 180px;
+}
+
+.smtl-sort-toggle {
+  appearance: none;
+  border: 1px solid var(--c-glass-border);
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--c-text);
+  font-size: 11px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.smtl-sort-toggle:hover {
+  border-color: var(--c-accent);
+}
+
+/* ============ 时间线主区域 ============ */
+.smtl-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 640px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* ============ 时间线节点 ============ */
+.smtl-item {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--c-glass);
+  border: 1px solid var(--c-glass-border);
+  border-radius: var(--r-md, 12px);
+  transition: all var(--t-fast, 0.15s);
+  cursor: pointer;
+}
+
+.smtl-item:hover {
+  transform: translateX(2px);
+  border-color: var(--c-accent);
+  box-shadow: 0 4px 12px rgba(165, 180, 252, 0.18);
+}
+
+.smtl-item-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 16px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.smtl-item-icon--history    { background: linear-gradient(135deg, #93c5fd, #a5b4fc); }
+.smtl-item-icon--belief     { background: linear-gradient(135deg, #fbcfe8, #f0abfc); }
+.smtl-item-icon--reflection { background: linear-gradient(135deg, #bbf7d0, #86efac); }
+.smtl-item-icon--audit      { background: linear-gradient(135deg, #fde68a, #fca5a5); }
+
+.smtl-item-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.smtl-item-row1 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.smtl-item-source {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(165, 180, 252, 0.15);
+  color: var(--c-text-light);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.smtl-item-event {
+  font-size: 11px;
+  color: var(--c-text-muted);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+.smtl-item-time {
+  font-size: 11px;
+  color: var(--c-text-muted);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+.smtl-item-summary {
+  font-size: 13px;
+  color: var(--c-text);
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.smtl-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--c-text-muted);
+}
+
+.smtl-item-meta-key {
+  color: var(--c-text-light);
+  font-weight: 500;
+}
+
+.smtl-item-meta-value {
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  color: var(--c-text);
+}
+
+.smtl-item-expand-hint {
+  font-size: 10px;
+  color: var(--c-text-muted);
+  text-align: right;
+  opacity: 0.5;
+  transition: opacity var(--t-fast, 0.15s);
+}
+
+.smtl-item:hover .smtl-item-expand-hint {
+  opacity: 1;
+}
+
+/* ============ 详情面板 ============ */
+.smtl-detail {
+  background: var(--c-glass);
+  border: 1px solid var(--c-glass-border);
+  border-radius: var(--r-md, 12px);
+  padding: 14px 16px;
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.smtl-detail-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--c-text-muted);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.smtl-detail-row {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--c-text);
+  line-height: 1.6;
+}
+
+.smtl-detail-row-key {
+  color: var(--c-text-muted);
+  min-width: 90px;
+  flex-shrink: 0;
+  font-weight: 500;
+}
+
+.smtl-detail-row-value {
+  flex: 1;
+  word-break: break-word;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+.smtl-detail-metadata {
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  color: var(--c-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.smtl-detail-close {
+  appearance: none;
+  border: 1px solid var(--c-glass-border);
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--c-text);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.smtl-detail-close:hover {
+  border-color: var(--c-accent);
+}
+
+/* ============ 链路展示（history → proposal → PCR → belief） ============ */
+.smtl-chain {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.smtl-chain-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(165, 180, 252, 0.08);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--c-text);
+}
+
+.smtl-chain-arrow {
+  color: var(--c-accent-2);
+  font-size: 14px;
+  margin: 0 4px;
+}
+
+.smtl-chain-step-label {
+  font-size: 10px;
+  color: var(--c-text-muted);
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+.smtl-chain-step-value {
+  flex: 1;
+  word-break: break-word;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+.smtl-chain-step-value--muted {
+  color: var(--c-text-muted);
+  font-style: italic;
+}
+
+/* ============ 空数据 / Loading / 离线 ============ */
+.smtl-empty {
+  padding: 50px 24px;
+  text-align: center;
+  background: var(--c-glass);
+  border: 1px dashed var(--c-glass-border);
+  border-radius: var(--r-md, 12px);
+  color: var(--c-text-light);
+}
+
+.smtl-empty-icon {
+  font-size: 36px;
+  color: var(--c-accent-2);
+  margin-bottom: 8px;
+}
+
+.smtl-empty-text {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--c-text);
+  margin-bottom: 4px;
+}
+
+.smtl-empty-hint {
+  font-size: 12px;
+  color: var(--c-text-muted);
+}
+
+.smtl-loading {
+  padding: 30px 20px;
+  text-align: center;
+  color: var(--c-text-light);
+  font-size: 13px;
+}
+
+.smtl-loading::before {
+  content: "✦";
+  margin-right: 8px;
+  color: var(--c-accent-2);
+  animation: smtl-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes smtl-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.smtl-offline {
+  padding: 40px 20px;
+  text-align: center;
+  background: var(--c-glass);
+  border-radius: var(--r-md, 12px);
+  border: 1px dashed var(--c-glass-border);
+}
+
+.smtl-offline-icon {
+  font-size: 32px;
+  color: var(--c-accent-2);
+  margin-bottom: 8px;
+}
+
+.smtl-offline-text {
+  font-weight: 500;
+  color: var(--c-text);
+  margin-bottom: 4px;
+}
+
+.smtl-offline-hint {
+  font-size: 12px;
+  color: var(--c-text-muted);
+}
+
+/* ============ 只读标识 ============ */
+.smtl-readonly-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(134, 239, 172, 0.22);
+  color: #15803d;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+}
+
+.smtl-readonly-tag::before {
+  content: "🔒";
+  font-size: 9px;
+}
+
+/* ============ 响应式 ============ */
+@media (max-width: 720px) {
+  .smtl-stats-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .smtl-item {
+    flex-direction: column;
+  }
+
+  .smtl-item-icon {
+    align-self: flex-start;
+  }
+
+  .smtl-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .smtl-toolbar-group {
+    justify-content: flex-start;
+  }
+}

@@ -1,0 +1,1151 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+浅雾羽依 API 服务（OpenAI 兼容）
+"""
+
+import os
+import json
+import asyncio
+import logging
+import logging.handlers
+import time
+import threading
+import atexit
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import yaml
+from flask import Flask, request, jsonify
+
+# R2.7.6-P1: 日志轮转（logs/api_server.log, 10MB × 5 份）
+# R2.7.6-AUDIT: 加 try/except + stderr fallback，磁盘满/权限不足时不崩进程
+import sys as _sys
+_log_dir = Path(__file__).parent / "logs"
+_log_handlers = []
+try:
+    _log_dir.mkdir(parents=True, exist_ok=True)
+    _file_handler = logging.handlers.RotatingFileHandler(
+        str(_log_dir / "api_server.log"),
+        maxBytes=10 * 1024 * 1024,
+        backupCount=5,
+        encoding="utf-8",
+    )
+    _file_handler.setFormatter(logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    ))
+    _log_handlers.append(_file_handler)
+except (OSError, PermissionError) as _log_err:
+    print(f"[WARN] 日志文件创建失败，回退到 stderr: {_log_err}", file=_sys.stderr)
+_stderr_handler = logging.StreamHandler(_sys.stderr)
+_stderr_handler.setFormatter(logging.Formatter(
+    "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+))
+_log_handlers.append(_stderr_handler)
+logging.basicConfig(level=logging.INFO, handlers=_log_handlers)
+logger = logging.getLogger(__name__)
+
+try:
+    from src.orchestrator import Orchestrator
+    _orchestrator_available = True
+except (ImportError, ModuleNotFoundError) as e:
+    Orchestrator = None
+    _orchestrator_available = False
+    logger.warning(f"Orchestrator 导入失败，仅提供 Admin 控制台: {e}")
+
+from src.admin.api.routes import admin_bp, init_admin
+
+app = Flask(__name__)
+orchestrator = None
+_agent_server = None
+_agent_server_thread = None
+_runtime_bridge = None  # Phase 3.5.2: Runtime 桥接
+# === Phase 7.2 迁移新增 ===
+_pipeline = None  # RuntimePipeline 实例(runtime.enabled=true 时使用)
+_pipeline_lock = None  # Pipeline 单例锁(避免重复构造)
+_init_phase72 = False  # 标记 phase72 初始化是否完成
+# === R2.7.6 RuntimeController 单例（phase4_enabled=true 时接管 /v1/chat/completions）====
+_runtime_controller = None
+
+
+# ============================================================
+# Phase 7.0 Dashboard Runtime Center —— Trace + Status 单例
+# 注入到 RuntimePipeline,提供请求链路追踪和运行时状态监控
+# ============================================================
+def _get_trace_recorder():
+    """获取 RuntimeTraceRecorder 单例(Phase 7.0)。"""
+    try:
+        from src.runtime.trace_recorder import get_runtime_trace_recorder
+        return get_runtime_trace_recorder()
+    except Exception as e:
+        logger.warning(f"[Phase 7.0] RuntimeTraceRecorder 不可用: {e}")
+        return None
+
+
+def _get_status_tracker():
+    """获取 RuntimeStatusTracker 单例(Phase 7.0)。"""
+    try:
+        from src.runtime.status_tracker import get_runtime_status_tracker
+        tracker = get_runtime_status_tracker()
+        tracker.mark_started()
+        return tracker
+    except Exception as e:
+        logger.warning(f"[Phase 7.0] RuntimeStatusTracker 不可用: {e}")
+        return None
+
+
+# ============================================================
+# Phase 7.1 Runtime Intelligence —— Observation EventSink 单例
+# 通过 config.yaml runtime_observation 段控制(默认: 启用,不持久化 JSONL)
+# ============================================================
+def _get_event_sink(config: Optional[dict] = None):
+    """获取 ObservationEventSink 单例(Phase 7.1)。"""
+    try:
+        from src.runtime.observer import (
+            ObservationConfig,
+            get_observation_event_sink,
+            init_observation_layer,
+        )
+        cfg_dict = (config or {}).get("runtime_observation") if isinstance(config, dict) else None
+        cfg = ObservationConfig.from_dict(cfg_dict)
+        init_observation_layer(config=cfg)
+        return get_observation_event_sink()
+    except Exception as e:
+        logger.warning(f"[Phase 7.1] ObservationEventSink 不可用: {e}")
+        return None
+
+
+app.register_blueprint(admin_bp, url_prefix="/admin")
+
+# Phase 5.0 Dashboard Upgrade —— 注册 Dashboard V2 Blueprint
+try:
+    from src.admin.dashboard.router import dashboard_v2_bp
+    app.register_blueprint(dashboard_v2_bp)
+    logger.info("Dashboard V2 Blueprint registered at /api/dashboard/v2")
+except Exception as e:
+    logger.warning(f"Dashboard V2 Blueprint 注册失败: {e}")
+
+# Phase 5.0 Dashboard Upgrade —— 注册 Dashboard V2 Runtime 子蓝图
+try:
+    from src.admin.dashboard.runtime_router import runtime_v2_bp
+    app.register_blueprint(runtime_v2_bp)
+    logger.info("Dashboard V2 Runtime Blueprint registered at /api/dashboard/v2/runtime")
+except Exception as e:
+    logger.warning(f"Dashboard V2 Runtime Blueprint 注册失败: {e}")
+
+# Phase 7.1 Runtime Intelligence —— 注册 Runtime Event Stream 子蓝图(SSE + recent)
+try:
+    from src.admin.dashboard.runtime_events_router import runtime_events_bp
+    app.register_blueprint(runtime_events_bp)
+    logger.info("Dashboard V2 Runtime Events Blueprint registered at /api/dashboard/v2/runtime/events")
+except Exception as e:
+    logger.warning(f"Dashboard V2 Runtime Events Blueprint 注册失败: {e}")
+
+# Phase 5.0 Dashboard Upgrade —— 注册 Dashboard V2 SelfModel 子蓝图
+try:
+    from src.admin.dashboard.selfmodel_router import selfmodel_v2_bp
+    app.register_blueprint(selfmodel_v2_bp)
+    logger.info("Dashboard V2 SelfModel Blueprint registered at /api/dashboard/v2/selfmodel")
+except Exception as e:
+    logger.warning(f"Dashboard V2 SelfModel Blueprint 注册失败: {e}")
+
+# Phase 5.0 Dashboard Upgrade —— 注册 Dashboard V2 Memory 子蓝图
+try:
+    from src.admin.dashboard.memory_router import memory_v2_bp
+    app.register_blueprint(memory_v2_bp)
+    logger.info("Dashboard V2 Memory Blueprint registered at /api/dashboard/v2/memory")
+except Exception as e:
+    logger.warning(f"Dashboard V2 Memory Blueprint 注册失败: {e}")
+
+# Phase C.1 P1-1: 注册 Dashboard V2 Growth 子蓝图
+try:
+    from src.admin.dashboard.growth_router import growth_v2_bp
+    app.register_blueprint(growth_v2_bp)
+    logger.info("Dashboard V2 Growth Blueprint registered at /api/dashboard/v2/growth")
+except Exception as e:
+    logger.warning(f"Dashboard V2 Growth Blueprint 注册失败: {e}")
+
+# Phase 5.0 Dashboard Upgrade —— 注册 Dashboard V2 Reflection 子蓝图
+try:
+    from src.admin.dashboard.reflection_router import reflection_v2_bp
+    app.register_blueprint(reflection_v2_bp)
+    logger.info("Dashboard V2 Reflection Blueprint registered at /api/dashboard/v2/reflection")
+except Exception as e:
+    logger.warning(f"Dashboard V2 Reflection Blueprint 注册失败: {e}")
+
+# Phase 5.0 Dashboard Upgrade —— 注册 Dashboard V2 Initiative 子蓝图
+try:
+    from src.admin.dashboard.initiative_router import initiative_v2_bp
+    app.register_blueprint(initiative_v2_bp)
+    logger.info("Dashboard V2 Initiative Blueprint registered at /api/dashboard/v2/initiative")
+except Exception as e:
+    logger.warning(f"Dashboard V2 Initiative Blueprint 注册失败: {e}")
+
+# Phase 5.0 Dashboard Upgrade Step 8.3 —— 注册 Dashboard V2 LifeGraph 子蓝图
+try:
+    from src.admin.dashboard.life_graph_router import life_graph_v2_bp
+    app.register_blueprint(life_graph_v2_bp)
+    logger.info("Dashboard V2 LifeGraph Blueprint registered at /api/dashboard/v2/life-graph")
+except Exception as e:
+    logger.warning(f"Dashboard V2 LifeGraph Blueprint 注册失败: {e}")
+
+# Phase 5.0 Dashboard Upgrade Step 8.1 —— 注册 Dashboard V2 Goal 子蓝图
+try:
+    from src.admin.dashboard.goal_router import goal_v2_bp
+    app.register_blueprint(goal_v2_bp)
+    logger.info("Dashboard V2 Goal Blueprint registered at /api/dashboard/v2/goal")
+except Exception as e:
+    logger.warning(f"Dashboard V2 Goal Blueprint 注册失败: {e}")
+
+# Phase 5.0 Dashboard Upgrade Step 8.4.1 —— 注册 Dashboard V2 LifeState 子蓝图
+try:
+    from src.admin.dashboard.life_state_router import life_state_v2_bp
+    app.register_blueprint(life_state_v2_bp)
+    logger.info("Dashboard V2 LifeState Blueprint registered at /api/dashboard/v2/life-state")
+except Exception as e:
+    logger.warning(f"Dashboard V2 LifeState Blueprint 注册失败: {e}")
+
+# Phase 5.0 Dashboard Upgrade Step 8.4.3 —— 注册 Dashboard V2 LifeTimeline 子蓝图
+try:
+    from src.admin.dashboard.life_timeline_router import life_timeline_v2_bp
+    app.register_blueprint(life_timeline_v2_bp)
+    logger.info("Dashboard V2 LifeTimeline Blueprint registered at /api/dashboard/v2/life-timeline")
+except Exception as e:
+    logger.warning(f"Dashboard V2 LifeTimeline Blueprint 注册失败: {e}")
+
+# Phase 5.0 Dashboard Upgrade Step 8.4.4 —— 注册 Dashboard V2 EventStream 子蓝图
+try:
+    from src.admin.dashboard.event_stream_router import event_stream_v2_bp
+    app.register_blueprint(event_stream_v2_bp)
+    logger.info("Dashboard V2 EventStream Blueprint registered at /api/dashboard/v2/event-stream")
+except Exception as e:
+    logger.warning(f"Dashboard V2 EventStream Blueprint 注册失败: {e}")
+
+# Phase 5.0 Dashboard Upgrade Step 8.4.7 —— 注册 Dashboard V2 Security 子蓝图(POST 安全链路)
+try:
+    from src.admin.dashboard.security_router import security_v2_bp
+    app.register_blueprint(security_v2_bp)
+    logger.info("Dashboard V2 Security Blueprint registered at /api/dashboard/v2")
+except Exception as e:
+    logger.warning(f"Dashboard V2 Security Blueprint 注册失败: {e}")
+
+# Phase 5.0 Dashboard Upgrade —— 注册 Dashboard V2 WebSocket 端点(占位)
+try:
+    from src.admin.dashboard.ws import register_dashboard_ws
+    register_dashboard_ws(app)
+except Exception as e:
+    logger.warning(f"Dashboard V2 WS 注册失败: {e}")
+
+
+# Phase C.10.3: 注册 Yuyi Server API Gateway(/api/v1/*)
+# 提供 Desktop 调用的 9 个只读 GET 端点:
+#   /api/v1/health
+#   /api/v1/runtime/status
+#   /api/v1/runtime/overview
+#   /api/v1/personality/status
+#   /api/v1/selfmodel/status
+#   /api/v1/memory/overview
+#   /api/v1/growth/status
+#   /api/v1/initiative/status
+#   /api/v1/audit/recent
+# 注: gateway_bp 已自带 url_prefix="/api/v1",此处注册不要再追加 url_prefix。
+try:
+    from src.control.api.routes import gateway_bp
+    app.register_blueprint(gateway_bp)
+    logger.info("Yuyi Server API Gateway registered at /api/v1 (gateway_bp)")
+except Exception as e:
+    logger.warning(f"Yuyi Server API Gateway 注册失败: {e}")
+
+
+def load_config() -> dict:
+    """加载 config.yaml 配置"""
+    config_path = Path(__file__).parent / "config.yaml"
+    if not config_path.exists():
+        return {}
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    except Exception as e:
+        logger.warning(f"加载 config.yaml 失败: {e}")
+        return {}
+
+
+def init_orchestrator():
+    """初始化 Orchestrator（含远程模块 + RuntimeBridge）"""
+    global orchestrator, _agent_server, _agent_server_thread, _runtime_bridge
+
+    config = load_config()
+
+    # 强制启用屏幕和远程模块（让羽依能看见用户在做什么）
+    config.setdefault("screen", {})
+    config["screen"]["enabled"] = True
+    config.setdefault("remote", {})
+    config["remote"]["enabled"] = True
+
+    # === Phase 3.6.3 修复: RuntimeBridge 必须先于 Orchestrator 初始化 ===
+    # 原因: RuntimeBridge 是单例，Orchestrator.__init__ 内会调用 get_runtime_bridge() 无参版本
+    #       若先构造 Orchestrator，RuntimeBridge 单例被空 config 创建，后续再传 config 无效
+    #       导致 adapters_enabled=true 丢失，P1/P2/P2.5 无法执行。
+    # === Phase 3.5.3: 初始化 RuntimeBridge ===
+    _init_runtime_bridge(config)
+
+    if _orchestrator_available:
+        logger.info("初始化羽依 Orchestrator...")
+        orchestrator = Orchestrator(config=config)
+        logger.info("羽依 Orchestrator 初始化完成")
+    else:
+        logger.warning("Orchestrator 不可用，跳过核心初始化")
+
+    # === Phase 7.2 迁移新增：构造 RuntimePipeline（runtime.enabled=true 时启用） ===
+    _init_phase72_pipeline(config)
+
+    # === R2.7.6：初始化 RuntimeController（phase4_enabled=false 时内部是 No-Op）====
+    _init_runtime_controller(config)
+
+    # 初始化 Admin 控制台
+    try:
+        init_admin(orchestrator=orchestrator)
+        logger.info("Admin 控制台初始化完成")
+    except Exception as e:
+        logger.warning(f"Admin 控制台初始化失败: {e}")
+
+    # Phase 7.2.1-p2: Agent Server 启动职责（单进程架构）
+    #   旧版（≤ Phase 7.2.1-p0）：api_server 与 initiative_sender 两个进程 → 8765 端口冲突
+    #   新版（≥ Phase 7.2.1-p1）：initiative_sender 独立进程已删除，
+    #         Agent Server、主动消息 RuntimeCore tick、状态写盘全部由 api_server 进程独占。
+    #   切换开关：YUYI_API_SKIP_AGENT_SERVER=1 跳过启动（仅调试时用，生产勿用）
+    #             YUYI_API_SKIP_AGENT_SERVER=0 正常启动（生产默认）
+    remote_cfg = config.get("remote", {})
+    _skip_agent_server = os.getenv(
+        "YUYI_API_SKIP_AGENT_SERVER", "0"
+    ).lower() in ("1", "true", "yes")
+    if remote_cfg.get("enabled", False) and _orchestrator_available:
+        if _skip_agent_server:
+            logger.warning(
+                "[Phase 7.2.1-p2] YUYI_API_SKIP_AGENT_SERVER=1，跳过 Agent Server 启动。"
+                "远程代理功能将不可用；data/agent_server_status.json 也不会被写入。"
+            )
+        else:
+            logger.info("[Phase 7.2.1-p2] api_server 启动 Agent Server（端口 8765）+ 状态写盘线程")
+            _start_agent_server(config)
+
+
+# ============================================================
+# Phase 7.2 迁移新增 —— RuntimePipeline 适配
+# 设计目标：
+#   - runtime.enabled=true 时,/v1/chat/completions 走 RuntimePipeline
+#   - runtime.enabled=false 时,行为与 Phase 7.2 之前完全一致(回退旧 process())
+#   - 失败隔离:Pipeline / TokenOptimizer 任何异常自动降级为旧链路,不中断聊天
+# ============================================================
+def _init_phase72_pipeline(config: dict) -> None:
+    """惰性构造 RuntimePipeline + TokenOptimizer + PersistenceHook(仅一次)。
+
+    Args:
+        config: load_config() 返回的字典
+    """
+    global _pipeline, _pipeline_lock, _init_phase72
+    if _init_phase72:
+        return
+    _init_phase72 = True
+
+    # runtime.enabled=False 时,直接跳过 Pipeline 构造
+    if not config.get("runtime", {}).get("enabled", True):
+        logger.info("[Phase 7.2] runtime.enabled=false,跳过 RuntimePipeline 构造(/v1/chat/completions 将走旧 process())")
+        return
+
+    if not _orchestrator_available or orchestrator is None:
+        logger.warning("[Phase 7.2] Orchestrator 不可用,RuntimePipeline 无法构造,自动回退旧链路")
+        return
+
+    try:
+        import threading as _threading
+        _pipeline_lock = _threading.RLock()
+
+        # 1) TokenOptimizer(可选,失败不影响 Pipeline)
+        token_opt = None
+        try:
+            token_opt_enabled = config.get("token_opt", {}).get("enabled", False)
+            if token_opt_enabled:
+                from src.runtime.token_optimizer import RuntimeTokenOptimizer
+                token_opt = RuntimeTokenOptimizer()
+                logger.info("[Phase 7.2] TokenOptimizer 已启用")
+        except Exception as e:
+            logger.warning(f"[Phase 7.2] TokenOptimizer 加载失败,降级关闭: {e}")
+            token_opt = None
+
+        # 2) PersistenceHook(可选,失败不影响 Pipeline)
+        persistence_hook = None
+        try:
+            from src.runtime.lifecycle.persistence_hook import RuntimePersistenceHook
+            from src.runtime.context_storage import RuntimeContextStorage
+            persist_dir = config.get("runtime", {}).get("persistence_dir", "data/runtime_context")
+            storage = RuntimeContextStorage(base_dir=persist_dir)
+            persistence_hook = RuntimePersistenceHook(storage=storage)
+            logger.info(f"[Phase 7.2] PersistenceHook 已启用,目录={persist_dir}")
+        except Exception as e:
+            logger.warning(f"[Phase 7.2] PersistenceHook 加载失败,降级关闭: {e}")
+            persistence_hook = None
+
+        # 3) 构造 RuntimePipeline
+        from src.runtime.runtime_pipeline import RuntimePipeline
+
+        # Phase 4.0.2: 注入 RuntimeCore 到 Pipeline
+        # 优先从 _runtime_bridge.runtime_core 获取;降级从 runtime.py 的 shared impl
+        runtime_inst = None
+        try:
+            if _runtime_bridge is not None:
+                runtime_inst = getattr(_runtime_bridge, "runtime_core", None)
+            if runtime_inst is None:
+                # fallback: 从 src.runtime.runtime 获取 shared RuntimeCore
+                from src.runtime.runtime import impl as _runtime_impl
+                runtime_inst = _runtime_impl
+        except Exception as _e_rt:
+            logger.warning(f"[Phase 4.0.2] RuntimeCore 注入失败,Pipeline 将只走 legacy 路径: {_e_rt}")
+            runtime_inst = None
+
+        _pipeline = RuntimePipeline(
+            orchestrator=orchestrator,
+            runtime=runtime_inst,
+            persistence_hook=persistence_hook,
+            token_optimizer=token_opt,
+            lifecycle_name="api_server_v1_chat",
+            trace_recorder=_get_trace_recorder(),
+            status_tracker=_get_status_tracker(),
+            event_sink=_get_event_sink(config),
+        )
+        logger.info(
+            "[Phase 7.2] RuntimePipeline 已就绪 | runtime_inst=%s | trace=%s | status=%s | events=%s",
+            "yes" if runtime_inst is not None else "no",
+            "yes" if _pipeline.trace_recorder is not None else "no",
+            "yes" if _pipeline.status_tracker is not None else "no",
+            "yes" if _pipeline.event_sink is not None else "no",
+        )
+    except Exception as e:
+        logger.exception(f"[Phase 7.2] RuntimePipeline 构造失败,自动回退旧链路: {e}")
+        _pipeline = None
+
+
+# ============================================================
+# R2.7.6 RuntimeController 初始化
+# 设计目标：
+#   - runtime.phase4_enabled=true 时,/v1/chat/completions 走 RuntimeController
+#   - runtime.phase4_enabled=false 时,phase4 内部 No-Op，聊天完全走旧 pipeline/orchestrator
+#   - 失败隔离: RuntimeController 任何异常自动降级为旧 pipeline/orchestrator,不中断聊天
+# ============================================================
+def _init_runtime_controller(config: dict) -> None:
+    global _runtime_controller
+    try:
+        from src.runtime.runtime_controller import RuntimeController
+        _runtime_controller = RuntimeController.get_singleton(config=config)
+        logger.info(
+            "[R2.7.6] RuntimeController 就绪 | phase4_enabled=%s | users_root=%s",
+            _runtime_controller.phase4_enabled,
+            _runtime_controller.users_root_dir,
+        )
+    except Exception as e:
+        logger.exception(f"[R2.7.6] RuntimeController 初始化失败，将跳过 Phase4 路径: {e}")
+        _runtime_controller = None
+
+
+def _process_via_pipeline(user_message: str, user_id: str) -> dict:
+    """通过 RuntimePipeline 处理一条消息,返回 OpenAI 兼容响应字典。
+
+    Returns:
+        OpenAI 兼容的 chat.completion 字典。
+    """
+    with _pipeline_lock:
+        context = _pipeline.run({"user_message": user_message})
+    # 从 RuntimeContext.outputs.snapshot.reply 提取回复
+    reply = ""
+    try:
+        snapshot = (getattr(context, "outputs", {}) or {}).get("snapshot", {}) or {}
+        reply = snapshot.get("reply", "") or ""
+    except Exception:
+        reply = ""
+    # ── Phase 4.0-R2.2: D2 修复 —— 删除 pipeline 外二次 Orchestrator fallback ──
+    # 移除原因：pipeline.run() 已负责 persistence_hook / event_sink / runtime_path_audit，
+    # 外部再裸调 orchestrator.process() 会导致：
+    #   1) 同一条消息写 memory 两次（pipeline 一次 + outside 一次）→ 长期人格漂移
+    #   2) 审计 outside_pipeline=True 污染 → R2.2 单入口不变量违规
+    # 后果（reply 为空时）：直接使用 pipeline 返回的空 reply 不再 outside 兜底。
+    # 真有 fallback 需求由 RuntimePipeline.run() 内部 orchestrator fallback 完成（5B 分支）。
+    if not reply:
+        logger.warning(
+            "[Phase 7.2 R2.2] RuntimePipeline.run() 输出空 reply；"
+            "outside_pipeline Orchestrator fallback 已按 R2.2 Entry Convergence 移除，"
+            "请通过 RuntimePipeline 内部 orchestrator fallback 机制排查原因。"
+        )
+
+    return {
+        "id": f"chatcmpl-pipeline-{getattr(context, 'lifecycle_id', '')}",
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": "yuyi-runtime-pipeline",
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": reply},
+                "finish_reason": "stop",
+            }
+        ],
+    }
+
+
+def _init_runtime_bridge(config: dict) -> None:
+    """初始化 RuntimeBridge（尝试性，失败不影响主流程）"""
+    global _runtime_bridge
+    try:
+        from src.runtime.runtime_bridge import get_runtime_bridge
+
+        runtime_cfg = config.get("runtime", {})
+        # 将 initiative 配置中的发送参数合并到 runtime_cfg
+        initiative_cfg = config.get("initiative", {})
+        if initiative_cfg:
+            runtime_cfg.setdefault("initiative_send", initiative_cfg)
+
+        _runtime_bridge = get_runtime_bridge(config=runtime_cfg)
+        if _runtime_bridge.initialize():
+            logger.info("RuntimeBridge 初始化成功（生命循环已启动）")
+
+            # === Phase 7.2 迁移：主动消息由 Runtime InitiativeBridge 单一路径接管 ===
+            # 旧版独立进程（initiative_sender.py）已删除，不再有双路径互斥问题。
+            initiative_enabled = config.get("initiative", {}).get("enabled", True)
+            if not initiative_enabled:
+                logger.info(
+                    "[Phase 7.2] initiative.enabled=false,跳过 InitiativeBridge 注册（完全不发送主动消息）"
+                )
+            else:
+                try:
+                    from src.runtime.initiative_bridge import InitiativeBridge
+                    from src.runtime.initiative_sender import (
+                        flatten_initiative_config,
+                        build_send_config_from_flat,
+                    )
+
+                    # 从 config["initiative"] 子段读取（并与旧版 load_config 行为一致：
+                    # flatten + 环境变量覆盖），再构造 Bridge 所需 send_config
+                    flat_cfg = flatten_initiative_config(config)
+                    send_config = build_send_config_from_flat(flat_cfg)
+                    send_config["send_callback"] = None  # 生产用直接发送，不用 callback
+                    # cooldown：默认 60s，允许用 initiative.initiative_cooldown_seconds 覆盖
+                    override_cd = flat_cfg.get("initiative_cooldown_seconds")
+                    if override_cd is not None:
+                        send_config["initiative_cooldown_seconds"] = override_cd
+
+                    ib = InitiativeBridge(
+                        orchestrator=orchestrator,
+                        send_config=send_config,
+                    )
+                    if ib.register():
+                        logger.info(
+                            "InitiativeBridge 注册成功（单一路径，send_message handler 就绪，"
+                            "cooldown=%ss, api_type=%s）",
+                            send_config.get(
+                                "initiative_cooldown_seconds",
+                                ib._get_cooldown_seconds() if hasattr(ib, "_get_cooldown_seconds") else 60,
+                            ),
+                            send_config.get("api_type", "onebot"),
+                        )
+                except Exception as e:
+                    logger.warning(f"InitiativeBridge 注册失败: {e}")
+
+            # 注册关闭钩子
+            atexit.register(_shutdown_runtime_bridge)
+        else:
+            logger.warning("RuntimeBridge 初始化失败（生命循环未启动）")
+            _runtime_bridge = None
+    except Exception as e:
+        logger.warning(f"RuntimeBridge 初始化异常（不影响主流程）: {e}")
+        _runtime_bridge = None
+
+
+def _shutdown_runtime_bridge() -> None:
+    """关闭 RuntimeBridge（由 atexit 调用）"""
+    global _runtime_bridge
+    if _runtime_bridge:
+        try:
+            _runtime_bridge.shutdown()
+            logger.info("RuntimeBridge 已关闭（状态已保存）")
+        except Exception as e:
+            logger.warning(f"RuntimeBridge 关闭异常: {e}")
+
+
+_AGENT_STATUS_WRITER_STARTED = False
+
+
+def _start_agent_status_writer(config: dict) -> None:
+    """启动后台线程，定期写 Agent Server 状态到 data/agent_server_status.json。
+
+    Phase 7.2 前由独立进程 initiative_sender 负责；现在它已删除，api_server
+    直接承担该职责。5 秒刷新一次，文件结构完全与旧版保持一致，以保证
+    admin 端点 /api/admin/remote/status 的读取逻辑无需变动。
+    """
+    global _AGENT_STATUS_WRITER_STARTED
+    if _AGENT_STATUS_WRITER_STARTED:
+        return
+    try:
+        from datetime import datetime
+        from pathlib import Path
+        from threading import Thread
+        from src.remote.agent_server import get_agent_server
+
+        remote_cfg = config.get("remote", {})
+        host = remote_cfg.get("host", "0.0.0.0")
+        port = remote_cfg.get("port", 8765)
+        status_file = Path("data/agent_server_status.json")
+        interval: int = 5  # 秒
+
+        def _run() -> None:
+            while True:
+                try:
+                    srv = get_agent_server()
+                    if srv and getattr(srv, "_running", False):
+                        status = {
+                            "enabled": True,
+                            "running": True,
+                            "host": host,
+                            "port": port,
+                            "pid": os.getpid(),
+                            "total_agents": int(srv.registry.count())
+                            if hasattr(srv, "registry") else 0,
+                            "authenticated_agents": (
+                                int(srv.registry.count_authenticated())
+                                if hasattr(srv, "registry") and hasattr(srv.registry, "count_authenticated")
+                                else 0
+                            ),
+                            "agents": srv.get_online_agents() if hasattr(srv, "get_online_agents") else [],
+                            "updated_at": datetime.now().isoformat(timespec="seconds"),
+                        }
+                    else:
+                        status = {
+                            "enabled": True,
+                            "running": False,
+                            "host": host,
+                            "port": port,
+                            "pid": os.getpid(),
+                            "message": "Agent Server 未启动或已停止",
+                            "updated_at": datetime.now().isoformat(timespec="seconds"),
+                        }
+                    status_file.parent.mkdir(parents=True, exist_ok=True)
+                    tmp = status_file.with_suffix(".tmp")
+                    tmp.write_text(
+                        json.dumps(status, ensure_ascii=False, indent=2),
+                        encoding="utf-8",
+                    )
+                    tmp.replace(status_file)
+                except Exception as exc:
+                    logger.debug(f"agent_status_writer 失败（下次重试）: {exc}")
+                time.sleep(interval)
+
+        thread = Thread(target=_run, daemon=True, name="AgentStatusWriter")
+        thread.start()
+        _AGENT_STATUS_WRITER_STARTED = True
+        logger.info("Agent Server 状态写入线程已启动（data/agent_server_status.json）")
+    except Exception as exc:
+        logger.warning(f"启动 agent_status_writer 失败: {exc}")
+
+
+def _start_agent_server(config: dict):
+    """在后台线程中启动 Agent Server"""
+    global _agent_server, _agent_server_thread
+
+    try:
+        from src.remote.agent_server import start_agent_server
+
+        remote_cfg = config.get("remote", {})
+        host = remote_cfg.get("host", "0.0.0.0")
+        port = remote_cfg.get("port", 8765)
+        auth_token = remote_cfg.get("auth_token", "")
+        heartbeat_timeout = remote_cfg.get("heartbeat_timeout", 30)
+
+        def _run_agent_server():
+            """在独立线程中运行 Agent Server 的事件循环"""
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                global _agent_server
+                _agent_server = loop.run_until_complete(
+                    start_agent_server(
+                        host=host,
+                        port=port,
+                        auth_token=auth_token,
+                        heartbeat_timeout=heartbeat_timeout,
+                    )
+                )
+                logger.info(f"Agent Server 运行中: {host}:{port}")
+                loop.run_forever()
+            except Exception as e:
+                logger.error(f"Agent Server 启动失败: {e}")
+
+        _agent_server_thread = threading.Thread(
+            target=_run_agent_server, daemon=True, name="AgentServer"
+        )
+        _agent_server_thread.start()
+        logger.info("Agent Server 线程已启动")
+
+        # Phase 7.2：迁移到单路径后，api_server 自己负责写 agent_server_status.json
+        # （替代原来由独立进程 initiative_sender 写入的行为）
+        _start_agent_status_writer(config)
+
+    except Exception as e:
+        logger.error(f"启动 Agent Server 失败: {e}")
+
+@app.route('/v1/chat/completions', methods=['POST'])
+def chat_completions():
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "缺少请求体"}), 400
+
+        messages = data.get('messages', [])
+        if not messages:
+            return jsonify({"error": "messages 不能为空"}), 400
+
+        # R2.7.6-AUDIT: user_id 规范化——防显式 null/空串/非字符串输入
+        #   data.get('user', 'default') 只会在缺 key 时用 default；key 存在但值
+        #   为 null 时返回 None，导致后续 for_user("None") 创建一个奇怪的目录名。
+        raw_user = data.get('user', None)
+        if raw_user in (None, "") or not isinstance(raw_user, (str, int)):
+            user_id = "default"
+        else:
+            user_id = str(raw_user)
+
+        # R2.7.6-AUDIT: 提取最后一条 user role 的文本消息（兼容多模态 content 数组）
+        #   规范：content: str | List[{"type":"text","text":"..."}, ...]
+        #   其他类型一律 str() 兜底，防止后续 RuntimeController.message.strip() 崩溃
+        last_user_msg: str = ""
+        for msg in reversed(messages):
+            if not isinstance(msg, dict):
+                continue
+            if msg.get('role') != 'user':
+                continue
+            content = msg.get('content', '')
+            if isinstance(content, str):
+                last_user_msg = content
+            elif isinstance(content, list):
+                # 多模态：拼接所有 {"type":"text","text":...} 的文本
+                parts = []
+                for part in content:
+                    if isinstance(part, dict) and part.get('type') == 'text':
+                        t = part.get('text')
+                        if isinstance(t, str):
+                            parts.append(t)
+                last_user_msg = "\n".join(parts) if parts else str(content)
+            else:
+                last_user_msg = str(content) if content is not None else ""
+            if last_user_msg.strip():
+                break
+
+        if not last_user_msg or not last_user_msg.strip():
+            return jsonify({"error": "未找到用户消息"}), 400
+
+        logger.info(f"处理用户 {user_id} 消息: {last_user_msg[:50]}...")
+
+        # R2.7.6-AUDIT FIX: 不再在此处设置 orchestrator.target_user_id！
+        #   原代码在 Phase4 路径前就赋值，但 Phase4 可能运行 30 秒+，期间另一个
+        #   用户的请求会覆盖 target_user_id → 跨用户串话（CRITICAL bug）。
+        #   现在改为在降级到 orchestrator.process() 时通过 user_id 参数传入。
+
+        # === R2.7.6 最高优先级：RuntimeController（phase4_enabled=true 时）========
+        #   真实调用顺序：RuntimeController.handle_message → Phase4Persist → response_phase4
+        #   任何异常 → 降级 Phase 7.2 RuntimePipeline → 再次失败 → 降级 orchestrator.process
+        if _runtime_controller is not None and _runtime_controller.phase4_enabled:
+            try:
+                hr = _runtime_controller.handle_message(user_id=user_id, message=last_user_msg)
+                if hr.reply:
+                    # RuntimeBridge 透明通知（已隔离，不影响 reply）
+                    if _runtime_bridge:
+                        try:
+                            _runtime_bridge.on_user_message(str(user_id), str(last_user_msg))
+                        except Exception as e:
+                            logger.debug(f"RuntimeBridge 消息通知异常（已隔离）: {e}")
+                    # 返回 OpenAI 兼容结构；debug 信息放在 model.metadata 字段外避免影响客户端解析
+                    debug = data.get("debug") or False
+                    response_dict = {
+                        "id": f"chatcmpl-phase4-{hr.debug.get('turn_uuid','')}",
+                        "object": "chat.completion",
+                        "created": int(time.time()),
+                        "model": "yuyi-phase4" if not debug else "yuyi-phase4-debug",
+                        "choices": [
+                            {
+                                "index": 0,
+                                "message": {"role": "assistant", "content": hr.reply},
+                                "finish_reason": "stop",
+                            }
+                        ],
+                    }
+                    if debug:
+                        response_dict["debug"] = hr.debug
+                    return jsonify(response_dict)
+                else:
+                    logger.warning("[R2.7.6] RuntimeController 返回空 reply，降级旧链路")
+            except NotImplementedError:
+                # RuntimeController 初始化了但 phase4_enabled=false → 自然 fall through
+                pass
+            except Exception as e:
+                logger.exception(f"[R2.7.6] RuntimeController 处理失败，降级旧链路: {e}")
+                # fall through
+
+        # === Phase 7.2 迁移新增：runtime.enabled 分支 ===
+        #   _pipeline 不为 None → 走 RuntimePipeline(Lifecycle/Persistence/TokenOptimizer)
+        #   _pipeline 为 None   → 走旧 orchestrator.process()(秒级回滚路径)
+        if _pipeline is not None:
+            try:
+                response = _process_via_pipeline(last_user_msg, user_id)
+                # R2.7.6-DEPLOY: Pipeline 空 reply 例外 —— 不直接返回空字符串给用户。
+                #   R2.2 禁止 outside_pipeline fallback 是为了避免同一条消息 double-write memory。
+                #   但空 reply 是生产级故障（用户收到空消息 > double-write 的理论风险），
+                #   因此空 reply 时 fall through 到 orchestrator legacy 兜底。
+                reply_text = ""
+                try:
+                    reply_text = response["choices"][0]["message"]["content"]
+                except (KeyError, IndexError, TypeError):
+                    reply_text = ""
+                if not reply_text or not reply_text.strip():
+                    logger.warning(
+                        "[R2.7.6-DEPLOY] RuntimePipeline 返回空 reply，"
+                        "按空回复例外降级旧链路（用户体验优先 > R2.2 double-write 风险）"
+                    )
+                    # fall through
+                else:
+                    # === Phase 3.5.3: 透明通知 RuntimeBridge（不影响聊天）===
+                    if _runtime_bridge:
+                        try:
+                            _runtime_bridge.on_user_message(str(user_id), str(last_user_msg))
+                        except Exception as e:
+                            logger.debug(f"RuntimeBridge 消息通知异常（已隔离）: {e}")
+                    return jsonify(response)
+            except Exception as e:
+                # Pipeline 整体失败 → 自动降级为旧 process(),不中断聊天
+                logger.exception(f"[Phase 7.2] RuntimePipeline 处理失败,降级旧链路: {e}")
+                # fall through to legacy path below
+
+        # 最后一条降级路径：orchestrator.process；必须做 None 检查
+        if orchestrator is None:
+            return jsonify({
+                "error": "所有运行时路径均失败（RuntimeController / Pipeline / Orchestrator 均不可用）",
+                "details": "orchestrator=None，可能 Orchestrator 模块导入失败或未初始化",
+            }), 503
+
+        reply = orchestrator.process(last_user_msg, user_id=user_id)
+
+        # === Phase 3.5.3: 透明通知 RuntimeBridge（不影响聊天）===
+        if _runtime_bridge:
+            try:
+                _runtime_bridge.on_user_message(str(user_id), str(last_user_msg))
+            except Exception as e:
+                logger.debug(f"RuntimeBridge 消息通知异常（已隔离）: {e}")
+
+        response = {
+            "id": "chatcmpl-yuyi",
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": "yuyi",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": reply
+                    },
+                    "finish_reason": "stop"
+                }
+            ]
+        }
+        return jsonify(response)
+
+    except Exception as e:
+        logger.error(f"处理请求失败: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({"status": "ok"})
+
+
+# Phase 5.0 Dashboard Upgrade —— 顶层 Dashboard V2 入口
+@app.route('/dashboard_v2', strict_slashes=False)
+@app.route('/dashboard_v2/')
+def dashboard_v2_index():
+    """羽依生命状态控制中心 V2 顶层入口(便于直接访问)。"""
+    from flask import send_from_directory
+    dashboard_v2_dir = Path(__file__).parent / "static" / "admin" / "dashboard_v2"
+    return send_from_directory(str(dashboard_v2_dir), "index.html")
+
+# ==================== 主动消息端点 ====================
+@app.route('/initiative', methods=['POST'])
+def initiative():
+    try:
+        data = request.get_json() or {}
+        user_id = data.get('user_id', 'default')
+        global orchestrator
+        if orchestrator is None:
+            init_orchestrator()
+        # init_orchestrator 可能仍然让 orchestrator=None（比如 Orchestrator 导入失败）
+        if orchestrator is None:
+            return jsonify({
+                "error": "Orchestrator 不可用",
+                "details": "可能 Orchestrator 模块导入失败，请检查依赖安装",
+            }), 503
+        # R2.7.6-AUDIT FIX: 移除过早的 orchestrator.target_user_id = user_id 赋值
+        #   改为在 process() 调用时通过 user_id 参数传入（防跨用户串话）
+        # 尝试调用 generate_initiative，如果不存在则降级使用 process
+        try:
+            msg = orchestrator.generate_initiative(user_id)
+        except AttributeError:
+            # 如果 generate_initiative 不存在，用 process 模拟
+            prompt = "你现在有什么想主动对我说的吗？如果有，请直接说；如果没有，请只回复一个空格。"
+            msg = orchestrator.process(prompt, user_id=user_id)
+            # 如果回复是空格或很短，视为无话
+            if msg and len(msg.strip()) <= 1:
+                msg = ""
+        if msg and msg.strip():
+            return jsonify({"has_message": True, "content": msg.strip()})
+        else:
+            return jsonify({"has_message": False, "content": ""})
+    except Exception as e:
+        logger.error(f"主动消息生成失败: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/v1/models', methods=['GET'])
+def list_models():
+    return jsonify({"data": [{"id": "yuyi", "object": "model"}]})
+
+
+# ============================================================
+# 管理端点 —— 统一放在 /admin/api/ 下
+# ============================================================
+
+
+def _get_agent_server():
+    """Phase 7.2.1-p2: 获取当前进程内的 Agent Server 实例。
+
+    新版（单进程架构）：Agent Server 由 api_server 自己在后台线程启动，
+    直接通过 get_agent_server() 取同进程内的单例即可；
+    跨进程信息（如 Dashboard 健康检查）走 data/agent_server_status.json。
+    """
+    try:
+        from src.remote.agent_server import get_agent_server
+        return get_agent_server()
+    except Exception:
+        return None
+
+
+def _read_agent_server_status() -> dict:
+    """Phase 7.2.1-p2: 从 data/agent_server_status.json 读取 Agent Server 状态。
+
+    该文件由 api_server 进程内的 AgentStatusWriter 线程定期写入（5 秒一次）。
+    如果文件不存在或超过 30 秒未更新，视为 Agent Server 未运行或 api_server 进程异常。
+    """
+    from pathlib import Path
+    from datetime import datetime, timedelta
+    status_file = Path("data/agent_server_status.json")
+    if not status_file.exists():
+        return {
+            "enabled": False,
+            "running": False,
+            "message": "Agent Server 状态文件不存在（api_server 的 AgentStatusWriter 未启动？）",
+        }
+    try:
+        import json
+        status = json.loads(status_file.read_text(encoding="utf-8"))
+        # 检查时间戳：超过 30 秒视为陈旧
+        updated_at = status.get("updated_at")
+        if updated_at:
+            try:
+                updated_time = datetime.fromisoformat(updated_at)
+                age = datetime.now() - updated_time
+                if age > timedelta(seconds=30):
+                    status["running"] = False
+                    status["stale"] = True
+                    status["message"] = f"状态文件已过期（最后更新于 {updated_at}，可能是 api_server 卡住或崩溃）"
+            except (ValueError, TypeError):
+                pass
+        return status
+    except Exception as e:
+        return {
+            "enabled": False,
+            "running": False,
+            "message": f"读取状态文件失败: {e}",
+        }
+
+
+def _run_async(coro):
+    """
+    在 Flask 同步上下文中执行异步代码（Flask threaded=True 安全版）。
+
+    注意：Flask 默认 threaded=True，每个请求在独立线程中运行。
+    asyncio.get_event_loop() 在非主线程会抛 RuntimeError（没有事件循环）。
+    解决方案：优先使用 Agent Server 线程的事件循环；否则创建临时事件循环。
+    """
+    # Phase 7.2.1-p2（单进程架构）：Agent Server 就是当前 api_server 进程内的后台线程，
+    #   直接通过 _get_agent_server() 取同进程单例即可。
+    agent_server = _get_agent_server()
+    if agent_server is None:
+        return None
+
+    # 方案 1：如果 Agent Server 线程正在运行，尝试把协程提交到它的事件循环
+    agent_loop = getattr(agent_server, "_loop", None)
+    if agent_loop is not None and isinstance(agent_loop, asyncio.AbstractEventLoop):
+        try:
+            future = asyncio.run_coroutine_threadsafe(coro, agent_loop)
+            return future.result(timeout=60)
+        except Exception as e:
+            logger.warning(f"提交到 Agent Server 事件循环失败，改用临时事件循环: {e}")
+
+    # 方案 2：创建临时独立事件循环（Flask 线程安全）
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
+    except Exception as e:
+        logger.error(f"异步执行失败: {e}")
+        return None
+
+
+@app.route('/admin/api/agents', methods=['GET'])
+def admin_list_agents():
+    """查看所有在线代理列表"""
+    # Phase 7.2.1-p2：读取 api_server 同进程的 AgentStatusWriter 写入的状态文件
+    status = _read_agent_server_status()
+    if not status.get("enabled") or not status.get("running"):
+        return jsonify({
+            "enabled": status.get("enabled", False),
+            "agents": [],
+            "message": status.get("message", "远程模块未启用"),
+        })
+    return jsonify({
+        "enabled": True,
+        "total": len(status.get("agents", [])),
+        "agents": status.get("agents", []),
+        "updated_at": status.get("updated_at"),
+    })
+
+
+@app.route('/admin/api/agents/status', methods=['GET'])
+def admin_agent_status():
+    """查看代理服务整体状态"""
+    # Phase 7.2.1-p2：读取 api_server 进程内 AgentStatusWriter 写入的状态文件
+    status = _read_agent_server_status()
+    return jsonify(status)
+
+
+@app.route('/admin/api/screen/context', methods=['GET'])
+def admin_screen_context():
+    """获取当前屏幕上下文（OCR 文字 + 描述）"""
+    if not orchestrator:
+        return jsonify({"error": "Orchestrator 未初始化"}), 500
+    try:
+        result = orchestrator.get_screen_context()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"available": False, "error": str(e)}), 500
+
+
+@app.route('/admin/api/screen/capture', methods=['POST'])
+def admin_screen_capture():
+    """手动请求截图"""
+    # Phase 7.2.1-p2（单进程架构）：Agent Server 已在同进程内运行，
+    # 但手动截图功能仍沿用旧的预留接口策略（避免引入跨线程同步复杂度）。
+    # 如需启用，可通过 _get_agent_server() 拿到实例后调用其内部方法。
+    return jsonify({
+        "success": False,
+        "error": "手动截图功能暂未开放（保持架构简单，后续按需启用）",
+        "hint": "Agent Server 已运行于 api_server 同进程，需要时可直接通过 _get_agent_server() 调用",
+    }), 501
+
+
+@app.route('/admin/api/control/click', methods=['POST'])
+def admin_control_click():
+    """执行鼠标点击"""
+    if not orchestrator:
+        return jsonify({"error": "Orchestrator 未初始化"}), 500
+
+    data = request.get_json(silent=True) or {}
+    x = data.get("x")
+    y = data.get("y")
+    button = data.get("button", "left")
+
+    if x is None or y is None:
+        return jsonify({"success": False, "error": "缺少 x 或 y 参数"}), 400
+
+    try:
+        result = _run_async(orchestrator.perform_click(x=x, y=y, button=button))
+        if result is None:
+            return jsonify({"success": False, "error": "异步执行失败（可能事件循环冲突）"}), 500
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/admin/api/control/type', methods=['POST'])
+def admin_control_type():
+    """执行文本输入"""
+    if not orchestrator:
+        return jsonify({"error": "Orchestrator 未初始化"}), 500
+
+    data = request.get_json(silent=True) or {}
+    text = data.get("text", "")
+
+    if not text:
+        return jsonify({"success": False, "error": "缺少 text 参数"}), 400
+
+    try:
+        result = _run_async(orchestrator.perform_type(text=text))
+        if result is None:
+            return jsonify({"success": False, "error": "异步执行失败"}), 500
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/admin/api/control/key', methods=['POST'])
+def admin_control_key():
+    """执行按键"""
+    if not orchestrator:
+        return jsonify({"error": "Orchestrator 未初始化"}), 500
+
+    data = request.get_json(silent=True) or {}
+    key = data.get("key", "")
+
+    if not key:
+        return jsonify({"success": False, "error": "缺少 key 参数"}), 400
+
+    try:
+        result = _run_async(orchestrator.perform_key(key=key))
+        if result is None:
+            return jsonify({"success": False, "error": "异步执行失败"}), 500
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/admin/api/control/status', methods=['GET'])
+def admin_control_status():
+    """查看控制模块状态"""
+    if not orchestrator:
+        return jsonify({"error": "Orchestrator 未初始化"}), 500
+    try:
+        return jsonify({
+            "control_enabled": orchestrator.control_manager is not None,
+            "screen_enabled": orchestrator.screen_context_manager is not None,
+            "agent_online": orchestrator.is_agent_online(),
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+if __name__ == '__main__':
+    # 初始化 Orchestrator（启动时加载模型）
+    init_orchestrator()
+    # R2.7.6-DEPLOY: 端口从 .env 读取，默认 5000（之前写死 port=5000，
+    # 改 .env YUYI_API_PORT 不生效 → systemd 起的端口和 nginx 反代配的端口对不上）
+    try:
+        _port = int(os.getenv("YUYI_API_PORT", "5000") or "5000")
+    except ValueError:
+        _port = 5000
+    _host = os.getenv("YUYI_API_HOST", "0.0.0.0") or "0.0.0.0"
+    logger.info(f"[R2.7.6-DEPLOY] api_server 启动：host={_host}, port={_port}")
+    app.run(host=_host, port=_port, debug=False, threaded=True)

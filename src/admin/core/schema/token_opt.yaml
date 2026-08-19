@@ -1,0 +1,6 @@
+# Token 优化配置 Schema
+enabled:
+  type: boolean
+  required: true
+  default: false
+  description: 是否启用 token 优化

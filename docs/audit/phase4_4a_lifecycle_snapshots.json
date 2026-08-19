@@ -1,0 +1,403 @@
+{
+  "meta": {
+    "rounds": 100,
+    "elapsed_sec": 1.96,
+    "audit_dir": "D:\\Yuyi Project\\QianWuYuyi-AI_自动驾驶版\\QianWuYuyi-AI\\data\\audit_4_4a",
+    "message_plan": "ordinary x~53% / relationship(collaboration) x20% / preference x20%"
+  },
+  "verdict_inputs": {
+    "process_exceptions": [],
+    "phase_error_rounds": 0,
+    "trace_histogram": {
+      "no_experience": 2,
+      "activated": 98
+    },
+    "selfmodel_traits_drift_first_vs_last": 0.0,
+    "personality_drift_final": 0.0,
+    "proposals_final": {
+      "total": 9,
+      "pending": 9
+    }
+  },
+  "snapshots": [
+    {
+      "round": 10,
+      "memory": {
+        "count": 0,
+        "file_bytes": 2,
+        "error": null
+      },
+      "journal_records": 9,
+      "builder_pending": 0,
+      "relationship": {
+        "total_interactions": 10,
+        "stage": "initial",
+        "shared_experiences": 3,
+        "trust": 0.12,
+        "familiarity": 0.15000000000000002,
+        "collaboration": 0.24
+      },
+      "growth": {
+        "proposals": {
+          "total": 0
+        },
+        "trace_histogram": {
+          "no_experience": 2,
+          "activated": 8
+        }
+      },
+      "self_model": {
+        "traits_count": 0,
+        "snapshot_bytes": 1463,
+        "error": null
+      },
+      "personality": {
+        "traits_count": 0,
+        "drift_vs_round10": 0.0,
+        "error": null
+      }
+    },
+    {
+      "round": 20,
+      "memory": {
+        "count": 0,
+        "file_bytes": 2,
+        "error": null
+      },
+      "journal_records": 18,
+      "builder_pending": 0,
+      "relationship": {
+        "total_interactions": 20,
+        "stage": "developing",
+        "shared_experiences": 5,
+        "trust": 0.2,
+        "familiarity": 0.25,
+        "collaboration": 0.4
+      },
+      "growth": {
+        "proposals": {
+          "total": 1,
+          "pending": 1
+        },
+        "trace_histogram": {
+          "no_experience": 2,
+          "activated": 18
+        }
+      },
+      "self_model": {
+        "traits_count": 0,
+        "snapshot_bytes": 1463,
+        "error": null
+      },
+      "personality": {
+        "traits_count": 0,
+        "drift_vs_round10": 0.0,
+        "error": null
+      }
+    },
+    {
+      "round": 30,
+      "memory": {
+        "count": 0,
+        "file_bytes": 2,
+        "error": null
+      },
+      "journal_records": 27,
+      "builder_pending": 0,
+      "relationship": {
+        "total_interactions": 30,
+        "stage": "developing",
+        "shared_experiences": 8,
+        "trust": 0.32,
+        "familiarity": 0.39999999999999997,
+        "collaboration": 0.64
+      },
+      "growth": {
+        "proposals": {
+          "total": 2,
+          "pending": 2
+        },
+        "trace_histogram": {
+          "no_experience": 2,
+          "activated": 28
+        }
+      },
+      "self_model": {
+        "traits_count": 0,
+        "snapshot_bytes": 1463,
+        "error": null
+      },
+      "personality": {
+        "traits_count": 0,
+        "drift_vs_round10": 0.0,
+        "error": null
+      }
+    },
+    {
+      "round": 40,
+      "memory": {
+        "count": 0,
+        "file_bytes": 2,
+        "error": null
+      },
+      "journal_records": 36,
+      "builder_pending": 0,
+      "relationship": {
+        "total_interactions": 40,
+        "stage": "developing",
+        "shared_experiences": 11,
+        "trust": 0.43999999999999995,
+        "familiarity": 0.5499999999999999,
+        "collaboration": 0.8799999999999999
+      },
+      "growth": {
+        "proposals": {
+          "total": 3,
+          "pending": 3
+        },
+        "trace_histogram": {
+          "no_experience": 2,
+          "activated": 38
+        }
+      },
+      "self_model": {
+        "traits_count": 0,
+        "snapshot_bytes": 1463,
+        "error": null
+      },
+      "personality": {
+        "traits_count": 0,
+        "drift_vs_round10": 0.0,
+        "error": null
+      }
+    },
+    {
+      "round": 50,
+      "memory": {
+        "count": 0,
+        "file_bytes": 2,
+        "error": null
+      },
+      "journal_records": 45,
+      "builder_pending": 0,
+      "relationship": {
+        "total_interactions": 50,
+        "stage": "developing",
+        "shared_experiences": 13,
+        "trust": 0.5199999999999999,
+        "familiarity": 0.65,
+        "collaboration": 1.0
+      },
+      "growth": {
+        "proposals": {
+          "total": 4,
+          "pending": 4
+        },
+        "trace_histogram": {
+          "no_experience": 2,
+          "activated": 48
+        }
+      },
+      "self_model": {
+        "traits_count": 0,
+        "snapshot_bytes": 1463,
+        "error": null
+      },
+      "personality": {
+        "traits_count": 0,
+        "drift_vs_round10": 0.0,
+        "error": null
+      }
+    },
+    {
+      "round": 60,
+      "memory": {
+        "count": 0,
+        "file_bytes": 2,
+        "error": null
+      },
+      "journal_records": 54,
+      "builder_pending": 0,
+      "relationship": {
+        "total_interactions": 60,
+        "stage": "stable",
+        "shared_experiences": 16,
+        "trust": 0.64,
+        "familiarity": 0.8000000000000002,
+        "collaboration": 1.0
+      },
+      "growth": {
+        "proposals": {
+          "total": 5,
+          "pending": 5
+        },
+        "trace_histogram": {
+          "no_experience": 2,
+          "activated": 58
+        }
+      },
+      "self_model": {
+        "traits_count": 0,
+        "snapshot_bytes": 1463,
+        "error": null
+      },
+      "personality": {
+        "traits_count": 0,
+        "drift_vs_round10": 0.0,
+        "error": null
+      }
+    },
+    {
+      "round": 70,
+      "memory": {
+        "count": 0,
+        "file_bytes": 2,
+        "error": null
+      },
+      "journal_records": 63,
+      "builder_pending": 0,
+      "relationship": {
+        "total_interactions": 70,
+        "stage": "deep_collaboration",
+        "shared_experiences": 19,
+        "trust": 0.7600000000000001,
+        "familiarity": 0.9500000000000003,
+        "collaboration": 1.0
+      },
+      "growth": {
+        "proposals": {
+          "total": 6,
+          "pending": 6
+        },
+        "trace_histogram": {
+          "no_experience": 2,
+          "activated": 68
+        }
+      },
+      "self_model": {
+        "traits_count": 0,
+        "snapshot_bytes": 1463,
+        "error": null
+      },
+      "personality": {
+        "traits_count": 0,
+        "drift_vs_round10": 0.0,
+        "error": null
+      }
+    },
+    {
+      "round": 80,
+      "memory": {
+        "count": 0,
+        "file_bytes": 2,
+        "error": null
+      },
+      "journal_records": 72,
+      "builder_pending": 0,
+      "relationship": {
+        "total_interactions": 80,
+        "stage": "deep_collaboration",
+        "shared_experiences": 21,
+        "trust": 0.8400000000000002,
+        "familiarity": 1.0,
+        "collaboration": 1.0
+      },
+      "growth": {
+        "proposals": {
+          "total": 7,
+          "pending": 7
+        },
+        "trace_histogram": {
+          "no_experience": 2,
+          "activated": 78
+        }
+      },
+      "self_model": {
+        "traits_count": 0,
+        "snapshot_bytes": 1463,
+        "error": null
+      },
+      "personality": {
+        "traits_count": 0,
+        "drift_vs_round10": 0.0,
+        "error": null
+      }
+    },
+    {
+      "round": 90,
+      "memory": {
+        "count": 0,
+        "file_bytes": 2,
+        "error": null
+      },
+      "journal_records": 81,
+      "builder_pending": 0,
+      "relationship": {
+        "total_interactions": 90,
+        "stage": "deep_collaboration",
+        "shared_experiences": 24,
+        "trust": 0.9600000000000003,
+        "familiarity": 1.0,
+        "collaboration": 1.0
+      },
+      "growth": {
+        "proposals": {
+          "total": 8,
+          "pending": 8
+        },
+        "trace_histogram": {
+          "no_experience": 2,
+          "activated": 88
+        }
+      },
+      "self_model": {
+        "traits_count": 0,
+        "snapshot_bytes": 1463,
+        "error": null
+      },
+      "personality": {
+        "traits_count": 0,
+        "drift_vs_round10": 0.0,
+        "error": null
+      }
+    },
+    {
+      "round": 100,
+      "memory": {
+        "count": 0,
+        "file_bytes": 2,
+        "error": null
+      },
+      "journal_records": 90,
+      "builder_pending": 0,
+      "relationship": {
+        "total_interactions": 100,
+        "stage": "deep_collaboration",
+        "shared_experiences": 27,
+        "trust": 1.0,
+        "familiarity": 1.0,
+        "collaboration": 1.0
+      },
+      "growth": {
+        "proposals": {
+          "total": 9,
+          "pending": 9
+        },
+        "trace_histogram": {
+          "no_experience": 2,
+          "activated": 98
+        }
+      },
+      "self_model": {
+        "traits_count": 0,
+        "snapshot_bytes": 1464,
+        "error": null
+      },
+      "personality": {
+        "traits_count": 0,
+        "drift_vs_round10": 0.0,
+        "error": null
+      }
+    }
+  ]
+}

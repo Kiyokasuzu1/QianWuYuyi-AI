@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>羽依 Live2D · 情绪驱动</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: linear-gradient(135deg, #fdf2f8 0%, #ede9fe 50%, #e0f2fe 100%);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  color: #4c3f7a;
+  overflow: hidden;
+}
+
+/* 背景光晕 */
+.bg-decoration {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  overflow: hidden;
+}
+.blob {
+  position: absolute; border-radius: 50%; filter: blur(60px); opacity: 0.5;
+}
+.blob-1 { width: 400px; height: 400px; background: #fbcfe8; top: -100px; left: -100px; }
+.blob-2 { width: 500px; height: 500px; background: #c4b5fd; bottom: -150px; right: -150px; }
+.blob-3 { width: 300px; height: 300px; background: #bae6fd; top: 40%; left: 50%; transform: translate(-50%, -50%); }
+
+#canvas-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  position: relative;
+  z-index: 1;
+}
+
+#live2d-canvas {
+  width: 400px;
+  height: 560px;
+  max-width: 100%;
+  max-height: 80vh;
+  display: block;
+}
+
+#info-panel {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 16px;
+  padding: 16px 20px;
+  min-width: 220px;
+  box-shadow: 0 8px 32px rgba(196, 181, 253, 0.2);
+  z-index: 100;
+}
+
+#info-panel .label {
+  font-size: 12px;
+  color: #a78bfa;
+  margin-bottom: 4px;
+  letter-spacing: 1px;
+}
+#info-panel .value {
+  font-size: 16px;
+  color: #4c3f7a;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+#info-panel .value:last-child { margin-bottom: 0; }
+
+#message-box {
+  position: fixed;
+  bottom: 90px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 20px;
+  padding: 10px 24px;
+  color: #4c3f7a;
+  font-size: 15px;
+  box-shadow: 0 4px 20px rgba(196, 181, 253, 0.25);
+  z-index: 100;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  max-width: 80%;
+  text-align: center;
+}
+#message-box.show { opacity: 1; }
+
+#controls {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 14px;
+  padding: 10px 16px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  max-width: 90%;
+  z-index: 100;
+  box-shadow: 0 4px 20px rgba(196, 181, 253, 0.2);
+}
+
+#controls button {
+  background: rgba(167, 139, 250, 0.1);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  color: #4c3f7a;
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+#controls button:hover {
+  background: rgba(167, 139, 250, 0.3);
+  border-color: rgba(167, 139, 250, 0.6);
+  transform: translateY(-1px);
+}
+
+#controls button.active {
+  background: rgba(167, 139, 250, 0.5);
+  color: #fff;
+  border-color: rgba(167, 139, 250, 0.8);
+}
+
+#pip-btn {
+  background: rgba(251, 191, 36, 0.15);
+  border-color: rgba(251, 191, 36, 0.4);
+  color: #b45309;
+  font-weight: 600;
+}
+#pip-btn:hover {
+  background: rgba(251, 191, 36, 0.35);
+  border-color: rgba(251, 191, 36, 0.7);
+  color: #92400e;
+}
+#pip-btn.active {
+  background: rgba(251, 191, 36, 0.5);
+  color: #fff;
+  border-color: rgba(251, 191, 36, 0.8);
+}
+
+#loading {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 18px;
+  color: #a78bfa;
+  z-index: 200;
+}
+
+#title {
+  position: fixed;
+  top: 15px;
+  left: 20px;
+  font-size: 14px;
+  color: rgba(76, 63, 122, 0.6);
+  z-index: 100;
+  letter-spacing: 1px;
+}
+#title .dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  background: #10b981;
+  border-radius: 50%;
+  margin-right: 6px;
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.2); }
+}
+</style>
+</head>
+<body>
+
+<div class="bg-decoration">
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  <div class="blob blob-3"></div>
+</div>
+
+<div id="title"><span class="dot"></span>羽依 Live2D · 情绪驱动</div>
+<div id="loading">正在加载模型...</div>
+
+<div id="canvas-container">
+  <canvas id="live2d-canvas" width="500" height="700"></canvas>
+</div>
+
+<div id="info-panel" style="display:none;">
+  <div class="label">当前情绪</div>
+  <div class="value" id="info-emotion">平静</div>
+  <div class="label">表情</div>
+  <div class="value" id="info-expression">默认</div>
+  <div class="label">触发原因</div>
+  <div class="value" id="info-reason" style="font-size:12px;color:#a78bfa;">--</div>
+</div>
+
+<div id="message-box"></div>
+
+<div id="controls" style="display:none;">
+  <button data-exp="平静" class="active">默认</button>
+  <button data-exp="哇塞">哇塞</button>
+  <button data-exp="害羞">害羞</button>
+  <button data-exp="开心">爱心眼</button>
+  <button data-exp="生气">生气</button>
+  <button data-exp="难过">哭</button>
+  <button data-exp="好奇">疑问</button>
+  <button data-exp="委屈">委屈</button>
+  <span style="width:1px;background:rgba(167,139,250,0.3);margin:4px 4px;"></span>
+  <button id="pip-btn" title="将羽依置顶到屏幕上方（需 Chrome 116+）">📌 置顶小窗</button>
+</div>
+
+<!-- Live2D SDK 加载顺序:
+  1. Cubism Core 4 (本地，从官网 SDK 提取)
+  2. pixi.js v5
+  3. pixi-live2d-display v0.3.1 (支持 pixi v5 + Cubism 4)
+-->
+<script src="/admin/libs/live2dcubismcore.min.js?v=4"></script>
+<script src="/admin/libs/pixi.min.js?v=5"></script>
+<script src="/admin/libs/pixi-live2d-display.min.js?v=31"></script>
+
+<script>
+const MODEL_PATH = "/admin/l2d/A.雪芽2.0.model3.json";
+const STATE_API = "/admin/api/character";
+const POLL_INTERVAL = 2000; // 2秒轮询一次
+
+const canvas = document.getElementById("live2d-canvas");
+const loadingEl = document.getElementById("loading");
+const controlsEl = document.getElementById("controls");
+const infoPanel = document.getElementById("info-panel");
+const messageBox = document.getElementById("message-box");
+
+let model = null;
+let app = null;
+
+// 当前已应用的表情签名（避免重复设置）
+let currentExpressionKey = "";
+let expressionResetTimer = null;
+
+// 表情名 → 参数列表（与后端 l2d_adapter.py 保持一致）
+const EXPRESSION_PARAMS = {
+  "哇塞": [{id: "Param211", value: 1.0}, {id: "ParamCheek", value: 0.6}],
+  "害羞": [{id: "open_Cheek", value: 1.0}, {id: "ParamCheek", value: 0.8}],
+  "开心": [{id: "Param207", value: 1.0}, {id: "ParamCheek", value: 0.5}],
+  "生气": [{id: "open_09", value: 0.8}],
+  "难过": [{id: "open_06", value: 0.6}],
+  "好奇": [{id: "open_10", value: 0.7}],
+  "委屈": [{id: "ParamBrowRAngle2", value: 0.8}, {id: "ParamCheek", value: 0.3}],
+  "平静": []
+};
+
+async function initLive2D() {
+  try {
+    if (typeof window.Live2DCubismCore === 'undefined') {
+      throw new Error("Live2DCubismCore 未加载 (Cubism 4 Core)");
+    }
+    if (typeof window.PIXI === 'undefined') {
+      throw new Error("PIXI 未加载 (pixi.js)");
+    }
+    if (!window.PIXI.live2d || !window.PIXI.live2d.Live2DModel) {
+      throw new Error("PIXI.live2d.Live2DModel 未加载 (pixi-live2d-display)");
+    }
+
+    app = new PIXI.Application({
+      view: canvas,
+      resizeTo: window,
+      backgroundAlpha: 0,
+      antialias: true,
+    });
+
+    model = await PIXI.live2d.Live2DModel.from(MODEL_PATH);
+
+    const renderer = app.renderer;
+    const canvasEl = renderer.view || renderer.canvas;
+    const w = canvasEl.width || renderer.width;
+    const h = canvasEl.height || renderer.height;
+
+    // 自动缩放
+    const scale = Math.min(w / model.width, h / model.height) * 0.85;
+    model.scale.set(scale);
+    model.x = w / 2 - model.width / 2;
+    model.y = h / 2 - model.height / 2;
+
+    app.stage.addChild(model);
+
+    // 自动眨眼 + 呼吸
+    model.autoInteract = true;
+
+    // 隐藏 loading，显示控制按钮
+    loadingEl.style.display = "none";
+    controlsEl.style.display = "flex";
+    infoPanel.style.display = "block";
+
+    console.log("Live2D 模型加载成功 (Cubism 4 + pixi.js)");
+    console.log("[调试] Core Model 参数数量:", model.internalModel?.coreModel?.getParameterCount?.() || 'N/A');
+
+    // 调试: 暴露到 window
+    window._l2dModel = model;
+    window._l2dCoreModel = model.internalModel?.coreModel;
+    window._l2dDebug = () => {
+      const core = model.internalModel?.coreModel;
+      if (!core) { console.log('coreModel 不可用'); return; }
+      const ids = core.getParameterIds?.() || [];
+      const rows = ids.map(id => ({
+        id,
+        value: core.getParameterValueById(id),
+      }));
+      console.table(rows);
+      return rows;
+    };
+
+    // 启动情绪轮询
+    startPolling();
+  } catch (e) {
+    loadingEl.textContent = "加载失败: " + e.message;
+    console.error("Live2D 加载失败:", e);
+  }
+}
+
+/**
+ * 应用表情：直接设置模型参数
+ * @param {string} expressionName  表情名（与 EXPRESSION_PARAMS 键对应）
+ * @param {Array}  customParams    自定义参数列表（优先级高于 expressionName）
+ * @param {number} duration        持续秒数，>0 时到时自动恢复默认
+ */
+function applyExpression(expressionName, customParams, duration) {
+  if (!model || !model.internalModel) return;
+
+  const params = customParams || EXPRESSION_PARAMS[expressionName] || [];
+  const coreModel = model.internalModel.coreModel;
+  if (!coreModel) return;
+  const key = expressionName + JSON.stringify(params);
+
+  if (key === currentExpressionKey) return;
+  currentExpressionKey = key;
+
+  // 先重置所有已知表情参数为 0
+  const allParams = ["Param207", "Param211", "open_Cheek", "open_06",
+                      "open_09", "open_10", "ParamCheek", "ParamBrowRAngle2"];
+  allParams.forEach(pid => {
+    try { coreModel.setParameterValueById(pid, 0); } catch(e) {}
+  });
+
+  // 应用新参数（限制在 [-1, 1] 范围）
+  params.forEach(p => {
+    try {
+      const val = Math.max(-1, Math.min(1, p.value));
+      coreModel.setParameterValueById(p.id, val);
+    } catch(e) {
+      console.warn(`参数 ${p.id} 设置失败`, e);
+    }
+  });
+
+  updateInfoPanel(expressionName);
+  updateButtons(expressionName);
+
+  if (expressionName && expressionName !== "平静") {
+    showMessage("");
+  }
+
+  if (expressionResetTimer) {
+    clearTimeout(expressionResetTimer);
+    expressionResetTimer = null;
+  }
+  if (duration && duration > 0) {
+    expressionResetTimer = setTimeout(() => {
+      applyExpression("平静", [], 0);
+    }, duration * 1000);
+  }
+}
+
+function updateInfoPanel(expressionName) {
+  const elE = document.getElementById("info-emotion");
+  const elX = document.getElementById("info-expression");
+  const elR = document.getElementById("info-reason");
+  if (elE) elE.textContent = expressionName || "平静";
+  if (elX) elX.textContent = expressionName || "默认";
+  if (elR) elR.textContent = expressionName ? `自动: ${expressionName}` : "--";
+}
+
+function updateButtons(expressionName) {
+  controlsEl.querySelectorAll("button").forEach(b => {
+    b.classList.toggle("active", b.dataset.exp === expressionName);
+  });
+}
+
+let messageTimer = null;
+function showMessage(text) {
+  if (!text) { messageBox.classList.remove("show"); return; }
+  messageBox.textContent = text;
+  messageBox.classList.add("show");
+  if (messageTimer) clearTimeout(messageTimer);
+  messageTimer = setTimeout(() => messageBox.classList.remove("show"), 4000);
+}
+
+// ============================================================
+// 情绪状态轮询
+// ============================================================
+async function pollCharacterState() {
+  try {
+    const resp = await fetch(STATE_API);
+    if (!resp.ok) return;
+    const data = await resp.json();
+
+    const action = data.l2d_action;
+    if (!action) return;
+
+    const expName = action.expression_name || "平静";
+    const params = action.params || [];
+    const duration = action.duration || 0;
+    const message = action.message || "";
+    const reason = action.reason || "";
+
+    // 应用表情（参数优先）
+    applyExpression(expName, params, duration);
+
+    // 更新原因
+    const elR = document.getElementById("info-reason");
+    if (elR) elR.textContent = reason || "--";
+
+    // 显示台词（仅当有 duration 时认为是临时消息）
+    if (duration > 0 && message) {
+      showMessage(message);
+    }
+  } catch (e) {
+    console.warn("轮询失败:", e);
+  }
+}
+
+let pollTimer = null;
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  // 立即拉一次
+  pollCharacterState();
+  pollTimer = setInterval(pollCharacterState, POLL_INTERVAL);
+  console.log(`情绪轮询已启动，间隔 ${POLL_INTERVAL}ms`);
+}
+
+// ============================================================
+// 手动控制按钮
+// ============================================================
+controlsEl.addEventListener("click", (e) => {
+  if (e.target.tagName !== "BUTTON") return;
+  const expName = e.target.dataset.exp;
+  // 手动触发时禁用自动恢复（持续到下次轮询或下次切换）
+  applyExpression(expName, null, 0);
+  // 取消自动轮询的覆盖（让手动表情停留一段时间）
+  if (expressionResetTimer) {
+    clearTimeout(expressionResetTimer);
+    expressionResetTimer = null;
+  }
+});
+
+// 鼠标跟随
+let mouseX = 0, mouseY = 0;
+let mouseTarget = window; // 当前监听鼠标的窗口（主页或 PiP 窗口）
+
+function attachMouseMove(target) {
+  target.addEventListener("mousemove", (e) => {
+    const w = target.innerWidth || target.clientWidth || 1;
+    const h = target.innerHeight || target.clientHeight || 1;
+    mouseX = (e.clientX / w - 0.5) * 2;
+    mouseY = (e.clientY / h - 0.5) * 2;
+  });
+}
+attachMouseMove(window);
+
+// 在 ticker 中应用鼠标跟随（不覆盖表情参数）
+function setupMouseFollow() {
+  if (!app || !model) return;
+  app.ticker.add(() => {
+    if (!model || !model.internalModel) return;
+    const coreModel = model.internalModel.coreModel;
+    if (!coreModel) return;
+    try {
+      coreModel.setParameterValueById("ParamAngleXX", mouseX * 30);
+    } catch(e) {}
+    try {
+      coreModel.setParameterValueById("ParamAngleYY", mouseY * 30);
+    } catch(e) {}
+    try {
+      coreModel.setParameterValueById("ParamAngleZZ", 0);
+    } catch(e) {}
+    try {
+      const ids = coreModel.getParameterIds?.() || [];
+      if (ids && ids.length) {
+        const eyeX = ids.find(id => /EyeBallX/i.test(id) || /eyeballx/i.test(id));
+        const eyeY = ids.find(id => /EyeBallY/i.test(id) || /eyebally/i.test(id));
+        if (eyeX) coreModel.setParameterValueById(eyeX, mouseX);
+        if (eyeY) coreModel.setParameterValueById(eyeY, mouseY);
+      }
+    } catch(e) {}
+  });
+}
+
+// ============================================================
+// 重新计算模型尺寸（用于 PiP 进入/退出时调整）
+// ============================================================
+function resizeModel() {
+  if (!app || !model) return;
+  const renderer = app.renderer;
+  const canvasEl = renderer.view || renderer.canvas;
+  const w = canvas.clientWidth || canvasEl.width || renderer.width;
+  const h = canvas.clientHeight || canvasEl.height || renderer.height;
+  if (renderer.resize) {
+    renderer.resize(w, h);
+  } else {
+    renderer.view.width = w;
+    renderer.view.height = h;
+  }
+  const scale = Math.min(w / model.width, h / model.height) * 0.85;
+  model.scale.set(scale);
+  model.x = w / 2 - model.width / 2;
+  model.y = h / 2 - model.height / 2;
+  console.log(`模型尺寸调整: ${w}x${h}, scale=${scale.toFixed(3)}`);
+}
+
+// ============================================================
+// Document Picture-in-Picture（置顶小窗）
+// ============================================================
+let pipWindow = null;
+let canvasOriginalParent = null;
+const pipBtn = document.getElementById("pip-btn");
+
+async function togglePiP() {
+  // 已在小窗 → 退出
+  if (pipWindow && !pipWindow.closed) {
+    pipWindow.close();
+    return;
+  }
+
+  // 检查 Document PiP 支持
+  if (!("documentPictureInPicture" in window)) {
+    // 回退：window.open 小窗（不能置顶，但至少能独立）
+    const ok = confirm(
+      "当前浏览器不支持置顶小窗（需要 Chrome 116+）。\n\n" +
+      "点击\"确定\"将打开独立小窗（注意：浏览器限制下不会自动置顶，需要你手动按住置顶键拖动）。"
+    );
+    if (ok) {
+      window.open(
+        "/admin/l2d",
+        "yuyi-l2d-mini",
+        "width=320,height=480,menubar=no,toolbar=no,location=no,status=no"
+      );
+    }
+    return;
+  }
+
+  // 进入 Document PiP
+  try {
+    pipWindow = await documentPictureInPicture.requestWindow({
+      width: 360,
+      height: 540,
+    });
+    pipBtn.classList.add("active");
+    pipBtn.textContent = "✕ 退出小窗";
+
+    // 1. 复制样式表到 PiP 窗口
+    document.querySelectorAll("style").forEach(s => {
+      try {
+        pipWindow.document.head.appendChild(s.cloneNode(true));
+      } catch(e) {}
+    });
+
+    // 2. 注入 PiP 窗口专用样式
+    const pipStyle = pipWindow.document.createElement("style");
+    pipStyle.textContent = `
+      html, body {
+        margin: 0; padding: 0;
+        background: transparent;
+        overflow: hidden;
+        width: 100vw; height: 100vh;
+      }
+      #canvas-container {
+        width: 100vw !important;
+        height: 100vh !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #live2d-canvas {
+        width: 100% !important;
+        height: 100% !important;
+      }
+      /* 在 PiP 中隐藏控制条 */
+      #controls, #info-panel, #loading, #title, #message-box {
+        display: none !important;
+      }
+    `;
+    pipWindow.document.head.appendChild(pipStyle);
+
+    // 3. 移动 canvas 到 PiP 窗口
+    canvasOriginalParent = canvas.parentElement;
+    const canvasContainer = document.getElementById("canvas-container");
+    pipWindow.document.body.appendChild(canvasContainer);
+
+    // 4. 切换鼠标监听到 PiP 窗口
+    mouseTarget = pipWindow;
+    attachMouseMove(pipWindow);
+
+    // 5. 调整尺寸（等下一帧确保 layout 完成）
+    requestAnimationFrame(() => {
+      resizeModel();
+      // 再延迟一次确保 layout 完成
+      setTimeout(resizeModel, 100);
+    });
+
+    // 6. 监听 PiP 窗口大小变化
+    pipWindow.addEventListener("resize", () => {
+      resizeModel();
+    });
+
+    // 7. 监听关闭事件 → 还原
+    pipWindow.addEventListener("pagehide", () => {
+      if (canvasOriginalParent) {
+        canvasOriginalParent.appendChild(canvasContainer);
+      }
+      pipWindow = null;
+      pipBtn.classList.remove("active");
+      pipBtn.textContent = "📌 置顶小窗";
+      mouseTarget = window;
+      // 还原尺寸
+      requestAnimationFrame(() => {
+        resizeModel();
+        setTimeout(resizeModel, 100);
+      });
+    }, { once: true });
+
+    console.log("已进入置顶小窗模式");
+  } catch (e) {
+    console.error("进入小窗失败:", e);
+    alert("进入小窗失败: " + e.message);
+  }
+}
+
+pipBtn.addEventListener("click", togglePiP);
+
+// 启动
+window.addEventListener("load", async () => {
+  loadingEl.textContent = "正在加载 SDK...";
+
+  // 等待 SDK 加载完成（最多 10 秒）
+  const waitForSDK = () => new Promise((resolve, reject) => {
+    const start = Date.now();
+    const check = () => {
+      if (window.Live2DCubismCore && window.PIXI && window.PIXI.live2d) {
+        resolve();
+      } else if (Date.now() - start > 10000) {
+        reject(new Error('SDK 加载超时'));
+      } else {
+        setTimeout(check, 100);
+      }
+    };
+    check();
+  });
+
+  try {
+    await waitForSDK();
+  } catch (e) {
+    loadingEl.textContent = "SDK 加载失败: 缺少 " +
+      (typeof window.Live2DCubismCore === 'undefined' ? 'Live2DCubismCore(Core4) ' : '') +
+      (typeof window.PIXI === 'undefined' ? 'PIXI(pixi.js) ' : '') +
+      (!window.PIXI?.live2d ? 'PIXI.live2d(pixi-live2d-display)' : '');
+    console.error("缺少 SDK:", {
+      Live2DCubismCore: typeof window.Live2DCubismCore,
+      PIXI: typeof window.PIXI,
+      PIXI_live2d: typeof window.PIXI?.live2d,
+    });
+    return;
+  }
+
+  loadingEl.textContent = "正在加载模型...";
+  try {
+    await initLive2D();
+    setupMouseFollow();
+  } catch (e) {
+    loadingEl.textContent = "模型加载失败: " + e.message;
+    console.error("Live2D 加载失败:", e);
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <title>remote</title>
+  <circle cx="12" cy="12" r="8.5" />
+  <path d="M3.5 12 Q8 12 12 12 Q16 12 20.5 12" />
+  <path d="M12 3.5 Q12 8 12 12 Q12 16 12 20.5" />
+  <path d="M5.5 6.5 Q8.7 11.5 8.7 12 Q8.7 12.5 5.5 17.5" />
+  <path d="M18.5 6.5 Q15.3 11.5 15.3 12 Q15.3 12.5 18.5 17.5" />
+</svg>

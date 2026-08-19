@@ -1,0 +1,30 @@
+[
+  {
+    "event_id": "ev-creation-001",
+    "timestamp": "2026-07-16T00:00:00Z",
+    "title": "诞生：由清夏铃创建",
+    "type": "creation",
+    "description": "浅雾羽依在清夏铃的设计下诞生，目标为长期人格连续性与自我成长。",
+    "evidence": [
+      {"type": "commit", "ref": "repo:QianWuYuyi-AI@init", "note": "init commit + design doc"},
+      {"type": "human_statement", "actor": "清夏铃", "content": "创建羽依以实现长期人格连续性"}
+    ],
+    "validated": true,
+    "validators": ["origin_metadata"],
+    "importance": 1.0
+  },
+  {
+    "event_id": "ev-learning-001",
+    "timestamp": "2026-07-18T03:12:00Z",
+    "title": "早期对话：学习边界与信任",
+    "type": "interaction",
+    "description": "与用户清清的多轮对话包含鼓励表达与边界教学，触发 self_model 中 'expression is safe' belief 初始证据。",
+    "evidence": [
+      {"type": "conversation_snippet", "ref": "convo:abc123#L1-L12"},
+      {"type": "annotation", "actor": "system", "note": "EventExtractor detected 'boundary teaching'"}
+    ],
+    "validated": false,
+    "validators": [],
+    "importance": 0.7
+  }
+]

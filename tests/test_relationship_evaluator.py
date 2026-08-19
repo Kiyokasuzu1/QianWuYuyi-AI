@@ -10,14 +10,22 @@ from src.relationship.relationship_event import RelationshipEvent
 
 def make_event(event_type="collaboration", signal_strength=0.7, evidence_ids=None,
                potential_dimensions=None, description=None):
-    """构造测试事件。None 表示使用默认值，空列表/集合不会被覆盖。"""
+    """构造测试事件（Phase 4.2-A：统一 TypedDict 键名）。
+    None 表示使用默认值，空列表不会被覆盖。"""
     return RelationshipEvent(
-        event_id="test_001",
-        event_type=event_type,
+        id="test_001",
+        type=event_type,
+        content=description if description is not None else "我们一起开发羽依项目",
+        source_memory_id="",
+        confidence=signal_strength,
+        created_at="2026-08-12T00:00:00+00:00",
+        status="observed",
+        meaning=None,
+        memory_type=None,
+        user_id="",
+        participants=["user", "yuyi"],
         evidence_ids=evidence_ids if evidence_ids is not None else ["mem_001"],
-        signal_strength=signal_strength,
-        potential_dimensions=potential_dimensions if potential_dimensions is not None else {"collaboration"},
-        description=description if description is not None else "我们一起开发羽依项目",
+        potential_dimensions=potential_dimensions if potential_dimensions is not None else ["collaboration"],
     )
 
 
@@ -63,7 +71,7 @@ def test_no_evidence_rejected():
 
 def test_no_dimensions_rejected():
     evaluator = RelationshipEvaluator()
-    event = make_event(potential_dimensions=set())  # 空集合不会再被覆盖
+    event = make_event(potential_dimensions=[])  # 空列表不会再被覆盖
     result = evaluator.evaluate(event)
     assert result.passed is False
     assert result.rejected_by == "dimension_check"
@@ -82,9 +90,9 @@ def test_evaluator_does_not_modify_event():
     """验证器不应修改原始事件"""
     evaluator = RelationshipEvaluator()
     event = make_event()
-    before = event.to_dict()
+    before = dict(event)
     evaluator.evaluate(event)
-    after = event.to_dict()
+    after = dict(event)
     assert before == after
 
 

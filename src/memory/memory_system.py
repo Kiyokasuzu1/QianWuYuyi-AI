@@ -20,8 +20,9 @@ from datetime import datetime
 
 from src.memory.identity_memory import IdentityMemory
 from src.memory.memory_store import MemoryStore
-from src.memory.vector import VectorMemory
+from src.memory.memory_provider import MemoryProvider
 from src.memory.event_memory import EventMemory
+from src.memory.memory_relevance_evaluator import MemoryRelevanceEvaluator
 
 
 
@@ -30,13 +31,49 @@ class MemorySystem:
 
     def __init__(self):
 
-        self.store = MemoryStore()
+        # Phase 4.4.2 Memory Authority 收口：优先通过 RuntimeBridge 获取共享实例
+        self.store = None
+        try:
+            from src.runtime.runtime_bridge import get_runtime_bridge
+            _bridge = get_runtime_bridge()
+            _shared_store = _bridge.get_memory_store()
+            if _shared_store is not None:
+                self.store = _shared_store
+        except Exception:
+            pass
 
-        self.vector = VectorMemory()
+        # Fallback：RuntimeBridge 不可用时 → MemoryProvider 共享单例
+        if self.store is None:
+            # Phase 4.0-R2.3.1: 不再 MemoryStore() 自建，改为 Authority Provider 单例
+            self.store = MemoryProvider.get_store()
+
+        # Phase 4.4.2 VectorMemory Authority 收口：优先通过 RuntimeBridge 获取共享实例
+        self.vector = None
+        try:
+            from src.runtime.runtime_bridge import get_runtime_bridge
+            _bridge = get_runtime_bridge()
+            _shared_vm = _bridge.get_vector_memory()
+            if _shared_vm is not None:
+                self.vector = _shared_vm
+        except Exception:
+            pass
+
+        # Fallback：RuntimeBridge 不可用时自建
+        if self.vector is None:
+            try:
+                from src.memory.vector import VectorMemory
+                self.vector = VectorMemory()
+            except Exception:
+                class _NullVectorMemory:
+                    def search(self, query, top_k=5):
+                        return []
+                self.vector = _NullVectorMemory()
 
         self.event = EventMemory()
 
         self.identity = IdentityMemory()
+
+        self.relevance_evaluator = MemoryRelevanceEvaluator()
 
 
 
@@ -121,6 +158,15 @@ class MemorySystem:
 
         try:
 
+            metadata = metadata or {}
+
+            # Phase 2.5-B: 写入时补全身份元数据（setdefault——只补缺、绝不覆盖已有值）
+            metadata.setdefault("memory_scope", "private_user" if role == "user" else "yui_core")
+            metadata.setdefault("owner_user_id", str(user_id))
+            if role == "user":
+                metadata.setdefault("speaker_user_id", str(user_id))
+            metadata.setdefault("visibility", "private" if role == "user" else "global")
+
             self.store.add(
 
                 user_id=user_id,
@@ -129,7 +175,7 @@ class MemorySystem:
 
                 content=content,
 
-                metadata=metadata or {}
+                metadata=metadata
 
             )
 
@@ -340,9 +386,10 @@ class MemorySystem:
         # ===============================
 
 
-        pool.sort(
-            key=lambda x:x["score"],
-            reverse=True
+        ranked_pool = self._rank_pool(
+            pool,
+            query=query,
+            top_k=max(top_k * 3, top_k),
         )
 
 
@@ -353,7 +400,7 @@ class MemorySystem:
 
 
 
-        for item in pool:
+        for item in ranked_pool:
 
 
             content=item["content"]
@@ -382,7 +429,115 @@ class MemorySystem:
 
 
 
+        # ── Phase 7.2: Cognitive Trace hook（只读, 不改 result）──
+        try:
+            from src.runtime.observer.cognitive_hooks import emit_memory_retrieved
+
+            # 汇总来源统计
+            sources_count = {"identity": 0, "event": 0, "semantic": 0, "chat": 0}
+            scores = []
+            for item in ranked_pool:
+                t = item.get("type", "")
+                s = item.get("score", 0)
+                if t == "identity":
+                    sources_count["identity"] += 1
+                elif t == "event":
+                    sources_count["event"] += 1
+                elif t == "semantic":
+                    sources_count["semantic"] += 1
+                elif t == "chat":
+                    sources_count["chat"] += 1
+                if isinstance(s, (int, float)) and s > 0:
+                    scores.append(float(s))
+
+            max_score = max(scores) if scores else 0.0
+            min_score = min(scores) if scores else 0.0
+            score_range = [min_score, max_score] if scores else []
+
+            emit_memory_retrieved(
+                query=str(query),
+                top_k=int(top_k),
+                result_count=len(result),
+                memory_ids=[str(r.get("id", "")) if isinstance(r, dict) else "" for r in result],
+                sources=sources_count,
+                score_range=score_range,
+                max_score=max_score,
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
         return result
+
+    def _rank_pool(
+        self,
+        pool: List[Dict],
+        query: str,
+        top_k: int,
+    ) -> List[Dict]:
+        """将旧检索池映射到统一 relevance evaluator。"""
+        candidates: List[Dict] = []
+        for item in pool:
+            original = item.get("content")
+            score = float(item.get("score", 0) or 0)
+            normalized = {
+                "_original_content": original,
+                "_legacy_type": item.get("type", ""),
+                "_vector_relevance": min(1.0, score / 1000.0),
+                "score": score,
+            }
+
+            if isinstance(original, dict):
+                normalized.update(dict(original))
+                if "content" not in normalized:
+                    for key in ("text", "memory_summary", "event", "topic", "canonical_topic"):
+                        if original.get(key):
+                            normalized["content"] = original.get(key)
+                            break
+            else:
+                normalized["content"] = str(original)
+
+            if "memory_class" not in normalized:
+                legacy_type = str(item.get("type", "")).strip().lower()
+                mapped = {
+                    "identity": "identity",
+                    "event": "event",
+                    "semantic": "semantic",
+                    "chat": "event",
+                }.get(legacy_type, legacy_type or "unknown")
+                normalized["memory_class"] = mapped
+
+            if "importance" not in normalized:
+                normalized["importance"] = min(1.0, max(0.0, score / 100.0))
+
+            candidates.append(normalized)
+
+        ranked = self.relevance_evaluator.rank_memories(
+            candidates,
+            query=query,
+            context={
+                "identity_focus": self._need_identity(query),
+                "relationship_focus": "关系" in query or "我们" in query,
+                "current_emotion": "",
+            },
+            top_k=top_k,
+        )
+
+        out: List[Dict] = []
+        for item in ranked:
+            out.append({
+                "type": item.get("_legacy_type", item.get("memory_class", "unknown")),
+                "content": item.get("_original_content", item.get("content")),
+                "score": item.get("memory_relevance", item.get("score", 0)),
+                "retrieval_priority": item.get("retrieval_priority", "low"),
+                "relevance_audit_id": item.get("relevance_audit_id", ""),
+            })
+        return out
+
+    def get_relevance_history(self, limit: int = 50):
+        return [item.to_dict() for item in self.relevance_evaluator.get_history(limit=limit)]
+
+    def get_relevance_snapshot(self):
+        return self.relevance_evaluator.get_snapshot().to_dict()
 
 
 

@@ -1,0 +1,36 @@
+{
+    "Type": "Live2D Expression",
+    "IsModelCustomizationExpression": false,
+    "Parameters": [
+        {
+            "Id": "ParamHeartEye32",
+            "Value": 0.0,
+            "Blend": "Add"
+        },
+        {
+            "Id": "ParamHeartEye35",
+            "Value": 0.0,
+            "Blend": "Add"
+        },
+        {
+            "Id": "ParamHeartEye34",
+            "Value": 0.0,
+            "Blend": "Add"
+        },
+        {
+            "Id": "ParamHeartEye38",
+            "Value": 0.0,
+            "Blend": "Add"
+        },
+        {
+            "Id": "ParamHeartEye41",
+            "Value": 0.0,
+            "Blend": "Add"
+        },
+        {
+            "Id": "ParamHeartEye42",
+            "Value": 1.0,
+            "Blend": "Add"
+        }
+    ]
+}

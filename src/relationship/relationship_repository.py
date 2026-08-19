@@ -9,14 +9,33 @@
 
 import json
 import os
-from typing import Optional, Tuple
+import threading
+from typing import Dict, Optional, Tuple
 from datetime import datetime
 
+from src.memory.atomic_write import atomic_write_json
 from src.relationship.relationship_influence_profile import RelationshipInfluenceProfile
 from src.personality.personality_influence import PersonalityInfluence, InfluenceType
 
 from src.relationship.relationship_state import RelationshipState
 from src.relationship.relationship_cognitive_profile import RelationshipCognitiveProfile
+from src.relationship.relationship_model import RelationshipModel
+
+
+# V1.0-OPT: per-path RLock（与 growth_state / proposal storage 同模式），
+# 保护多线程并发 save 同一文件时的整体写入（防丢失更新）。
+_PATH_LOCKS: Dict[str, threading.RLock] = {}
+_PATH_LOCKS_GUARD = threading.Lock()
+
+
+def _path_lock(path) -> threading.RLock:
+    _key = os.path.abspath(str(path))
+    with _PATH_LOCKS_GUARD:
+        _lock = _PATH_LOCKS.get(_key)
+        if _lock is None:
+            _lock = threading.RLock()
+            _PATH_LOCKS[_key] = _lock
+        return _lock
 
 
 class RelationshipRepository:
@@ -78,12 +97,12 @@ class RelationshipRepository:
             return None
 
     def save(self, profile: RelationshipInfluenceProfile):
-        """保存关系影响画像（Phase 7）"""
+        """保存关系影响画像（Phase 7）。V1.0-OPT: 原子写 + per-path 锁。"""
         filepath = self._get_influence_filepath()
         try:
             data = profile.to_dict()
-            with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
+            with _path_lock(filepath):
+                atomic_write_json(filepath, data)
         except Exception as e:
             print(f"⚠️ 保存关系影响画像失败: {e}")
 
@@ -96,6 +115,9 @@ class RelationshipRepository:
     def _get_cognitive_profile_path(self) -> str:
         return os.path.join(self.user_dir, "relationship_cognitive_profile.json")
 
+    def _get_model_path(self) -> str:
+        return os.path.join(self.user_dir, "relationship_model.json")
+
     # ---------- State ----------
     def load_state(self) -> RelationshipState:
         filepath = self._get_state_path()
@@ -106,9 +128,10 @@ class RelationshipRepository:
         return RelationshipState.from_dict(data)
 
     def save_state(self, state: RelationshipState):
+        """V1.0-OPT: 原子写 + per-path 锁（RuntimeCore 生产持久化路径）。"""
         filepath = self._get_state_path()
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(state.to_dict(), f, ensure_ascii=False, indent=2)
+        with _path_lock(filepath):
+            atomic_write_json(filepath, state.to_dict())
 
     # ---------- Cognitive Profile ----------
     def load_cognitive_profile(self) -> RelationshipCognitiveProfile:
@@ -120,9 +143,25 @@ class RelationshipRepository:
         return RelationshipCognitiveProfile.from_dict(data)
 
     def save_cognitive_profile(self, profile: RelationshipCognitiveProfile):
+        """V1.0-OPT: 原子写 + per-path 锁。"""
         filepath = self._get_cognitive_profile_path()
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(profile.to_dict(), f, ensure_ascii=False, indent=2)
+        with _path_lock(filepath):
+            atomic_write_json(filepath, profile.to_dict())
+
+    # ---------- Relationship Model ----------
+    def load_relationship_model(self) -> RelationshipModel:
+        filepath = self._get_model_path()
+        if not os.path.exists(filepath):
+            return RelationshipModel()
+        with open(filepath, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return RelationshipModel.from_dict(data)
+
+    def save_relationship_model(self, model: RelationshipModel):
+        """V1.0-OPT: 原子写 + per-path 锁。"""
+        filepath = self._get_model_path()
+        with _path_lock(filepath):
+            atomic_write_json(filepath, model.to_dict())
 
     # ---------- 便捷方法 ----------
     def load_all_v10(self) -> Tuple[RelationshipState, RelationshipCognitiveProfile]:
@@ -131,3 +170,16 @@ class RelationshipRepository:
     def save_all_v10(self, state: RelationshipState, profile: RelationshipCognitiveProfile):
         self.save_state(state)
         self.save_cognitive_profile(profile)
+
+    def load_all_v11(self) -> Tuple[RelationshipState, RelationshipCognitiveProfile, RelationshipModel]:
+        return self.load_state(), self.load_cognitive_profile(), self.load_relationship_model()
+
+    def save_all_v11(
+        self,
+        state: RelationshipState,
+        profile: RelationshipCognitiveProfile,
+        model: RelationshipModel,
+    ):
+        self.save_state(state)
+        self.save_cognitive_profile(profile)
+        self.save_relationship_model(model)

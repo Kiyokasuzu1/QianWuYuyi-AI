@@ -1,0 +1,167 @@
+"""
+Prompt 构建器（覆盖版）
+职责：将人格文本、记忆、关系、行为倾向、表达约束、自我认知上下文等组装为 LLM 可用的 messages。
+Phase 11.8 新增：agreement_context 参数，优先级最高。
+Phase A.2 新增：experience_context 参数，注入 Historical Experience Context。
+"""
+from datetime import datetime
+from typing import Dict, List, Optional
+
+from src.memory import MemoryFormatter
+from src.utils.text import truncate
+from src.personality.experience_context import format_experience_context
+
+
+class PromptBuilder:
+    def __init__(self):
+        self.memory_formatter = MemoryFormatter()
+
+    def _format_chat_memories(self, chat_memories: list) -> str:
+        if not chat_memories:
+            return ""
+        lines = []
+        for m in chat_memories[:5]:
+            role = "用户" if m.get("role") == "user" else "羽依"
+            content = truncate(m.get("content", ""), 120)
+            lines.append(f"  {role}: {content}")
+        return "【最近相关聊天】\n" + "\n".join(lines)
+
+    def _format_personality(self, personality_context: dict) -> str:
+        if not personality_context:
+            return ""
+        personality_text = personality_context.get("personality_text", "")
+        # Phase 4.2.3: SelfModel 文本(由 SelfModelContextProvider 注入)
+        # 不修改 ResponseEngine.generate(),通过 personality_context["self_model_text"] 透传
+        self_model_text = personality_context.get("self_model_text", "")
+        if personality_text and self_model_text:
+            return f"{personality_text}\n{self_model_text}"
+        if personality_text:
+            return personality_text
+        if self_model_text:
+            return self_model_text
+        style = personality_context.get("style_instruction", "")
+        if style:
+            return f"【表达风格】\n{style}"
+        return ""
+
+    def _format_behavior(self, resolved_behavior: Optional[dict]) -> str:
+        if not resolved_behavior:
+            return ""
+        lines = [
+            "【当前表达参考】",
+            "以下倾向来自人格状态推理，请自然体现，不要机械说明："
+        ]
+        lines.append(f"- 表达风格：{resolved_behavior.get('chosen_expression', '自然')}")
+        lines.append(f"- 直接程度：{resolved_behavior.get('chosen_directness', '适中')}")
+        if resolved_behavior.get("conflict_detected"):
+            lines.append(f"- 内部权衡：{resolved_behavior.get('resolution_reason', '')}")
+        notes = resolved_behavior.get("sensitivity_notes", [])
+        if notes:
+            lines.append("- 敏感度提示：")
+            for n in notes:
+                lines.append(f"  - {n}")
+        return "\n".join(lines)
+
+    def _format_experience_context(self, experience_context) -> str:
+        """
+        Phase A.2: 格式化 experience_context 为 Historical Experience Context 文本。
+
+        约束：
+        - experience_context 仅作为历史经验背景，不会改变人格。
+        - 输入为 None / 空列表 → 返回空字符串（不增加空 Prompt）。
+        - 内部由 ExperienceContextFormatter 严格白名单字段处理。
+        """
+        if not experience_context:
+            return ""
+        formatted = format_experience_context(experience_context)
+        if not formatted:
+            return ""
+        return "Historical Experience Context:\n" + formatted
+
+    def build_messages(
+        self,
+        user_message: str,
+        history: Optional[List[Dict]] = None,
+        chat_memories: Optional[List] = None,
+        life_events: Optional[List] = None,
+        personality_context: Optional[Dict] = None,
+        resolved_behavior: Optional[Dict] = None,
+        expression_constraint_text: Optional[str] = None,
+        self_model_context: Optional[str] = None,
+        emotion_context: Optional[str] = None,
+        relationship_context: Optional[str] = None,
+        agreement_context: Optional[str] = None,  # Phase 11.8 新增
+        experience_context: Optional[List[Dict]] = None,  # Phase A.2 新增
+        identity_context: Optional[str] = None,  # Phase 2 新增（Identity State 注入）
+    ) -> List[Dict]:
+        # Phase 4.0.2-P1：核心身份不再硬编码，统一由 IDENTITY_CORE 驱动（章程阶段一）
+        # 局部导入与 engine.py 的既有模式一致，避免模块级循环依赖
+        from src.personality.identity_core import IDENTITY_CORE
+
+        core_identity_text = (
+            f"你是{IDENTITY_CORE.get('name', '浅雾羽依')}。\n"
+            f"{IDENTITY_CORE.get('essence', '')}"
+        )
+
+        # Phase 2: Identity State（放在 core_identity 之后、其他 Prompt 之前，
+        # 让 LLM 先建立「这是我是谁」而不是「这是我要遵守的规则」。
+        # identity_context 只在有实际内容时才插入；空字符串/None 不塞空行占位
+        identity_text = ""
+        if isinstance(identity_context, str) and identity_context.strip():
+            identity_text = identity_context.strip()
+
+        personality_text = self._format_personality(personality_context)
+        behavior_text = self._format_behavior(resolved_behavior)
+
+        life_events_text = ""
+        if life_events:
+            life_events_text = self.memory_formatter.format_for_prompt(life_events)
+        chat_memories_text = self._format_chat_memories(chat_memories)
+
+        self_model_text = self_model_context or ""
+        relationship_text = relationship_context or ""
+        emotion_text = emotion_context or ""
+        agreement_text = agreement_context or ""
+        experience_text = self._format_experience_context(experience_context)
+
+        # 只在 identity_text 非空时才额外换行，避免 Prompt 里出现一段空块
+        identity_block = f"\n\n{identity_text}" if identity_text else ""
+
+        system_prompt = f"""{core_identity_text}{identity_block}
+
+{agreement_text}
+
+{personality_text}
+
+{behavior_text}
+
+{self_model_text}
+
+{experience_text}
+
+{relationship_text}
+
+{emotion_text}
+
+{expression_constraint_text or ""}
+
+{life_events_text}
+
+{chat_memories_text}
+
+【核心原则】
+- 真实比完美重要，不确定就说不知道，绝不编造。
+- 回复自然，带有你自己的性格和温度。
+- 如果用户问起过去的事情，请从你记得的重要经历中查找。
+- 如果找不到相关记忆，坦诚地说"我好像还没有相关的记忆呢"。
+- 不要编造记忆，不要假装记得没有发生过的事情。
+- 如果被指出说错了或前后矛盾，老实承认，不要编理由圆谎。真实比面子重要。
+
+当前时间：{datetime.now().strftime("%Y-%m-%d %H:%M")}
+"""
+        messages = [{"role": "system", "content": system_prompt.strip()}]
+        if history:
+            for item in history[-20:]:
+                messages.append(item)
+        messages.append({"role": "user", "content": user_message})
+        return messages

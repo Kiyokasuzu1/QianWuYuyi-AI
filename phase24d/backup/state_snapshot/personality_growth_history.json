@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "saved_at": "2026-08-15T22:51:55.898307",
+  "count": 1,
+  "records": [
+    {
+      "record_id": "pgr_2119467d2317",
+      "timestamp": "2026-08-15T22:51:55.898201",
+      "source_growth_record_id": "0ccbe714",
+      "evidence_ids": [
+        "evt_yuyi_birth_f621aa72"
+      ],
+      "trigger_events": [
+        "experience_meaning"
+      ],
+      "changes": {
+        "relationship_orientation": {
+          "delta": 0.0013
+        }
+      },
+      "affected_dimensions": [
+        "relationship_orientation"
+      ],
+      "meaning": "[context] experience_meaning - 动作描写格式偏好 (confidence=0.84)",
+      "narrative": "[context] experience_meaning - 动作描写格式偏好 (confidence=0.84)",
+      "confidence": 0.84,
+      "validation_count": 1,
+      "growth_level": "context"
+    }
+  ]
+}

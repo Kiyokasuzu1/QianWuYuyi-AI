@@ -176,3 +176,126 @@
 这些原则构成：
 
 浅雾羽依。
+
+
+---
+
+# Identity As Guardrail
+
+当前工程中，身份系统不再只是静态定义。
+
+它同时承担“成长门控”的职责。
+
+
+具体来说：
+
+- `IdentityContinuity` 检查自我理解是否发生断裂
+- `IdentityAnchor` 检查核心锚点是否被过度偏移
+- `ReflectionGrowthBridge` 在生成 `GrowthProposal` 前读取这些状态
+
+
+这意味着：
+
+成长系统可以提出变化建议，
+
+但不能绕过身份稳定性检查。
+
+
+如果连续性报告显示断裂，
+
+或者锚点完整性报告显示偏离，
+
+桥接层可以拒绝 proposal candidate 的生成。
+
+
+这样做的目的不是阻止成长，
+
+而是避免“随机变化伪装成成长”。
+
+
+---
+
+# Identity And Proposal Separation
+
+身份系统不会直接写入人格。
+
+它只提供：
+
+- 稳定性参考
+- 连续性报告
+- 完整性边界
+
+
+最终是否接受成长变化，
+
+仍然必须经过：
+
+ReflectionEvaluation
+
+↓
+
+ReflectionGrowthBridge
+
+↓
+
+ApprovalManager
+
+↓
+
+显式应用
+
+
+---
+
+# Self Understanding
+
+当前身份系统已经可以读取 `SelfModel` 中显式的自我理解层。
+
+这层回答四个问题：
+
+- who I am
+- what I value
+- what changed
+- why changed
+
+
+它们来自结构化聚合，而不是即时生成：
+
+- `who_i_am` 来自 stable traits / behavioral patterns / contradictions
+- `what_i_value` 来自 core values
+- `what_changed` / `why_changed` 来自 development history
+
+
+因此身份理解具备：
+
+- 来源可追踪
+- 与成长历史一致
+- 不依赖 LLM
+- 不直接改写 personality 定义
+
+
+---
+
+# Identity Stability Report
+
+从 Phase 3.5.17 起，
+
+身份系统在连续性（IdentityContinuity）与锚点（IdentityAnchor）之上增加：
+
+`IdentityStabilityReport`。
+
+
+它统一输出：
+
+- 连续性评分（continuity_score）
+- 锚点完整性（anchor_intact）
+- 冲突与风险项（issues）
+- 记忆污染信号（memory_pollution）
+- 最终稳定性评分（stability_score）
+
+
+重要约束：
+
+- 报告只用于审计与门控
+- 不会自动修复，也不会自动接受提案
+- 不会删除记忆，只会报告可疑污染

@@ -1,0 +1,1147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>羽依生命状态控制中心 · Yuyi Life Control Center</title>
+  <link rel="stylesheet" href="/static/admin/dashboard_v2/css/dashboard_v2.css" />
+</head>
+<body>
+  <div class="yuyi-dashboard" data-page="overview">
+
+    <!-- 左侧：导航栏 -->
+    <aside class="yuyi-sidebar" id="yuyiSidebar">
+      <div class="yuyi-sidebar__brand">
+        <div class="yuyi-sidebar__logo" aria-hidden="true">羽</div>
+        <div class="yuyi-sidebar__title">
+          <h1>羽依</h1>
+          <p>生命控制中心</p>
+        </div>
+      </div>
+
+      <nav class="yuyi-sidebar__nav" aria-label="主导航">
+        <a class="yuyi-nav-item is-active" data-route="/overview" href="#/overview">
+          <span class="yuyi-nav-item__dot"></span>
+          生命总览
+        </a>
+        <a class="yuyi-nav-item" data-route="/runtime-center" href="#/runtime-center">
+          <span class="yuyi-nav-item__dot"></span>
+          运行中心
+        </a>
+        <a class="yuyi-nav-item" data-route="/memory" href="#/memory">
+          <span class="yuyi-nav-item__dot"></span>
+          记忆
+        </a>
+        <a class="yuyi-nav-item" data-route="/emotion" href="#/emotion" aria-disabled="true">
+          <span class="yuyi-nav-item__dot"></span>
+          情绪
+        </a>
+        <a class="yuyi-nav-item" data-route="/growth" href="#/growth" aria-disabled="true">
+          <span class="yuyi-nav-item__dot"></span>
+          成长
+        </a>
+        <a class="yuyi-nav-item" data-route="/relationship" href="#/relationship" aria-disabled="true">
+          <span class="yuyi-nav-item__dot"></span>
+          关系
+        </a>
+        <a class="yuyi-nav-item" data-route="/goal" href="#/goal">
+          <span class="yuyi-nav-item__dot"></span>
+          目标
+        </a>
+        <a class="yuyi-nav-item" data-route="/initiative" href="#/initiative">
+          <span class="yuyi-nav-item__dot"></span>
+          主动性
+        </a>
+        <a class="yuyi-nav-item" data-route="/life-graph" href="#/life-graph">
+          <span class="yuyi-nav-item__dot"></span>
+          生命关系
+        </a>
+        <a class="yuyi-nav-item" data-route="/reflection" href="#/reflection">
+          <span class="yuyi-nav-item__dot"></span>
+          反思
+        </a>
+        <a class="yuyi-nav-item" data-route="/runtime" href="#/runtime">
+          <span class="yuyi-nav-item__dot"></span>
+          Runtime
+        </a>
+        <a class="yuyi-nav-item" data-route="/l2d" href="#/l2d" aria-disabled="true">
+          <span class="yuyi-nav-item__dot"></span>
+          Live2D（预留）
+        </a>
+      </nav>
+
+      <div class="yuyi-sidebar__footer">
+        <span class="yuyi-sidebar__pill" id="yuyiOnlinePill">检测中…</span>
+      </div>
+    </aside>
+
+    <!-- 中部：生命状态 -->
+    <main class="yuyi-main" id="yuyiMain">
+      <header class="yuyi-main__header">
+        <div>
+          <h2 id="yuyiPageTitle">生命总览</h2>
+          <p class="yuyi-main__subtitle" id="yuyiPageSubtitle">实时观察羽依核心生命指标</p>
+        </div>
+        <div class="yuyi-main__actions">
+          <button type="button" class="yuyi-btn yuyi-btn--ghost" id="yuyiRefreshBtn">刷新</button>
+        </div>
+      </header>
+
+      <!-- 概览内容容器 -->
+      <section class="yuyi-page" id="yuyiOverviewPage" data-page-id="overview">
+        <div class="yuyi-grid yuyi-grid--overview">
+          <!-- 健康 -->
+          <article class="yuyi-card yuyi-card--health" data-block="health">
+            <header class="yuyi-card__header">
+              <h3>健康</h3>
+              <span class="yuyi-card__tag" id="yuyiHealthStatus">unknown</span>
+            </header>
+            <div class="yuyi-card__body">
+              <div class="yuyi-health__score">
+                <span id="yuyiHealthScore">--</span>
+                <small>/100</small>
+              </div>
+              <ul class="yuyi-health__issues" id="yuyiHealthIssues"></ul>
+            </div>
+          </article>
+
+          <!-- 情绪 -->
+          <article class="yuyi-card yuyi-card--emotion" data-block="emotion">
+            <header class="yuyi-card__header">
+              <h3>情绪</h3>
+              <span class="yuyi-card__tag" id="yuyiEmotionPrimary">unknown</span>
+            </header>
+            <div class="yuyi-card__body">
+              <dl class="yuyi-stat">
+                <div><dt>valence</dt><dd id="yuyiEmotionValence">0.0</dd></div>
+                <div><dt>arousal</dt><dd id="yuyiEmotionArousal">0.0</dd></div>
+                <div><dt>intensity</dt><dd id="yuyiEmotionIntensity">0.0</dd></div>
+              </dl>
+            </div>
+          </article>
+
+          <!-- 运行时 -->
+          <article class="yuyi-card yuyi-card--runtime" data-block="runtime">
+            <header class="yuyi-card__header">
+              <h3>Runtime</h3>
+              <span class="yuyi-card__tag" id="yuyiRuntimeTag">--</span>
+            </header>
+            <div class="yuyi-card__body">
+              <ul class="yuyi-list" id="yuyiRuntimeAuth"></ul>
+            </div>
+          </article>
+
+          <!-- 目标 -->
+          <article class="yuyi-card yuyi-card--goal" data-block="goal">
+            <header class="yuyi-card__header">
+              <h3>当前目标</h3>
+            </header>
+            <div class="yuyi-card__body">
+              <p class="yuyi-empty" id="yuyiCurrentGoal">暂无活跃目标</p>
+            </div>
+          </article>
+
+          <!-- 兴趣 -->
+          <article class="yuyi-card yuyi-card--interest" data-block="interest">
+            <header class="yuyi-card__header">
+              <h3>当前兴趣</h3>
+            </header>
+            <div class="yuyi-card__body">
+              <p class="yuyi-empty" id="yuyiCurrentInterest">暂无主动行为</p>
+            </div>
+          </article>
+
+          <!-- Live2D 占位 -->
+          <article class="yuyi-card yuyi-card--l2d" data-block="l2d">
+            <header class="yuyi-card__header">
+              <h3>Live2D 区域</h3>
+              <span class="yuyi-card__tag">预留</span>
+            </header>
+            <div class="yuyi-card__body yuyi-card__body--placeholder">
+              <div class="yuyi-l2d-placeholder" id="yuyiL2DPlaceholder">
+                <span>Live2D 接口位置</span>
+                <small>Phase 5.0-E 接入</small>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <!-- =========================================================
+             Phase 5.0 Step 8.4.1 LifeStateSummary —— 结构化生命状态
+             Provider 不生成 headline,由前端根据 data 渲染
+             ========================================================= -->
+        <div class="yuyi-lifestate" id="yuyiLifeStateBlock">
+          <header class="yuyi-lifestate__header">
+            <h3>生命状态摘要 <small>（结构化 · 由前端渲染）</small></h3>
+            <div class="yuyi-lifestate__actions">
+              <span id="yuyiConfidenceBadge" class="yuyi-confidence yuyi-confidence--mid">可信度 --</span>
+              <button type="button" class="yuyi-btn yuyi-btn--ghost" id="yuyiTraceToggleBtn">查看证据</button>
+            </div>
+          </header>
+          <p class="yuyi-lifestate__fallback" id="yuyiLifeStateFallback" style="display:none;"></p>
+          <div class="yuyi-grid yuyi-grid--lifestate">
+            <!-- 焦点 -->
+            <article class="yuyi-card" data-block="focus">
+              <header class="yuyi-card__header">
+                <h3>当前焦点</h3>
+                <span class="yuyi-card__tag" id="yuyiFocusTag">--</span>
+              </header>
+              <div class="yuyi-card__body">
+                <p class="yuyi-lifestate__topic" id="yuyiFocusTopic">--</p>
+                <dl class="yuyi-stat">
+                  <div><dt>score</dt><dd id="yuyiFocusScore">0.00</dd></div>
+                  <div><dt>trend</dt><dd id="yuyiFocusTrend">--</dd></div>
+                  <div><dt>选择理由</dt><dd id="yuyiFocusReason">--</dd></div>
+                </dl>
+              </div>
+            </article>
+
+            <!-- 情绪 -->
+            <article class="yuyi-card" data-block="emotion-state">
+              <header class="yuyi-card__header">
+                <h3>情绪</h3>
+                <span class="yuyi-card__tag" id="yuyiEmotionName">--</span>
+              </header>
+              <div class="yuyi-card__body">
+                <dl class="yuyi-stat">
+                  <div><dt>intensity</dt><dd id="yuyiEmotionIntensity">0.00</dd></div>
+                  <div><dt>valence</dt><dd id="yuyiEmotionValence">0.00</dd></div>
+                  <div><dt>arousal</dt><dd id="yuyiEmotionArousal">0.00</dd></div>
+                  <div><dt>source</dt><dd id="yuyiEmotionSource">--</dd></div>
+                </dl>
+                <p class="yuyi-lifestate__hint" id="yuyiEmotionCausality">事件 0 · 记忆 0</p>
+              </div>
+            </article>
+
+            <!-- 成长 -->
+            <article class="yuyi-card" data-block="growth">
+              <header class="yuyi-card__header">
+                <h3>成长</h3>
+                <span class="yuyi-card__tag" id="yuyiGrowthStage">--</span>
+              </header>
+              <div class="yuyi-card__body">
+                <dl class="yuyi-stat">
+                  <div><dt>stage_score</dt><dd id="yuyiGrowthScore">0.00</dd></div>
+                </dl>
+                <p class="yuyi-lifestate__milestone" id="yuyiGrowthMilestone">暂无里程碑</p>
+                <small id="yuyiGrowthMilestoneTime">--</small>
+              </div>
+            </article>
+
+            <!-- 活跃目标 -->
+            <article class="yuyi-card" data-block="active-goals">
+              <header class="yuyi-card__header">
+                <h3>活跃目标</h3>
+              </header>
+              <div class="yuyi-card__body">
+                <ul class="yuyi-list" id="yuyiActiveGoals">
+                  <li class="yuyi-list__empty">加载中…</li>
+                </ul>
+              </div>
+            </article>
+
+            <!-- 兴趣 -->
+            <article class="yuyi-card" data-block="interests">
+              <header class="yuyi-card__header">
+                <h3>兴趣信号</h3>
+              </header>
+              <div class="yuyi-card__body">
+                <ul class="yuyi-list" id="yuyiInterestsList">
+                  <li class="yuyi-list__empty">加载中…</li>
+                </ul>
+              </div>
+            </article>
+
+            <!-- 风险 -->
+            <article class="yuyi-card" data-block="risks">
+              <header class="yuyi-card__header">
+                <h3>风险信号</h3>
+              </header>
+              <div class="yuyi-card__body">
+                <ul class="yuyi-list" id="yuyiRisksList">
+                  <li class="yuyi-list__empty">加载中…</li>
+                </ul>
+              </div>
+            </article>
+
+            <!-- 近期记忆 -->
+            <article class="yuyi-card" data-block="recent-memories">
+              <header class="yuyi-card__header">
+                <h3>近期记忆</h3>
+              </header>
+              <div class="yuyi-card__body">
+                <ul class="yuyi-list" id="yuyiRecentMemories">
+                  <li class="yuyi-list__empty">加载中…</li>
+                </ul>
+              </div>
+            </article>
+
+            <!-- 近期反思 -->
+            <article class="yuyi-card" data-block="recent-reflections">
+              <header class="yuyi-card__header">
+                <h3>近期反思</h3>
+              </header>
+              <div class="yuyi-card__body">
+                <ul class="yuyi-list" id="yuyiRecentReflections">
+                  <li class="yuyi-list__empty">加载中…</li>
+                </ul>
+              </div>
+            </article>
+
+            <!-- 统计 -->
+            <article class="yuyi-card" data-block="stats">
+              <header class="yuyi-card__header">
+                <h3>统计</h3>
+              </header>
+              <div class="yuyi-card__body">
+                <dl class="yuyi-stat">
+                  <div><dt>兴趣</dt><dd id="yuyiStatInterest">0</dd></div>
+                  <div><dt>记忆</dt><dd id="yuyiStatMemory">0</dd></div>
+                  <div><dt>目标</dt><dd id="yuyiStatGoal">0</dd></div>
+                  <div><dt>反思 7d</dt><dd id="yuyiStatReflection">0</dd></div>
+                </dl>
+              </div>
+            </article>
+          </div>
+
+          <!-- Trace 面板(默认隐藏,点击"查看证据"展开) -->
+          <div class="yuyi-trace" id="yuyiTracePanelWrap" style="display:none;">
+            <h4>证据来源（trace）</h4>
+            <div id="yuyiTracePanel"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Phase 7.0: 运行中心(Runtime Center)页面 -->
+      <section class="yuyi-page" data-page-id="runtime-center" style="display: none;">
+        <div class="yuyi-main__actions" style="margin-bottom: 12px; display: flex; align-items: center; gap: 10px;">
+          <button type="button" class="yuyi-btn yuyi-btn--ghost" id="yroc-refresh">刷新</button>
+          <label style="font-size: 12px; color: var(--yuyi-text-mute); display: flex; align-items: center; gap: 4px;">
+            <input type="checkbox" id="yroc-auto-refresh" /> 自动刷新(5s)
+          </label>
+        </div>
+        <div class="yuyi-grid yuyi-grid--overview">
+
+          <!-- 服务状态总览 -->
+          <article class="yuyi-card yuyi-card--full" data-block="runtime-services" style="grid-column: 1 / -1;">
+            <header class="yuyi-card__header">
+              <h3>服务状态</h3>
+              <span class="yuyi-card__tag" id="yroc-services-tag">--</span>
+            </header>
+            <div class="yuyi-card__body">
+              <div class="yroc-services-grid" id="yroc-services-grid">
+                <p class="yuyi-empty">加载中…</p>
+              </div>
+            </div>
+          </article>
+
+          <!-- 运行生命周期 -->
+          <article class="yuyi-card" data-block="runtime-lifecycle">
+            <header class="yuyi-card__header">
+              <h3>运行生命周期</h3>
+              <span class="yuyi-card__tag" id="yroc-lifecycle-tag">--</span>
+            </header>
+            <div class="yuyi-card__body">
+              <dl class="yuyi-stat">
+                <div><dt>状态</dt><dd id="yroc-status">--</dd></div>
+                <div><dt>uptime</dt><dd id="yroc-uptime">--</dd></div>
+                <div><dt>当前任务</dt><dd id="yroc-current-task">--</dd></div>
+              </dl>
+              <dl class="yuyi-stat" style="margin-top: 8px;">
+                <div><dt>最近事件</dt><dd id="yroc-last-event">--</dd></div>
+                <div><dt>最近回复</dt><dd id="yroc-last-response">--</dd></div>
+                <div><dt>trace_id</dt><dd id="yroc-last-trace-id" style="font-family: ui-monospace, monospace; font-size: 11px;">--</dd></div>
+              </dl>
+              <dl class="yuyi-stat" style="margin-top: 8px;">
+                <div><dt>请求数</dt><dd id="yroc-request-count">0</dd></div>
+                <div><dt>成功</dt><dd id="yroc-success-count">0</dd></div>
+                <div><dt>失败</dt><dd id="yroc-failure-count">0</dd></div>
+              </dl>
+              <p class="yuyi-empty" id="yroc-lifecycle-error" style="font-size: 12px; margin-top: 8px; display: none;"></p>
+            </div>
+          </article>
+
+          <!-- 请求链路追踪 -->
+          <article class="yuyi-card yuyi-card--full" data-block="runtime-traces" style="grid-column: 1 / -1;">
+            <header class="yuyi-card__header">
+              <h3>请求链路追踪 <small style="font-weight: normal; color: var(--yuyi-text-mute);">最近 20 条</small></h3>
+              <span class="yuyi-card__tag" id="yroc-traces-tag">--</span>
+            </header>
+            <div class="yuyi-card__body">
+              <ul class="yuyi-list" id="yroc-traces-list" style="max-height: 420px; overflow: auto;">
+                <li class="yuyi-list__empty">加载中…</li>
+              </ul>
+            </div>
+          </article>
+
+          <!-- Phase 7.1: 实时事件流 SSE -->
+          <article class="yuyi-card yuyi-card--full" data-block="runtime-events" style="grid-column: 1 / -1;">
+            <header class="yuyi-card__header">
+              <h3>实时事件流 <small style="font-weight: normal; color: var(--yuyi-text-mute);">SSE · Phase 7.1</small></h3>
+              <span class="yuyi-card__tag" id="yroc-events-tag">连接中…</span>
+            </header>
+            <div class="yuyi-card__body">
+              <ul class="yuyi-list yroc-events-list" id="yroc-events-list">
+                <li class="yuyi-list__empty">等待事件…</li>
+              </ul>
+            </div>
+          </article>
+
+        </div>
+      </section>
+
+      <!-- Runtime 页面 -->
+      <section class="yuyi-page" data-page-id="runtime" style="display: none;">
+        <div class="yuyi-main__actions" style="margin-bottom: 12px;">
+          <button type="button" class="yuyi-btn yuyi-btn--ghost" id="yrt-refresh">刷新</button>
+        </div>
+        <div class="yuyi-grid yuyi-grid--overview">
+          <article class="yuyi-card" data-block="runtime-status">
+            <header class="yuyi-card__header">
+              <h3>Runtime Status</h3>
+              <span class="yuyi-card__tag" id="yrt-state-tag">--</span>
+            </header>
+            <div class="yuyi-card__body">
+              <dl class="yuyi-stat">
+                <div><dt>initialized</dt><dd id="yrt-initialized">--</dd></div>
+                <div><dt>running</dt><dd id="yrt-running">--</dd></div>
+                <div><dt>uptime</dt><dd id="yrt-uptime">--</dd></div>
+              </dl>
+              <dl class="yuyi-stat" style="margin-top: 8px;">
+                <div><dt>state</dt><dd id="yrt-current-state">--</dd></div>
+                <div><dt>tick_count</dt><dd id="yrt-tick-count">0</dd></div>
+                <div><dt>bridge_error</dt><dd id="yrt-bridge-error">--</dd></div>
+              </dl>
+            </div>
+          </article>
+
+          <!-- =========================================================
+               Step 8.4.6: Live2D Status Card —— 只读联动 Runtime Snapshot
+               ========================================================= -->
+          <article class="yuyi-card" data-block="runtime-live2d">
+            <header class="yuyi-card__header">
+              <h3>Live2D</h3>
+              <span class="yuyi-card__tag" id="yrt-live2d-tag">--</span>
+            </header>
+            <div class="yuyi-card__body">
+              <p class="yuyi-empty" id="yrt-live2d-status" style="margin-bottom: 6px;">--</p>
+              <dl class="yuyi-stat">
+                <div><dt>expression</dt><dd id="yrt-live2d-expression">--</dd></div>
+                <div><dt>motion</dt><dd id="yrt-live2d-motion">--</dd></div>
+                <div><dt>reason</dt><dd id="yrt-live2d-reason">--</dd></div>
+              </dl>
+              <dl class="yuyi-stat" style="margin-top: 8px;">
+                <div><dt>source</dt><dd id="yrt-live2d-source">Runtime Snapshot</dd></div>
+                <div><dt>confidence</dt><dd id="yrt-live2d-confidence">--</dd></div>
+                <div><dt>timestamp</dt><dd id="yrt-live2d-timestamp">--</dd></div>
+              </dl>
+              <!-- TracePanel 容器(点击卡片展开) -->
+              <div class="yuyi-tp-wrap" id="yrt-live2d-trace" style="margin-top: 8px;"></div>
+            </div>
+          </article>
+
+          <!-- =========================================================
+               Step 8.4.7: Audit Viewer —— POST 安全链路只读审计
+               位置:Debug / Admin 区域(独立卡片,默认只读)
+               ========================================================= -->
+          <article class="yuyi-card yuyi-card--full" data-block="audit-viewer" style="grid-column: 1 / -1;">
+            <header class="yuyi-card__header">
+              <h3>📜 POST 审计日志 <small>(只读 · Debug)</small></h3>
+              <span class="yuyi-card__tag" id="yaudit-status">--</span>
+            </header>
+            <div class="yuyi-card__body">
+              <!-- 统计 -->
+              <dl class="yuyi-stat" style="margin-bottom: 10px;">
+                <div><dt>总数</dt><dd id="yaudit-stat-total">0</dd></div>
+                <div><dt>success</dt><dd id="yaudit-stat-success">0</dd></div>
+                <div><dt>denied</dt><dd id="yaudit-stat-denied">0</dd></div>
+                <div><dt>failure</dt><dd id="yaudit-stat-failure">0</dd></div>
+              </dl>
+              <!-- 过滤 -->
+              <div class="yuyi-audit__filter" style="display:flex; gap:8px; margin-bottom: 10px; flex-wrap: wrap;">
+                <input type="text" id="yaudit-filter-who" placeholder="角色 (who)" class="yuyi-input" style="flex:1; min-width:120px;" />
+                <input type="text" id="yaudit-filter-action" placeholder="action" class="yuyi-input" style="flex:1; min-width:160px;" />
+                <select id="yaudit-filter-result" class="yuyi-input" style="flex:0; min-width:120px;">
+                  <option value="">全部结果</option>
+                  <option value="success">success</option>
+                  <option value="denied">denied</option>
+                  <option value="failure">failure</option>
+                </select>
+                <button type="button" class="yuyi-btn yuyi-btn--ghost" id="yaudit-apply">应用</button>
+                <button type="button" class="yuyi-btn yuyi-btn--ghost" id="yaudit-refresh">刷新</button>
+              </div>
+              <ul class="yuyi-list yuyi-audit__list" id="yaudit-list" style="max-height: 360px; overflow:auto;">
+                <li class="yuyi-list__empty">加载中…</li>
+              </ul>
+              <p class="yuyi-empty" style="font-size: 12px; margin-top: 8px;">
+                本面板只读。展示所有 Dashboard POST 操作(成功 / 拒绝 / 失败),数据源:<code>GET /api/dashboard/v2/audit/logs</code>
+              </p>
+            </div>
+          </article>
+
+          <article class="yuyi-card" data-block="runtime-tasks">
+            <header class="yuyi-card__header">
+              <h3>Lifecycle Tasks</h3>
+            </header>
+            <div class="yuyi-card__body">
+              <ul class="yuyi-list" id="yrt-tasks-list">
+                <li class="yuyi-list__empty">加载中…</li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="yuyi-card yuyi-card--full" data-block="runtime-events" style="grid-column: 1 / -1;">
+            <header class="yuyi-card__header">
+              <h3>Tick / Integration Events</h3>
+            </header>
+            <div class="yuyi-card__body">
+              <ul class="yuyi-events__list" id="yrt-events-list" style="max-height: 320px;">
+                <li class="yuyi-events__item yuyi-events__item--empty">加载中…</li>
+              </ul>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- SelfModel 页面 -->
+      <section class="yuyi-page" data-page-id="selfmodel" style="display: none;">
+        <div class="yuyi-main__actions" style="margin-bottom: 12px;">
+          <button type="button" class="yuyi-btn yuyi-btn--ghost" id="ysm-refresh">刷新</button>
+        </div>
+        <div class="yuyi-grid yuyi-grid--overview">
+          <article class="yuyi-card" data-block="selfmodel-identity">
+            <header class="yuyi-card__header">
+              <h3>Identity</h3>
+              <span class="yuyi-card__tag" id="ysm-status-tag">--</span>
+            </header>
+            <div class="yuyi-card__body">
+              <dl class="yuyi-stat">
+                <div><dt>name</dt><dd id="ysm-name">--</dd></div>
+                <div><dt>version</dt><dd id="ysm-version">--</dd></div>
+                <div><dt>source</dt><dd id="ysm-source">--</dd></div>
+              </dl>
+              <dl class="yuyi-stat" style="margin-top: 8px;">
+                <div><dt>identity_id</dt><dd id="ysm-id">--</dd></div>
+                <div><dt>anchor</dt><dd id="ysm-anchor">--</dd></div>
+                <div><dt>stable</dt><dd id="ysm-stable">--</dd></div>
+              </dl>
+              <div class="ysm-values" id="ysm-values" style="margin-top: 8px;"></div>
+            </div>
+          </article>
+
+          <article class="yuyi-card" data-block="selfmodel-health">
+            <header class="yuyi-card__header">
+              <h3>SelfModel Health</h3>
+              <span class="yuyi-card__tag" id="ysm-health-tag">--</span>
+            </header>
+            <div class="yuyi-card__body">
+              <div class="yuyi-health__score">
+                <span id="ysm-health-score">--</span>
+                <small>/100</small>
+              </div>
+              <dl class="yuyi-stat" style="margin-top: 8px;">
+                <div><dt>status</dt><dd id="ysm-health-status">--</dd></div>
+              </dl>
+              <ul class="yuyi-health__issues" id="ysm-health-issues"></ul>
+            </div>
+          </article>
+
+          <article class="yuyi-card" data-block="selfmodel-traits">
+            <header class="yuyi-card__header">
+              <h3>Traits</h3>
+              <span class="yuyi-card__tag" id="ysm-traits-total">0</span>
+            </header>
+            <div class="yuyi-card__body">
+              <ul class="yuyi-list" id="ysm-traits-list">
+                <li class="yuyi-list__empty">加载中…</li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="yuyi-card" data-block="selfmodel-capabilities">
+            <header class="yuyi-card__header">
+              <h3>Capabilities</h3>
+              <span class="yuyi-card__tag" id="ysm-caps-total">0</span>
+            </header>
+            <div class="yuyi-card__body">
+              <ul class="yuyi-list" id="ysm-caps-list">
+                <li class="yuyi-list__empty">加载中…</li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="yuyi-card yuyi-card--full" data-block="selfmodel-beliefs" style="grid-column: 1 / -1;">
+            <header class="yuyi-card__header">
+              <h3>Beliefs</h3>
+              <span class="yuyi-card__tag" id="ysm-beliefs-total">0</span>
+            </header>
+            <div class="yuyi-card__body">
+              <dl class="yuyi-stat">
+                <div><dt>total</dt><dd id="ysm-beliefs-total">0</dd></div>
+                <div><dt>active</dt><dd id="ysm-beliefs-active">0</dd></div>
+                <div><dt>inactive</dt><dd id="ysm-beliefs-inactive">0</dd></div>
+                <div><dt>by_domain</dt><dd id="ysm-beliefs-by-domain">--</dd></div>
+              </dl>
+              <ul class="yuyi-list" id="ysm-beliefs-list" style="margin-top: 8px;">
+                <li class="yuyi-list__empty">加载中…</li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="yuyi-card yuyi-card--full" data-block="selfmodel-timeline" style="grid-column: 1 / -1;">
+            <header class="yuyi-card__header">
+              <h3>Evolution Timeline</h3>
+            </header>
+            <div class="yuyi-card__body">
+              <ul class="yuyi-events__list" id="ysm-timeline-list" style="max-height: 320px;">
+                <li class="yuyi-events__item yuyi-events__item--empty">加载中…</li>
+              </ul>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- Memory 页面 -->
+      <section class="yuyi-page" data-page-id="memory" style="display: none;">
+        <div class="yuyi-main__actions" style="margin-bottom: 12px; display: flex; gap: 8px; align-items: center;">
+          <button type="button" class="yuyi-btn yuyi-btn--ghost" id="ymm-refresh">刷新</button>
+          <select id="ymm-range" class="yuyi-btn" style="background: rgba(255,255,255,0.7); border: 1px solid rgba(180,200,255,0.35);">
+            <option value="24h">最近 24 小时</option>
+            <option value="7d" selected>最近 7 天</option>
+            <option value="30d">最近 30 天</option>
+            <option value="90d">最近 90 天</option>
+          </select>
+        </div>
+
+        <!-- 顶部统计 -->
+        <div class="yuyi-grid yuyi-grid--overview" style="margin-bottom: 12px;">
+          <article class="yuyi-card" data-block="memory-stat-total">
+            <header class="yuyi-card__header"><h3>Total Memories</h3></header>
+            <div class="yuyi-card__body">
+              <div class="yuyi-health__score"><span id="ymm-stat-total">0</span><small>条</small></div>
+              <p class="yuyi-empty" style="margin-top: 6px;">最近更新:<span id="ymm-last-update">--</span></p>
+            </div>
+          </article>
+          <article class="yuyi-card" data-block="memory-stat-important">
+            <header class="yuyi-card__header"><h3>Important Memories</h3></header>
+            <div class="yuyi-card__body">
+              <div class="yuyi-health__score"><span id="ymm-stat-important">0</span><small>条</small></div>
+              <p class="yuyi-empty" style="margin-top: 6px;">importance ≥ 0.70</p>
+            </div>
+          </article>
+          <article class="yuyi-card" data-block="memory-stat-recent">
+            <header class="yuyi-card__header"><h3>Recent Memories</h3></header>
+            <div class="yuyi-card__body">
+              <div class="yuyi-health__score"><span id="ymm-stat-recent">0</span><small>条</small></div>
+              <p class="yuyi-empty" style="margin-top: 6px;">7 天内新增</p>
+            </div>
+          </article>
+        </div>
+
+        <!-- 时间线 + 列表 + 详情 -->
+        <div class="yuyi-grid yuyi-grid--overview">
+          <article class="yuyi-card" data-block="memory-timeline">
+            <header class="yuyi-card__header">
+              <h3>Timeline</h3>
+              <span class="yuyi-card__tag" id="ymm-timeline-range">--</span>
+            </header>
+            <div class="yuyi-card__body">
+              <p class="yuyi-empty" style="margin-bottom: 6px;">总记忆:<span id="ymm-timeline-total">0</span></p>
+              <ul class="ymm-timeline" id="ymm-timeline-list">
+                <li class="yuyi-list__empty">加载中…</li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="yuyi-card" data-block="memory-recent">
+            <header class="yuyi-card__header"><h3>Recent</h3></header>
+            <div class="yuyi-card__body">
+              <ul class="yuyi-list" id="ymm-recent-list">
+                <li class="yuyi-list__empty">加载中…</li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="yuyi-card" data-block="memory-important">
+            <header class="yuyi-card__header"><h3>Important</h3></header>
+            <div class="yuyi-card__body">
+              <ul class="yuyi-list" id="ymm-important-list">
+                <li class="yuyi-list__empty">加载中…</li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="yuyi-card yuyi-card--full" data-block="memory-detail" style="grid-column: 1 / -1;">
+            <header class="yuyi-card__header">
+              <h3>Detail</h3>
+              <span class="yuyi-card__tag">点击列表查看</span>
+            </header>
+            <div class="yuyi-card__body" id="ymm-detail">
+              <p class="yuyi-empty">从上方列表选择一条记忆查看详情</p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- Reflection 页面 -->
+      <section class="yuyi-page" data-page-id="reflection" style="display: none;">
+        <div class="yuyi-main__actions" style="margin-bottom: 12px; display: flex; gap: 8px; align-items: center;">
+          <button type="button" class="yuyi-btn yuyi-btn--ghost" id="yrf-refresh">刷新</button>
+          <select id="yrf-type-filter" class="yuyi-btn" style="background: rgba(255,255,255,0.7); border: 1px solid rgba(180,200,255,0.35);">
+            <option value="" selected>全部类型</option>
+            <option value="daily">每日</option>
+            <option value="event">事件</option>
+            <option value="growth">成长</option>
+          </select>
+        </div>
+
+        <!-- 顶部统计 -->
+        <div class="yuyi-grid yuyi-grid--overview" style="margin-bottom: 12px;">
+          <article class="yuyi-card" data-block="reflection-stat-total">
+            <header class="yuyi-card__header"><h3>Total Reflections</h3></header>
+            <div class="yuyi-card__body">
+              <div class="yuyi-health__score"><span id="yrf-stat-total">0</span><small>条</small></div>
+              <p class="yuyi-empty" style="margin-top: 6px;">最近:<span id="yrf-last-at">--</span></p>
+            </div>
+          </article>
+          <article class="yuyi-card" data-block="reflection-stat-daily">
+            <header class="yuyi-card__header"><h3>Daily</h3></header>
+            <div class="yuyi-card__body">
+              <div class="yuyi-health__score"><span id="yrf-stat-daily">0</span><small>条</small></div>
+              <p class="yuyi-empty" style="margin-top: 6px;">每日反思</p>
+            </div>
+          </article>
+          <article class="yuyi-card" data-block="reflection-stat-event">
+            <header class="yuyi-card__header"><h3>Event</h3></header>
+            <div class="yuyi-card__body">
+              <div class="yuyi-health__score"><span id="yrf-stat-event">0</span><small>条</small></div>
+              <p class="yuyi-empty" style="margin-top: 6px;">事件反思</p>
+            </div>
+          </article>
+          <article class="yuyi-card" data-block="reflection-stat-growth">
+            <header class="yuyi-card__header"><h3>Growth</h3></header>
+            <div class="yuyi-card__body">
+              <div class="yuyi-health__score"><span id="yrf-stat-growth">0</span><small>条</small></div>
+              <p class="yuyi-empty" style="margin-top: 6px;">成长反思</p>
+            </div>
+          </article>
+        </div>
+
+        <!-- 三栏:Timeline / Detail / Evidence -->
+        <div class="yuyi-grid yuyi-grid--overview">
+          <article class="yuyi-card" data-block="reflection-timeline">
+            <header class="yuyi-card__header">
+              <h3>Reflection Timeline</h3>
+              <span class="yuyi-card__tag" id="yrf-last-id">--</span>
+            </header>
+            <div class="yuyi-card__body">
+              <ul class="yuyi-list" id="yrf-timeline-list">
+                <li class="yuyi-list__empty">加载中…</li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="yuyi-card" data-block="reflection-detail">
+            <header class="yuyi-card__header">
+              <h3>Reflection Detail</h3>
+              <span class="yuyi-card__tag">点击列表查看</span>
+            </header>
+            <div class="yuyi-card__body" id="yrf-detail">
+              <p class="yuyi-empty">从左侧列表选择一条 Reflection</p>
+            </div>
+          </article>
+
+          <article class="yuyi-card" data-block="reflection-insights">
+            <header class="yuyi-card__header">
+              <h3>Insights</h3>
+            </header>
+            <div class="yuyi-card__body" id="yrf-insights">
+              <p class="yuyi-empty">从左侧列表选择一条 Reflection</p>
+            </div>
+          </article>
+
+          <article class="yuyi-card yuyi-card--full" data-block="reflection-evidence" style="grid-column: 1 / -1;">
+            <header class="yuyi-card__header">
+              <h3>Evidence Chain</h3>
+              <span class="yuyi-card__tag">Memory → Event → Evidence</span>
+            </header>
+            <div class="yuyi-card__body" id="yrf-evidence">
+              <p class="yuyi-empty">从左侧列表选择一条 Reflection 展示证据链</p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- Goal 页面 -->
+      <section class="yuyi-page" data-page-id="goal" style="display: none;">
+        <div class="yuyi-main__actions" style="margin-bottom: 12px; display: flex; gap: 8px; align-items: center;">
+          <button type="button" class="yuyi-btn yuyi-btn--ghost" id="ygl-refresh">刷新</button>
+          <select id="ygl-status-filter" class="yuyi-btn" style="background: rgba(255,255,255,0.7); border: 1px solid rgba(180,200,255,0.35);">
+            <option value="" selected>全部状态</option>
+            <option value="active">活跃</option>
+            <option value="paused">暂停</option>
+            <option value="completed">完成</option>
+            <option value="abandoned">放弃</option>
+            <option value="candidate">候选</option>
+          </select>
+        </div>
+
+        <!-- 顶部统计 -->
+        <div class="yuyi-grid yuyi-grid--overview" style="margin-bottom: 12px;">
+          <article class="yuyi-card" data-block="goal-stat-total">
+            <header class="yuyi-card__header"><h3>Total Goals</h3></header>
+            <div class="yuyi-card__body">
+              <div class="yuyi-health__score"><span id="ygl-stat-total">0</span><small>个</small></div>
+              <p class="yuyi-empty" style="margin-top: 6px;">最近:<span id="ygl-last-at">--</span></p>
+            </div>
+          </article>
+          <article class="yuyi-card" data-block="goal-stat-active">
+            <header class="yuyi-card__header"><h3>Active</h3></header>
+            <div class="yuyi-card__body">
+              <div class="yuyi-health__score"><span id="ygl-stat-active">0</span><small>个</small></div>
+              <p class="yuyi-empty" style="margin-top: 6px;">正在追求</p>
+            </div>
+          </article>
+          <article class="yuyi-card" data-block="goal-stat-paused">
+            <header class="yuyi-card__header"><h3>Paused</h3></header>
+            <div class="yuyi-card__body">
+              <div class="yuyi-health__score"><span id="ygl-stat-paused">0</span><small>个</small></div>
+              <p class="yuyi-empty" style="margin-top: 6px;">暂时搁置</p>
+            </div>
+          </article>
+          <article class="yuyi-card" data-block="goal-stat-completed">
+            <header class="yuyi-card__header"><h3>Completed</h3></header>
+            <div class="yuyi-card__body">
+              <div class="yuyi-health__score"><span id="ygl-stat-completed">0</span><small>个</small></div>
+              <p class="yuyi-empty" style="margin-top: 6px;">已完成</p>
+            </div>
+          </article>
+        </div>
+
+        <!-- 当前活跃目标 -->
+        <div class="yuyi-grid yuyi-grid--overview" style="margin-bottom: 12px;">
+          <article class="yuyi-card yuyi-card--full" data-block="goal-current" style="grid-column: 1 / -1;">
+            <header class="yuyi-card__header">
+              <h3>当前活跃目标</h3>
+              <span class="yuyi-card__tag" id="ygl-last-id">--</span>
+            </header>
+            <div class="yuyi-card__body" id="ygl-current">
+              <p class="yuyi-empty">加载中…</p>
+            </div>
+          </article>
+        </div>
+
+        <!-- 三栏:List / Detail / History -->
+        <div class="yuyi-grid yuyi-grid--overview">
+          <article class="yuyi-card" data-block="goal-list">
+            <header class="yuyi-card__header">
+              <h3>Goal List</h3>
+            </header>
+            <div class="yuyi-card__body">
+              <ul class="yuyi-list" id="ygl-list">
+                <li class="yuyi-list__empty">加载中…</li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="yuyi-card" data-block="goal-detail">
+            <header class="yuyi-card__header">
+              <h3>Goal Detail</h3>
+              <span class="yuyi-card__tag">点击列表查看</span>
+            </header>
+            <div class="yuyi-card__body" id="ygl-detail">
+              <p class="yuyi-empty">从左侧列表选择一条 Goal 查看详情</p>
+            </div>
+          </article>
+
+          <article class="yuyi-card yuyi-card--full" data-block="goal-history" style="grid-column: 1 / -1;">
+            <header class="yuyi-card__header">
+              <h3>Goal History</h3>
+              <span class="yuyi-card__tag">created / updated / plan</span>
+            </header>
+            <div class="yuyi-card__body">
+              <ul class="yuyi-events__list" id="ygl-history" style="max-height: 360px;">
+                <li class="yuyi-events__item yuyi-events__item--empty">加载中…</li>
+              </ul>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- Initiative 页面 -->
+      <section class="yuyi-page" data-page-id="initiative" style="display: none;">
+        <div class="yuyi-main__actions" style="margin-bottom: 12px; display: flex; gap: 8px; align-items: center;">
+          <button type="button" class="yuyi-btn yuyi-btn--ghost" id="yit-refresh">刷新</button>
+          <select id="yit-trend-filter" class="yuyi-btn" style="background: rgba(255,255,255,0.7); border: 1px solid rgba(180,200,255,0.35);">
+            <option value="" selected>全部趋势</option>
+            <option value="new">新出现</option>
+            <option value="rising">上升中</option>
+            <option value="stable">稳定</option>
+            <option value="fading">衰退</option>
+          </select>
+          <select id="yit-action-status-filter" class="yuyi-btn" style="background: rgba(255,255,255,0.7); border: 1px solid rgba(180,200,255,0.35);">
+            <option value="" selected>全部状态</option>
+            <option value="pending">候选中</option>
+            <option value="filtered">已过滤</option>
+            <option value="deferred">已延后</option>
+            <option value="discarded">已放弃</option>
+          </select>
+        </div>
+
+        <!-- 顶部统计 -->
+        <div class="yuyi-grid yuyi-grid--overview" style="margin-bottom: 12px;">
+          <article class="yuyi-card" data-block="initiative-stat-interest">
+            <header class="yuyi-card__header"><h3>Interest Signals</h3></header>
+            <div class="yuyi-card__body">
+              <div class="yuyi-health__score"><span id="yit-stat-interest">0</span><small>条</small></div>
+              <p class="yuyi-empty" style="margin-top: 6px;">最近:<span id="yit-last-interest-id">--</span></p>
+            </div>
+          </article>
+          <article class="yuyi-card" data-block="initiative-stat-actions">
+            <header class="yuyi-card__header"><h3>Possible Actions</h3></header>
+            <div class="yuyi-card__body">
+              <div class="yuyi-health__score"><span id="yit-stat-actions">0</span><small>条</small></div>
+              <p class="yuyi-empty" style="margin-top: 6px;">最近:<span id="yit-last-action-id">--</span></p>
+            </div>
+          </article>
+          <article class="yuyi-card" data-block="initiative-stat-filtered">
+            <header class="yuyi-card__header"><h3>Filtered</h3></header>
+            <div class="yuyi-card__body">
+              <div class="yuyi-health__score"><span id="yit-stat-filtered">0</span><small>条</small></div>
+              <p class="yuyi-empty" style="margin-top: 6px;">过滤/延后/放弃</p>
+            </div>
+          </article>
+          <article class="yuyi-card" data-block="initiative-stat-by-trend">
+            <header class="yuyi-card__header"><h3>Trend Mix</h3></header>
+            <div class="yuyi-card__body">
+              <dl class="yuyi-stat">
+                <div><dt>new</dt><dd id="yit-trend-new">0</dd></div>
+                <div><dt>rising</dt><dd id="yit-trend-rising">0</dd></div>
+                <div><dt>stable</dt><dd id="yit-trend-stable">0</dd></div>
+                <div><dt>fading</dt><dd id="yit-trend-fading">0</dd></div>
+              </dl>
+            </div>
+          </article>
+        </div>
+
+        <!-- InterestSignals 列表 -->
+        <div class="yuyi-grid yuyi-grid--overview" style="margin-bottom: 12px;">
+          <article class="yuyi-card yuyi-card--full" data-block="initiative-interests" style="grid-column: 1 / -1;">
+            <header class="yuyi-card__header">
+              <h3>Interest Signals</h3>
+              <span class="yuyi-card__tag">topic / trend / strength</span>
+            </header>
+            <div class="yuyi-card__body">
+              <ul class="yuyi-list" id="yit-interests-list">
+                <li class="yuyi-list__empty">加载中…</li>
+              </ul>
+            </div>
+          </article>
+        </div>
+
+        <!-- Actions 列表 + Filtered 列表 -->
+        <div class="yuyi-grid yuyi-grid--overview">
+          <article class="yuyi-card" data-block="initiative-actions">
+            <header class="yuyi-card__header">
+              <h3>Possible Actions</h3>
+              <span class="yuyi-card__tag" id="yit-actions-tag">--</span>
+            </header>
+            <div class="yuyi-card__body">
+              <ul class="yuyi-list" id="yit-actions-list">
+                <li class="yuyi-list__empty">加载中…</li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="yuyi-card" data-block="initiative-filtered">
+            <header class="yuyi-card__header">
+              <h3>Filtered Actions</h3>
+              <span class="yuyi-card__tag">reason / policy</span>
+            </header>
+            <div class="yuyi-card__body">
+              <ul class="yuyi-list" id="yit-filtered-list">
+                <li class="yuyi-list__empty">加载中…</li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="yuyi-card yuyi-card--full" data-block="initiative-history" style="grid-column: 1 / -1;">
+            <header class="yuyi-card__header">
+              <h3>Initiative History</h3>
+              <span class="yuyi-card__tag">signal / action / filtered</span>
+            </header>
+            <div class="yuyi-card__body">
+              <ul class="yuyi-events__list" id="yit-history" style="max-height: 360px;">
+                <li class="yuyi-events__item yuyi-events__item--empty">加载中…</li>
+              </ul>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- Life Graph 页面 -->
+      <section class="yuyi-page" data-page-id="life-graph" style="display: none;">
+        <div class="yuyi-main__actions" style="margin-bottom: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+          <button type="button" class="yuyi-btn yuyi-btn--ghost" id="ylg-refresh">刷新</button>
+          <select id="ylg-type-filter" class="yuyi-btn" style="background: rgba(255,255,255,0.7); border: 1px solid rgba(180,200,255,0.35);">
+            <option value="" selected>全部节点类型</option>
+            <option value="memory">记忆</option>
+            <option value="reflection">反思</option>
+            <option value="interest">兴趣</option>
+            <option value="action">行动</option>
+            <option value="goal">目标</option>
+            <option value="belief">信念</option>
+            <option value="trait_change">特质变化</option>
+          </select>
+          <span class="yuyi-card__tag" id="ylg-count-tag" style="margin-left: auto;">--</span>
+        </div>
+
+        <div class="yuyi-grid yuyi-grid--overview" style="margin-bottom: 12px;">
+          <article class="yuyi-card" data-block="life-graph-stat-memory">
+            <header class="yuyi-card__header"><h3>Memory</h3></header>
+            <div class="yuyi-card__body"><div class="yuyi-health__score"><span id="ylg-stat-memory">0</span></div></div>
+          </article>
+          <article class="yuyi-card" data-block="life-graph-stat-reflection">
+            <header class="yuyi-card__header"><h3>Reflection</h3></header>
+            <div class="yuyi-card__body"><div class="yuyi-health__score"><span id="ylg-stat-reflection">0</span></div></div>
+          </article>
+          <article class="yuyi-card" data-block="life-graph-stat-interest">
+            <header class="yuyi-card__header"><h3>Interest</h3></header>
+            <div class="yuyi-card__body"><div class="yuyi-health__score"><span id="ylg-stat-interest">0</span></div></div>
+          </article>
+          <article class="yuyi-card" data-block="life-graph-stat-action">
+            <header class="yuyi-card__header"><h3>Action</h3></header>
+            <div class="yuyi-card__body"><div class="yuyi-health__score"><span id="ylg-stat-action">0</span></div></div>
+          </article>
+          <article class="yuyi-card" data-block="life-graph-stat-goal">
+            <header class="yuyi-card__header"><h3>Goal</h3></header>
+            <div class="yuyi-card__body"><div class="yuyi-health__score"><span id="ylg-stat-goal">0</span></div></div>
+          </article>
+          <article class="yuyi-card" data-block="life-graph-stat-belief">
+            <header class="yuyi-card__header"><h3>Belief</h3></header>
+            <div class="yuyi-card__body"><div class="yuyi-health__score"><span id="ylg-stat-belief">0</span></div></div>
+          </article>
+          <article class="yuyi-card" data-block="life-graph-stat-trait">
+            <header class="yuyi-card__header"><h3>Trait Δ</h3></header>
+            <div class="yuyi-card__body"><div class="yuyi-health__score"><span id="ylg-stat-trait">0</span></div></div>
+          </article>
+        </div>
+
+        <div class="yuyi-grid yuyi-grid--overview">
+          <article class="yuyi-card yuyi-card--full" data-block="life-graph-canvas" style="grid-column: 1 / -1;">
+            <header class="yuyi-card__header">
+              <h3>生命关系图</h3>
+              <span class="yuyi-card__tag" id="ylg-canvas-tag">SVG</span>
+            </header>
+            <div class="yuyi-card__body" style="overflow: auto;">
+              <svg id="ylg-svg" width="100%" height="520" viewBox="0 0 1200 520" preserveAspectRatio="xMidYMid meet" style="background: linear-gradient(135deg, rgba(220,230,255,0.18), rgba(240,225,250,0.18)); border-radius: 12px;"></svg>
+              <p class="yuyi-empty" id="ylg-hint" style="margin-top: 8px;">点击节点查看详情;输入两端节点 ID 即可查询形成路径。</p>
+            </div>
+          </article>
+
+          <article class="yuyi-card" data-block="life-graph-detail">
+            <header class="yuyi-card__header">
+              <h3>节点详情</h3>
+              <span class="yuyi-card__tag" id="ylg-detail-tag">未选择</span>
+            </header>
+            <div class="yuyi-card__body" id="ylg-detail">
+              <p class="yuyi-empty">从图上选择一个节点,这里会显示它的来源、证据链与时间戳。</p>
+            </div>
+          </article>
+
+          <article class="yuyi-card" data-block="life-graph-path">
+            <header class="yuyi-card__header">
+              <h3>路径查询</h3>
+              <span class="yuyi-card__tag">from → to</span>
+            </header>
+            <div class="yuyi-card__body">
+              <div style="display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap;">
+                <input id="ylg-path-from" type="text" placeholder="from id (例如 interest::sig_001)" class="yuyi-btn" style="flex: 1; min-width: 160px; background: rgba(255,255,255,0.7); border: 1px solid rgba(180,200,255,0.35); padding: 6px 10px;" />
+                <input id="ylg-path-to" type="text" placeholder="to id (例如 goal::goal_x)" class="yuyi-btn" style="flex: 1; min-width: 160px; background: rgba(255,255,255,0.7); border: 1px solid rgba(180,200,255,0.35); padding: 6px 10px;" />
+                <button type="button" class="yuyi-btn yuyi-btn--ghost" id="ylg-path-go">查询</button>
+              </div>
+              <ol class="yuyi-list" id="ylg-path-list">
+                <li class="yuyi-list__empty">尚未查询</li>
+              </ol>
+            </div>
+          </article>
+
+          <article class="yuyi-card yuyi-card--full" data-block="life-graph-timeline" style="grid-column: 1 / -1;">
+            <header class="yuyi-card__header">
+              <h3>生命时间线</h3>
+              <span class="yuyi-card__tag" id="ylg-timeline-tag">asc</span>
+            </header>
+            <div class="yuyi-card__body">
+              <ul class="yuyi-events__list" id="ylg-timeline" style="max-height: 320px;">
+                <li class="yuyi-events__item yuyi-events__item--empty">加载中…</li>
+              </ul>
+            </div>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <!-- 右侧：事件流占位 -->
+    <aside class="yuyi-events" id="yuyiEvents" aria-label="事件流">
+      <header class="yuyi-events__header">
+        <h3>事件流</h3>
+        <span class="yuyi-events__hint" id="yuyiEventsHint">占位 · WebSocket 即将接入</span>
+      </header>
+      <ol class="yuyi-events__list" id="yuyiEventsList">
+        <li class="yuyi-events__item yuyi-events__item--empty">暂无事件</li>
+      </ol>
+    </aside>
+
+  </div>
+
+  <!-- 错误提示 toast -->
+  <div class="yuyi-toast" id="yuyiToast" role="status" aria-live="polite"></div>
+
+  <script src="/static/admin/dashboard_v2/js/api.js"></script>
+  <script src="/static/admin/dashboard_v2/js/ws.js"></script>
+  <script src="/static/admin/dashboard_v2/js/router.js"></script>
+  <script src="/static/admin/dashboard_v2/js/overview.js"></script>
+  <script src="/static/admin/dashboard_v2/js/runtime.js"></script>
+  <script src="/static/admin/dashboard_v2/js/runtime_overview.js"></script>
+  <script src="/static/admin/dashboard_v2/js/runtime_events.js"></script>
+  <script src="/static/admin/dashboard_v2/js/selfmodel.js"></script>
+  <script src="/static/admin/dashboard_v2/js/memory.js"></script>
+  <script src="/static/admin/dashboard_v2/js/reflection.js"></script>
+  <script src="/static/admin/dashboard_v2/js/goal.js"></script>
+  <script src="/static/admin/dashboard_v2/js/initiative.js"></script>
+  <script src="/static/admin/dashboard_v2/js/life_graph.js"></script>
+  <script src="/static/admin/dashboard_v2/js/life_state.js"></script>
+  <!-- Step 8.4.5 —— 统一 TracePanel 组件 -->
+  <script src="/static/admin/dashboard_v2/js/trace_panel.js"></script>
+  <!-- Step 8.4.7 —— Audit Viewer -->
+  <script src="/static/admin/dashboard_v2/js/audit.js"></script>
+  <script>
+    // Phase 7.4.1 修复：启用 router 路由切换(原本只预留了 PAGES 表,未注册 hashchange 监听器)
+    if (window.YuyiDashboardRouter && typeof window.YuyiDashboardRouter.onChange === "function") {
+      window.YuyiDashboardRouter.onChange();
+    }
+    // Phase 5.0 Step 8.4.1 —— Trace 面板开关
+    (function () {
+      const btn = document.getElementById("yuyiTraceToggleBtn");
+      const wrap = document.getElementById("yuyiTracePanelWrap");
+      if (!btn || !wrap) return;
+      btn.addEventListener("click", function () {
+        const visible = wrap.style.display !== "none";
+        wrap.style.display = visible ? "none" : "";
+        btn.textContent = visible ? "查看证据" : "收起证据";
+      });
+    })();
+    // 触发 LifeState 加载（overview 首次进入 + 每次刷新）
+    (function () {
+      function tryLoad() {
+        if (window.YuyiLifeState && typeof window.YuyiLifeState.loadAll === "function") {
+          try { window.YuyiLifeState.loadAll(); } catch (e) { console.warn(e); }
+        }
+      }
+      // 立即执行 + 监听 hash 变化
+      tryLoad();
+      window.addEventListener("hashchange", tryLoad);
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+# 电脑控制配置 Schema
+enabled:
+  type: boolean
+  required: true
+  default: false
+  description: 是否启用电脑控制
+action_timeout:
+  type: float
+  default: 30
+  min: 1
+  description: 操作超时时间（秒）

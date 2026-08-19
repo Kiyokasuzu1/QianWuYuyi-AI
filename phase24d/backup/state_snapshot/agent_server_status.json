@@ -1,0 +1,11 @@
+{
+  "enabled": true,
+  "running": true,
+  "host": "0.0.0.0",
+  "port": 8765,
+  "pid": 685694,
+  "total_agents": 0,
+  "authenticated_agents": 0,
+  "agents": [],
+  "updated_at": "2026-08-15T22:29:03"
+}

@@ -168,6 +168,39 @@
 
 ---
 
+# Relationship Intelligence
+
+从 Phase 3.5.27 起，
+
+关系系统在当前 `RelationshipState` 之外增加 `RelationshipModel`。
+
+
+`RelationshipState` 负责当前关系快照：
+
+- familiarity
+- trust
+- collaboration
+- interaction_frequency
+
+
+`RelationshipModel` 负责长期关系历史：
+
+- interaction history
+- trust changes
+- emotional patterns
+- shared experiences
+- relationship milestones
+
+
+因此关系系统开始从“当前数值状态”
+
+扩展为
+
+“状态 + 历史 + 模式”的长期结构。
+
+
+---
+
 # Relationship Change
 
 

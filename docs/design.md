@@ -259,6 +259,342 @@ AI生成回答。
 
 经历
 
+
+---
+
+# Memory Relevance Design
+
+`MemoryRelevanceEvaluator` 被设计为独立层，
+
+而不是写死在 `MemoryStore` 或某一个 retriever 里。
+
+
+原因：
+
+- relevance 是检索阶段的派生判断
+- 不是记忆本体
+- 不应反向污染原始 memory record
+
+
+因此当前设计采用：
+
+memory record
+
++
+
+query / runtime context
+
+↓
+
+MemoryRelevanceEvaluator
+
+↓
+
+ranked retrieval candidates
+
+↓
+
+audit history
+
+
+这使得后续 Memory / Emotion / Relationship / Identity 的联合检索，
+
+可以共享同一套 relevance contract。
+
+
+---
+
+# Autonomous Decision Layer
+
+从 Phase 3.5.19 起，
+
+Runtime 会引入可审计的自主决策层（不使用 LLM）。
+
+
+它的职责不是“生成答案”，
+
+而是决定：
+
+- 什么时候触发反思（ReflectionScheduler）
+- 什么时候刷新身份稳定性（IdentityStabilityReport）
+- 什么时候保持稳定（不继续生成 proposal）
+
+
+所有决策都会写入结构化记录（AutonomousDecisionRecord），
+
+从而保证“自主”仍然是可解释、可回放、可审计的。
+
+
+---
+
+# Runtime Integration Design
+
+`RuntimeIntegrationManager` 是 3.5.20 新增的高层编排视图。
+
+它不替代 `RuntimeCore`，
+
+也不替代 `LifecycleManager`。
+
+
+它解决的是另一个问题：
+
+当 Runtime 挂载的模块越来越多时，
+
+需要一层统一结构来回答：
+
+- 当前有哪些模块被接入
+- 哪些模块启用 / 关闭
+- 哪些模块健康 / 降级
+- 当前 Runtime 是否具备完整闭环执行条件
+
+
+因此三层职责被拆开：
+
+- `RuntimeCore`：具体执行与状态更新
+- `LifecycleManager`：模块启停 / 保存 / 恢复
+- `RuntimeIntegrationManager`：集成注册 / 健康聚合 / 统一报告
+
+
+---
+
+# Cognitive Loop Verification
+
+`CognitiveLoopVerifier` 是 3.5.21 新增的“只读验证器”。
+
+它不替代 Runtime，
+
+也不驱动真实人格更新。
+
+
+它的职责是验证以下链路是否具备稳定执行能力：
+
+Experience
+
+↓
+
+Memory
+
+↓
+
+Reflection
+
+↓
+
+Evaluation
+
+↓
+
+GrowthProposal
+
+↓
+
+Identity Stability
+
+↓
+
+Personality Evolution
+
+↓
+
+SelfModel
+
+
+其中：
+
+- 第二次输入阶段允许“轻量验证反思”
+- 第三次输入阶段才放开真实的 evaluation / proposal / identity check
+- `DecisionBudget` 用于限制 verification 过程中的反思次数，防止无限循环
+
+
+---
+
+# Event Driven Runtime
+
+从 Phase 3.5.23 起，
+
+Runtime 在现有 `EventBus` 之上新增了标准化运行时事件层：
+
+- `experience_created`
+- `memory_created`
+- `reflection_started`
+- `reflection_completed`
+- `evaluation_completed`
+- `proposal_created`
+- `proposal_applied`
+- `identity_changed`
+- `emotion_changed`
+- `relationship_changed`
+
+
+为了兼容旧系统，
+
+标准事件发布时会同时发出 legacy alias，例如：
+
+- `proposal_created` + `growth.proposal_created`
+- `identity_changed` + `identity.changed`
+- `memory_created` + `memory.created`
+
+
+因此事件驱动架构采用的是：
+
+新增统一事件层
+
++
+
+保留旧订阅接口
+
++
+
+逐步减少 RuntimeCore 硬耦合
+
+
+---
+
+# Autonomous Scheduler
+
+从 Phase 3.5.24 起，
+
+系统新增 `AutonomousScheduler`，
+
+它与 `AutonomousDecisionLayer` 的边界被明确拆开：
+
+- `AutonomousDecisionLayer`：判断是否保持稳定 / 是否允许触发
+- `AutonomousScheduler`：在允许范围内调度维护任务
+
+
+当前调度任务包括：
+
+- `memory_maintenance`
+- `reflection`
+- `identity_check`
+- `growth_evaluation`
+
+
+其中 `growth_evaluation` 只评估 pending proposal，
+
+不会自动接受 proposal，
+
+也不会直接推动人格演化。
+
+
+---
+
+# Memory Consolidation
+
+`MemoryConsolidationEngine` 的设计目标不是替换 `MemoryStore`，
+
+而是提供长期记忆视图。
+
+
+设计分层：
+
+- `MemoryStore`：保存原始、可追溯的 memory records
+- `MemoryRelevanceEvaluator`：在检索阶段排序
+- `MemoryConsolidationEngine`：在维护阶段生成长期记忆结构
+
+
+这样：
+
+- 检索问题由 relevance 解决
+- 长期整理问题由 consolidation 解决
+- 二者不会互相污染原始记忆
+
+
+---
+
+# Personality Stability
+
+从 Phase 3.5.26 起，
+
+系统在 `IdentityStabilityEngine` 之上增加 `PersonalityStabilityEngine`。
+
+
+二者的边界：
+
+- `IdentityStabilityEngine`：关注身份连续性、锚点完整性、记忆污染
+- `PersonalityStabilityEngine`：关注核心价值漂移、trait drift、自我矛盾累积、近期演化风险
+
+
+因此人格稳定系统不是重复做一次身份检测，
+
+而是补上“人格漂移监控层”。
+
+
+当前门控策略：
+
+- 生成 `PersonalityStabilityReport`
+- 若人格稳定性未通过，则阻断 `ChangeRequest` 向下游继续推进
+- 不修改 proposal 状态，不自动接受，不直接修改 Persona
+
+
+---
+
+# Relationship Intelligence
+
+`RelationshipIntelligenceEngine` 的职责是：
+
+- 从互动文本中抽取关系事件
+- 验证事件是否足以影响关系
+- 更新当前 `RelationshipState`
+- 写入长期 `RelationshipModel`
+
+
+当前 `RelationshipModel` 记录：
+
+- interaction history
+- trust changes
+- emotional patterns
+- shared experiences
+- milestones
+
+
+这让关系系统第一次具备“为什么关系变成这样”的可追溯历史。
+
+
+---
+
+# Emotion Dynamics
+
+`EmotionDynamicsEngine` 的职责是：
+
+- 接收情绪事件
+- 记录 emotion transition
+- 维护 persistent mood
+- 汇总 emotional memory
+
+
+设计边界：
+
+- `EmotionManager` 继续负责当前状态与 trace 持久化
+- `EmotionDynamicsEngine` 负责动态历史与情绪记忆视图
+
+
+因此情绪系统不需要推翻已有 state/decay/trace 逻辑，
+
+只是在其上增加统一动态层。
+
+
+---
+
+# Self Reflection Upgrade
+
+从 Phase 3.5.29 起，
+
+`ReflectionEngine` 之上增加 `SelfReflectionEngine`。
+
+
+设计边界：
+
+- `ReflectionEngine`：基础事件模式提炼
+- `SelfReflectionEngine`：多 insight 自省、矛盾分析、长期趋势分析
+- `ReflectionEvaluator`：评估价值
+- `ReflectionGrowthBridge`：保持 Reflection -> Evaluation -> Proposal
+
+
+因此增强后的反思层不会直接驱动人格变更，
+
+只会产生更丰富的 reflection evidence。
+
 ↓
 
 记忆
@@ -540,3 +876,86 @@ LLM负责：
 这就是：
 
 浅雾羽依。
+
+
+---
+
+# Runtime Orchestration Design
+
+当前运行时设计已经明确拆分为两类编排器：
+
+## LifecycleManager
+
+面向模块层。
+
+它负责：
+
+- Memory / Reflection / Growth / Identity 等模块的启动顺序
+- 恢复与保存
+- 健康检查
+- 模块级审计记录
+
+
+## RuntimeLifecycleOrchestrator
+
+面向认知闭环层。
+
+它负责：
+
+- Experience 接收
+- Memory 写入
+- Reflection 启动
+- Evaluation 完成
+- Proposal 创建
+- Proposal 应用
+
+
+这样拆分的原因是：
+
+- 模块启停是系统运维问题
+- 认知闭环是人格演化问题
+
+
+两者都属于 lifecycle，
+
+但不是同一个抽象层。
+
+
+---
+
+# Self Model Expansion
+
+当前 `SelfModel` 已扩展为两层：
+
+## Structural Layer
+
+保留原有结构化字段：
+
+- `stable_traits`
+- `core_values`
+- `behavioral_patterns`
+- `contradictions`
+- `growth_history`
+- `development_history`
+
+
+## Identity Understanding Layer
+
+新增显式的 identity understanding 视图：
+
+- `who_i_am`
+- `what_i_value`
+- `what_changed`
+- `why_changed`
+
+
+这层不是新的 Personality System，
+
+而是从现有结构化证据中派生出的“可解释身份视图”。
+
+
+因此：
+
+- 不会绕过成长审批
+- 不会直接改写人格定义
+- 但能让后续 Identity / Reflection / Relationship / Emotion 模块读取同一份清晰的自我理解结构

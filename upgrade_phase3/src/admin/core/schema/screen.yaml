@@ -1,0 +1,21 @@
+# 屏幕感知配置 Schema
+enabled:
+  type: boolean
+  required: true
+  default: false
+  description: 是否启用屏幕感知
+capture_timeout:
+  type: float
+  default: 10
+  min: 1
+  description: 截图超时时间（秒）
+ocr_language:
+  type: string
+  default: "chi_sim+eng"
+  description: OCR 语言
+max_image_width:
+  type: integer
+  default: 1920
+  min: 100
+  max: 7680
+  description: 最大图片宽度（超过则缩放）

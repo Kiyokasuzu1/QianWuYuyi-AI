@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# =============================================================================
+# backup_before_upgrade — QianWuYuyi-AI 升级前自动备份（v1.1.0-stable）
+#
+# 用途: 升级前备份 data/（运行数据）、configs/（配置模板）与当前代码，
+#       供 upgrade/rollback 一键恢复。
+#
+# 用法: bash upgrade/backup_before_upgrade
+#
+# 备份位置: <部署根>/backups/upgrade_backup_<时间戳>/
+# 最近一次备份路径记录在: <部署根>/upgrade/last_backup_path.txt
+# =============================================================================
+set -u
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+TS="$(date +%Y%m%dT%H%M%S)"
+DEST="$ROOT/backups/upgrade_backup_$TS"
+
+mkdir -p "$DEST"
+echo "[backup] 备份到: $DEST"
+
+# 需要备份的内容（目录 + 文件；backups/ 自身除外）
+for item in \
+  data configs src static local_agent deploy scripts upgrade \
+  api_server.py main.py run_server.py requirements.txt VERSION.txt \
+  .env.example start_local_agent.bat start.sh start.bat; do
+  if [ -e "$ROOT/$item" ]; then
+    cp -a "$ROOT/$item" "$DEST/" 2>/dev/null || true
+    echo "[backup]   ✓ $item"
+  else
+    echo "[backup]   - $item (不存在, 跳过)"
+  fi
+done
+
+# 记录备份时的版本（若存在 VERSION_CHECK）
+if [ -f "$ROOT/upgrade/VERSION_CHECK" ]; then
+  cp "$ROOT/upgrade/VERSION_CHECK" "$DEST/VERSION_AT_BACKUP.txt"
+fi
+
+# 记录最近一次备份路径
+echo "$DEST" > "$ROOT/upgrade/last_backup_path.txt"
+echo "[backup] 完成 ✓  最近备份: $DEST"

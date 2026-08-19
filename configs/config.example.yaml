@@ -1,0 +1,161 @@
+# config.yaml — 项目配置模板（包含 memory/llm 与主动消息模块配置）
+# 注意：把敏感键（如 llm.api_key）放在环境变量或 secrets 中，config.yaml 仅做模板用途。
+
+# ── 项目版本号（每次更新递增，方便宝塔面板查询当前版本状态）──
+# 格式: Phase.子阶段.补丁号 (YYYY-MM-DD)
+# 查看方式: cat config.yaml | head -5  或  grep "system_version" config.yaml
+system_version: "7.2.1-p2"
+system_version_date: "2026-08-11"
+system_version_name: "Phase 7.2.1 Patch 2 — Agent Server 默认由 api_server 启动，清理旧版 initiative_sender 注释，单进程架构就绪"
+system_version_commit: "726fa72cd873711cbd3919a89853a0659241d433 (v1.1.0-stable)"
+
+memory:
+  json_path: data/memory.json
+  chroma_path: data/chroma_db
+  embedding_model: all-MiniLM-L6-v2
+  search_top_k: 8
+  min_relevance: 0.3
+  target_user_id: "YOUR_USER_ID"
+
+llm:
+  api_key: "${DEEPSEEK_API_KEY}"
+  api_base: "https://api.deepseek.com"
+  model: "deepseek-v4-pro"
+  temperature: 0.7
+  max_tokens: 2048
+
+# 以下为主动消息（initiative）模块配置
+# Phase 7.2.1-p2（2026-08-11）：单进程架构最终版。
+#   - 旧版独立进程 initiative_sender.py 已删除
+#   - 旧版 yuyi-sender.service 已废弃
+#   - 主动消息唯一来源：api_server 进程 → RuntimeCore.tick → InitiativeEngine → InitiativeBridge → HTTP 发送
+#   - Agent Server 默认由 api_server 启动（YUYI_API_SKIP_AGENT_SERVER=0），不再需要独立进程
+#   - 仅部署一个服务：yuyi-api.service
+initiative:
+  # 总开关：true = Runtime InitiativeBridge 发送主动消息
+  #         false = 完全不发送
+  enabled: true
+  # AstrBot HTTP API 地址
+  astrbot_url: "http://127.0.0.1:11451"
+  # OneBot HTTP API 地址
+  onebot_url: "http://127.0.0.1:3000"
+  # api_type: "astrbot" | "onebot"
+  api_type: "onebot"
+  # OneBot Bearer Token（建议用环境变量 ONEBOT_TOKEN 覆盖）
+  onebot_token: ""
+  # 目标 QQ（可用环境变量 TARGET_USER_QQ 覆盖）
+  target_user_qq: "YOUR_TARGET_QQ"
+  # HTTP 请求超时时间（可用 REQUEST_TIMEOUT 环境变量覆盖，秒）
+  request_timeout: 8.0
+
+  # ── 触发间隔 & backoff（供 Runtime InitiativeEngine 参考）──
+  # 最小/最大检查间隔（秒）；可用 MIN_CHECK_SECONDS / MAX_CHECK_SECONDS 环境变量覆盖
+  min_check_seconds: 300
+  max_check_seconds: 900
+  # 连续空结果时的 backoff 倍数上限（可用 MAX_BACKOFF_MULTIPLIER 覆盖）
+  max_backoff_multiplier: 4.0
+
+  # ── 防重复发送 ──
+  # 同目标用户在该秒数内不重复主动发消息（默认 60s；设为 0 关闭）
+  initiative_cooldown_seconds: 60
+
+# 远程代理（本地电脑控制）配置
+# 默认关闭，启用后羽依可以连接到你的本地电脑
+remote:
+  # 是否启用远程代理服务
+  enabled: true
+
+  # WebSocket 监听地址和端口
+  host: "0.0.0.0"
+  port: 8765
+
+  # 认证 token（本地代理需要提供相同的 token 才能连接）
+  # 安全修复 2026-08-11：不再在仓库/配置文件中放默认值。
+  # 必须通过环境变量 YUYI_REMOTE_TOKEN 提供（.env 文件即可）；
+  # 为空或已知弱默认值时 Agent Server 会拒绝启动（防止 8765 端口无鉴权暴露）。
+  # 生成方式: openssl rand -hex 32
+  auth_token: ""
+
+  # 心跳超时（秒），超过这个时间没收到心跳则断开代理
+  heartbeat_timeout: 30
+
+# 屏幕监控配置
+# 默认关闭，启用后羽依可以查看你的屏幕内容
+screen:
+  # 是否启用屏幕监控
+  enabled: true
+
+  # 截图超时（秒），等待本地代理返回截图的最长时间
+  capture_timeout: 10
+
+  # OCR 语言（需要安装对应的 Tesseract 语言包）
+  # chi_sim = 简体中文, eng = 英文
+  ocr_language: "chi_sim+eng"
+
+  # 图片最大宽度（像素），超过则等比缩放后再传输
+  max_image_width: 1920
+
+# 电脑控制配置
+# 默认关闭，启用后羽依可以操作你的键盘和鼠标
+control:
+  # 是否启用电脑控制
+  enabled: false
+
+  # 动作执行超时（秒）
+  action_timeout: 10
+
+  # 安全护栏
+  safety_guard:
+    # 是否启用快捷键拦截
+    enable_keyblock: true
+    # 是否启用文本输入拦截
+    enable_textblock: true
+    # 自定义危险文本模式（正则表达式列表）
+    custom_blacklist: []
+
+# Token 优化配置
+# 默认关闭，启用后对历史消息进行压缩、对记忆进行摘要合并以减少 token 消耗
+token_opt:
+  # 是否启用 token 优化
+  enabled: false
+
+# === Phase 7.2 迁移新增：Runtime 总开关 ===
+# 决定 /v1/chat/completions 路由走哪条路径
+#   enabled=true  : 走 RuntimePipeline（推荐，享受 Lifecycle/Persistence/TokenOptimizer/Event）
+#   enabled=false : 走旧链路 orchestrator.process()，秒级回滚可用
+# 注意：本段为新追加,不动 llm.* / memory.* / initiative.* 任何已有 key
+runtime:
+  enabled: true
+  adapters_enabled: true
+  # Pipeline 落盘目录(新增目录,不影响旧 data/memory.json)
+  persistence_dir: "data/runtime_context"
+  # === Phase 3: 连续性/稳定性开关 ===
+  identity_continuity_enabled: true
+  identity_stability_enabled: true
+  personality_stability_enabled: true
+  identity_anchor_enabled: false
+
+  # === R2.7.6 Phase4 Runtime 生产配置 ===
+  # phase4_enabled=true: QQ 消息走 RuntimeController → Phase4 → DeepSeek → PersistenceManager
+  # phase4_enabled=false: 走旧 Orchestrator/Pipeline（秒级回滚）
+  phase4_enabled: false
+  # Per-user 数据目录：data/users/<qq号>/personality/memory/relationship
+  users_root_dir: "data/users"
+  # LLM 引擎：deepseek（生产）| mock（测试/灰度）
+  llm_engine: "deepseek"
+  # 人格成长开关（关闭后所有消息不改 trait）
+  growth_enabled: true
+  # Memory 上下文限制：传入 prompt 的最大 memory 条数（完整 memory 仍保留在磁盘）
+  max_context_memories: 50
+  # 旧 data/memory.json 自动导入（仅在新用户首次对话时触发一次）
+  legacy_memory_auto_import: true
+  legacy_memory_path: "data/memory.json"
+  # DeepSeek 配置
+  deepseek:
+    enabled: true
+    max_retries: 3
+    timeout_seconds: 30
+    max_tokens: 2048
+    token_budget_per_turn: 4096
+
+# End of config.yaml

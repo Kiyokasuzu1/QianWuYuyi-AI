@@ -1,0 +1,31 @@
+# 主动消息配置 Schema
+api_type:
+  type: string
+  default: "astrbot"
+  choices:
+    - astrbot
+    - onebot
+  description: 主动消息接口类型
+target_user_qq:
+  type: string
+  default: ""
+  description: 目标用户 QQ 号
+min_check_seconds:
+  type: float
+  default: 60
+  min: 1
+  description: 最短检查间隔（秒）
+max_check_seconds:
+  type: float
+  default: 1800
+  min: 1
+  description: 最长检查间隔（秒）
+check_randomize:
+  type: boolean
+  default: true
+  description: 是否随机化检查间隔
+request_timeout:
+  type: float
+  default: 10
+  min: 1
+  description: 请求超时时间（秒）

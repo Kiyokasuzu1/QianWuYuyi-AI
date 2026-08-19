@@ -1,17 +1,66 @@
 """
-行为解析器（BehaviorResolver） v0.7.1
+行为解析器（BehaviorResolver） v0.8.0
+
+v0.8.0 更新 (P4.2-IMPL-C3):
+- 新增 snapshot 参数（RelationshipSnapshot），支持从 snapshot.long_term 读取关系事实
+- Behavior 只读 long_term，不读 current（一次互动不应改变行为倾向）
+- 保留 relationship_state 参数作为向后兼容
+- 不修改现有行为公式，只做数据源迁移
 
 v0.7.1 更新：
-- 清洗表达边界提示中的旧关系语义（“信任亲近” → “交互舒适度”）
+- 清洗表达边界提示中的旧关系语义（"信任亲近" → "交互舒适度"）
 """
 
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, TYPE_CHECKING
 from src.personality.traits import TRAIT_BEHAVIOR_MAP
+
+if TYPE_CHECKING:
+    from src.contracts.relationship_snapshot import RelationshipSnapshot
 
 
 class BehaviorResolver:
-    def __init__(self, relationship_state=None):
+    def __init__(
+        self,
+        relationship_state=None,
+        *,
+        snapshot: Optional["RelationshipSnapshot"] = None,
+    ):
         self.relationship_state = relationship_state
+
+        # P4.2-IMPL-C3: Snapshot 路径（可选）
+        self._snapshot: Optional["RelationshipSnapshot"] = snapshot
+
+    def set_snapshot(self, snapshot: "RelationshipSnapshot") -> None:
+        """P4.2-IMPL-C3: 运行时注入 RelationshipSnapshot。
+
+        设置后，resolve() 将从 snapshot.long_term 读取关系事实，
+        不再使用旧的 relationship_state。
+        """
+        self._snapshot = snapshot
+
+    def _get_relationship_values(self):
+        """P4.2-IMPL-C3: 获取关系值（优先 snapshot，回退 legacy）。
+
+        返回 (bond, familiarity) 二元组。
+
+        设计原则：
+        - Behavior 只读 snapshot.long_term，不读 snapshot.current
+        - 一次互动不应改变行为倾向
+        - 当 snapshot 未提供时，回退到旧 relationship_state
+        """
+        if self._snapshot is not None:
+            lt = self._snapshot.long_term
+            bond = max(0.0, min(1.0, lt.bond_strength))
+            familiarity = max(0.0, min(1.0, lt.familiarity))
+            return bond, familiarity
+
+        # Legacy 回退
+        bond = 0.1
+        familiarity = 0.2
+        if self.relationship_state:
+            bond = self.relationship_state.get_bond_strength()
+            familiarity = self.relationship_state.get_familiarity()
+        return bond, familiarity
 
     def resolve(self, metrics: Dict) -> Dict:
         """将成长指标转化为行为倾向，强度受关系熟悉度制约"""
@@ -21,11 +70,8 @@ class BehaviorResolver:
         self_awareness = metrics.get("self_awareness", 0.2)
         self_confidence = metrics.get("self_confidence", 0.1)
 
-        bond = 0.1
-        familiarity = 0.2
-        if self.relationship_state:
-            bond = self.relationship_state.get_bond_strength()
-            familiarity = self.relationship_state.get_familiarity()
+        # P4.2-IMPL-C3: 优先从 snapshot.long_term 读取（长期关系事实）
+        bond, familiarity = self._get_relationship_values()
 
         relationship_security = self._clamp(
             trust * 0.4 + bond * 0.3 + familiarity * 0.3

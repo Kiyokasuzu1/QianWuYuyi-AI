@@ -1,7 +1,27 @@
 """
-成长流水线（GrowthPipeline）v0.7
+成长流水线（GrowthPipeline）v0.9
 
-浅雾羽依成长系统 v0.7
+浅雾羽依成长系统 v0.9
+
+Phase 3.8.3-C 更新：
+- 移除 _inject_compat_fields()：语义生成职责完全移交 GrowthNarrativeAdapter
+- Pipeline 不再负责 meaning/narrative/schema 转换
+
+Phase 3.8.3-B 更新：
+- incremental_update() 中新增 Adapter 流程：
+  GrowthRecord → GrowthNarrativeAdapter → PersonalityGrowthRecord → PersonalityGrowthHistory
+
+Phase 3.8.2-B 更新：
+- incremental_update() 中新增 Proposal 化流程：
+  GrowthEvaluator → GrowthProposal → GrowthEngine.apply_proposal()
+- apply_proposal() 是纯执行方法，不承担认知职责
+- 旧 apply(event) 保留作为 fallback
+- GROWTH_MAP 保留作为 ExperienceMeaning 失败时的回退
+
+Phase 3.8.2-A 更新：
+- 在 GrowthEvaluator 之前注入 deep_resolve_meaning() 的语义理解结果
+- 经历意义随 GrowthEvent 流转到下游
+- LLM 调用失败时自动回退到规则映射（无破坏性变更）
 
 Phase 7.1 更新：
 - 产生 PersonalityInfluence 影响记录
@@ -9,7 +29,7 @@ Phase 7.1 更新：
 - incremental_update 开头清理临时缓存
 """
 
-from typing import Optional
+from typing import Optional, Dict, List
 import uuid
 from datetime import datetime
 
@@ -18,8 +38,18 @@ from src.growth.event_normalizer import EventNormalizer
 from src.growth.event_validator import EventValidator
 from src.growth.event_history_matcher import EventHistoryMatcher
 from src.growth.growth_engine import GrowthEngine
+from src.growth.growth_state import GrowthState
 from src.growth.event_identity_resolver import resolve_event_identity
 from src.growth.growth_evaluator import GrowthEvaluator
+
+# Phase 3.8.2-A：经历意义理解
+from src.growth.meaning_resolver import deep_resolve_meaning
+
+# Phase 3.8.2-B：GrowthProposal 权威 schema
+from src.contracts.growth_schema import GrowthProposal as ContractProposal, ChangeItem
+
+# Phase 3.8.3-B：GrowthNarrativeAdapter — GrowthRecord → PersonalityGrowthRecord
+from src.growth.growth_narrative_adapter import GrowthNarrativeAdapter
 
 from src.personality.personality_resolver import PersonalityResolver
 from src.personality.relationship_state import RelationshipState
@@ -36,7 +66,9 @@ class GrowthPipeline:
         event_memory=None,
         memory_store=None,
         user_id="366648462",
-        relationship_state: Optional[RelationshipState] = None
+        relationship_state: Optional[RelationshipState] = None,
+        growth_state: Optional[GrowthState] = None,
+        growth_history: Optional[PersonalityGrowthHistory] = None,
     ):
         # 事件处理
         self.extractor = EventExtractor()
@@ -44,14 +76,24 @@ class GrowthPipeline:
         self.validator = EventValidator()
         self.matcher = EventHistoryMatcher()
 
-        # 成长核心
-        self.growth_engine = GrowthEngine()
+        # 成长核心（Phase 4.3.3：支持外部注入 GrowthState）
+        self.growth_engine = GrowthEngine(state=growth_state)
 
         # 成长评估器
         self.evaluator = GrowthEvaluator()
 
-        # 成长记录存储
-        self.growth_records = PersonalityGrowthHistory()
+        # 成长记录存储（Phase 2.4 GrowthHistory Writer 收口）：
+        # - 外部注入的 growth_history 优先（运行时权威实例，多入口共享）；
+        # - 未注入时从 RuntimeContext（RuntimeBridge → PersonalityResolver）取共享实例；
+        # - 二者都不可用时才回退旧硬编码默认（仅向后兼容）。
+        self.growth_records = (
+            growth_history
+            if growth_history is not None
+            else self._resolve_shared_growth_history()
+        )
+
+        # Phase 3.8.3-B：GrowthRecord → PersonalityGrowthRecord 适配器
+        self.narrative_adapter = GrowthNarrativeAdapter()
 
         # Phase 7.1：临时影响记录缓存
         self.new_influences = []
@@ -73,6 +115,134 @@ class GrowthPipeline:
         self.target_user_id = user_id
 
         self.matcher.set_growth_state(self.growth_engine.state)
+
+    @staticmethod
+    def _resolve_shared_growth_history() -> PersonalityGrowthHistory:
+        """Phase 2.4: 从 RuntimeContext 复用权威 PersonalityGrowthHistory。
+
+        RuntimeCore 构造 PersonalityResolver 时注入持久化 history 并保留
+        可写引用 `_growth_history_store`。所有 GrowthPipeline 共享该实例，
+        避免多实例对 personality_growth_history.json 的丢失更新。
+
+        Bridge 不可用 / 共享实例无落盘路径时，回退旧硬编码默认
+        （旧行为保留，仅向后兼容）。
+        """
+        try:
+            from src.runtime.runtime_bridge import get_runtime_bridge
+
+            _resolver = get_runtime_bridge().get_personality_resolver()
+            _shared = getattr(_resolver, "_growth_history_store", None)
+            if _shared is None:
+                _shared = getattr(_resolver, "growth_history", None)
+            if (
+                _shared is not None
+                and getattr(_shared, "_storage_path", None) is not None
+            ):
+                return _shared
+        except Exception:
+            pass
+        return PersonalityGrowthHistory(
+            storage_path=PersonalityGrowthHistory.DEFAULT_STORAGE_PATH
+        )
+
+    # =================================================
+    # Phase 3.8.2-A：经历意义解析
+    # =================================================
+    def _resolve_experience_meaning(self, event: Dict) -> Optional[Dict]:
+        """为事件解析经历意义。
+
+        调用 deep_resolve_meaning() 进行 LLM 语义理解。
+        失败时返回 None，调用方应回退到规则映射。
+
+        Returns:
+            ExperienceMeaning.to_dict() 的结果，或 None（失败时）
+        """
+        try:
+            meaning = deep_resolve_meaning(
+                event=event,
+                current_growth_state=self.growth_engine.state.to_dict()
+                if hasattr(self.growth_engine.state, "to_dict")
+                else None,
+            )
+            if meaning.fallback_used:
+                # 规则 fallback 不提升语义质量，返回 None 让 evaluator 用旧逻辑
+                return None
+            return meaning.to_dict()
+        except Exception:
+            # 静默失败，不影响主链路
+            return None
+
+    # =================================================
+    # Phase 3.8.2-B：从评估结果构建 GrowthProposal
+    # =================================================
+    def _build_proposal_from_evaluated(self, evaluated: Dict, event: Dict) -> Optional[ContractProposal]:
+        """从 GrowthEvaluator 的评估结果构建 GrowthProposal（权威 schema）。
+
+        将 target_candidates + applied_delta 转换为 ChangeItem 列表。
+        必须有 evidence 才能创建 proposal。
+        """
+        target_candidates = evaluated.get("target_candidates", [])
+        applied_delta = evaluated.get("applied_delta", 0.0)
+        confidence = evaluated.get("confidence", 0.5)
+        growth_signal = evaluated.get("growth_signal", "")
+        experience_meaning = evaluated.get("experience_meaning")
+
+        if not target_candidates or applied_delta <= 0.0:
+            return None
+
+        # 构建证据ID列表
+        evidence_ids = []
+        for ev in event.get("evidence", []):
+            eid = ev.get("id") or ev.get("source_id") or str(uuid.uuid4().hex[:8])
+            evidence_ids.append(eid)
+        if not evidence_ids:
+            evidence_ids.append(f"ev_{event.get('event_id', 'unknown')}")
+
+        # 构建 ChangeItem 列表
+        changes = []
+        primary_dim = target_candidates[0]
+        primary_val = round(applied_delta, 4)
+        changes.append(ChangeItem(
+            path=primary_dim,
+            before=None,
+            after=primary_val,
+            reason=f"growth_signal={growth_signal}, confidence={confidence:.2f}",
+        ))
+
+        # 次要维度（如果有）
+        if len(target_candidates) > 1:
+            secondary_dim = target_candidates[1]
+            secondary_val = round(applied_delta * 0.5, 4)
+            changes.append(ChangeItem(
+                path=secondary_dim,
+                before=None,
+                after=secondary_val,
+                reason=f"secondary dimension from {growth_signal}",
+            ))
+
+        # 构建 evaluator_meta（含 meaning 信息）
+        evaluator_meta = {
+            "growth_signal": growth_signal,
+            "growth_level": evaluated.get("growth_level", ""),
+            "growth_domain": evaluated.get("growth_domain", ""),
+            "_governance_origin": "GrowthPipeline.incremental_update",
+            "_source_schema": "growth_evaluator",
+        }
+        if experience_meaning:
+            evaluator_meta["experience_meaning"] = {
+                "surface": experience_meaning.get("surface_meaning", ""),
+                "deeper": experience_meaning.get("deeper_significance", ""),
+                "confidence": experience_meaning.get("confidence", 0),
+            }
+
+        return ContractProposal(
+            source_event_id=event.get("event_id", ""),
+            proposed_changes=changes,
+            confidence=confidence,
+            evidence_ids=evidence_ids,
+            evaluator_meta=evaluator_meta,
+            status="proposed",
+        )
 
     # =================================================
     # 增量成长更新（实时聊天入口）
@@ -121,53 +291,65 @@ class GrowthPipeline:
                 event_type = event.get("event_type", "")
                 history_events = self.matcher.get_history(canonical_topic, event_type)
 
-                evaluated = self.evaluator.evaluate(event, history_events)
+                evaluated = self.evaluator.evaluate(
+                    event, history_events,
+                    experience_meaning=self._resolve_experience_meaning(event),
+                )
 
                 if evaluated.get("growth_allowed", False):
+                    # Phase 3.8.2-B：Proposal 化流程
+                    proposal_applied = False
+                    # 1. 从评估结果构建 GrowthProposal
+                    proposal = self._build_proposal_from_evaluated(evaluated, event)
+                    if proposal is not None:
+                        # 2. 调用纯执行方法 apply_proposal()
+                        proposal_result = self.growth_engine.apply_proposal(proposal)
+                        if proposal_result.get("status") == "applied":
+                            proposal_applied = True
+                            applied.append({
+                                **event,
+                                "growth_mode": "proposal",
+                                "proposal_id": proposal_result.get("proposal_id"),
+                                "delta": proposal_result.get("delta"),
+                            })
+
+                    # 3. 同时生成 GrowthRecord（兼容 PersonalityResolver）
                     record = self.growth_engine.apply_evaluated(evaluated)
                     if record:
-                        self.growth_records.add(record)
+                        # 注入 proposal 信息
+                        record["proposal_id"] = proposal.id if proposal else None
+                        # Phase 3.8.3-B：通过 Adapter 转换为 PersonalityGrowthRecord
+                        personality_record = self.narrative_adapter.convert(record)
+                        self.growth_records.add(personality_record)
                         new_records.append(record)
+                else:
+                    proposal_applied = False
 
-                # 原有 GrowthState 更新逻辑
-                result = self.growth_engine.apply(event)
-
-                if result.get("status") == "applied":
-                    if result.get("mode") == "first":
-                        self._update_relationship(event)
-
-                    applied.append({
-                        **event,
-                        "growth_mode": result.get("mode")
-                    })
-
-                    # Phase 7.1：产生人格影响记录
-                    if result.get("delta"):
-                        for dim, delta in result["delta"].items():
-                            if abs(delta) > 0.001:
-                                confidence = self._calculate_influence_confidence(event, result)
-                                influence_type = result.get("change_type", InfluenceType.POSITIVE_GROWTH)
-                                if isinstance(influence_type, str):
-                                    try:
-                                        influence_type = InfluenceType(influence_type)
-                                    except ValueError:
-                                        influence_type = InfluenceType.POSITIVE_GROWTH
-
-                                influence = PersonalityInfluence(
-                                    influence_id=f"inf_{uuid.uuid4().hex[:8]}",
-                                    timestamp=datetime.now().isoformat(),
-                                    source_event_id=event.get("event_id", ""),
-                                    source_event_description=event.get("canonical_topic", ""),
-                                    affected_dimension=dim,
-                                    before_value=result.get("before", {}).get(dim, 0.5),
-                                    after_value=result.get("before", {}).get(dim, 0.5) + delta,
-                                    delta=delta,
-                                    influence_type=influence_type,
-                                    impact_weight=min(abs(delta), 1.0),
-                                    confidence=confidence,
-                                    evidence=event.get("source_ids", []),
-                                )
-                                self.new_influences.append(influence)
+                # Phase 3.8.5 Step 5：根据 Proposal 结果选择路径
+                # - Proposal 成功：跳过 apply() 的 GrowthState 更新，只做 Relationship + Influence
+                # - Proposal 失败/未生成：legacy apply() 作为 fallback
+                if proposal_applied:
+                    # Proposal 路径：GrowthState 已由 apply_proposal() 更新
+                    # 不再调用 apply(event)，避免双重 GrowthState 更新
+                    # 关系更新和影响生成均委托给 GrowthEngine 统一入口
+                    if event.get("is_first_occurrence", True):
+                        self.growth_engine.apply_relationship(event, self.relationship_state)
+                    self.new_influences.extend(
+                        self.growth_engine.generate_personality_influence(event, proposal_result)
+                    )
+                else:
+                    # Fallback 路径：legacy apply(event) 完整执行
+                    result = self.growth_engine.apply(event)
+                    if result.get("status") == "applied":
+                        if result.get("mode") == "first":
+                            self.growth_engine.apply_relationship(event, self.relationship_state)
+                        applied.append({
+                            **event,
+                            "growth_mode": result.get("mode")
+                        })
+                        self.new_influences.extend(
+                            self.growth_engine.generate_personality_influence(event, result)
+                        )
 
                 if self.store and event.get("source_ids"):
                     try:
@@ -220,50 +402,19 @@ class GrowthPipeline:
         return min(confidence, 1.0)
 
     # =================================================
-    # 关系更新（内部方法）
+    # Phase 3.8.5 Step 5：PersonalityInfluence 生成（兼容包装器，委托至 GrowthEngine）
+    # =================================================
+    def _record_influence(self, event, result):
+        """人格影响生成（兼容包装器，委托至 GrowthEngine.generate_personality_influence()）"""
+        influences = self.growth_engine.generate_personality_influence(event, result)
+        self.new_influences.extend(influences)
+
+    # =================================================
+    # 关系更新（内部方法，Phase 3.8.5 已委托至 GrowthEngine）
     # =================================================
     def _update_relationship(self, event):
-        event_type = event.get("event_type", "")
-
-        raw_importance = event.get("importance", 0.5)
-        if isinstance(raw_importance, (list, tuple)):
-            importance = float(raw_importance[0]) if len(raw_importance) > 0 else 0.5
-        elif isinstance(raw_importance, (int, float)):
-            importance = float(raw_importance)
-        else:
-            importance = 0.5
-
-        category = event.get("category", "")
-        topic = event.get("canonical_topic", event.get("topic", ""))
-        event_id = event.get("event_id", "")
-
-        if event_type == "relationship":
-            self.relationship_state.update_trust(0.05 * importance)
-            self.relationship_state.update_bond(0.06 * importance)
-            self.relationship_state.update_familiarity(0.04 * importance)
-            self.relationship_state.update_history(0.03 * importance)
-
-        elif event_type == "commitment":
-            self.relationship_state.update_trust(0.06 * importance)
-            self.relationship_state.update_bond(0.08 * importance)
-            self.relationship_state.update_promise(0.10 * importance)
-            self.relationship_state.update_history(0.05 * importance)
-
-        elif event_type == "milestone":
-            if category == "羽依诞生阶段":
-                self.relationship_state.update_bond(0.04 * importance)
-                self.relationship_state.update_history(0.05 * importance)
-                self.relationship_state.add_important_event({
-                    "event_id": event_id,
-                    "topic": topic,
-                    "type": "birth"
-                })
-
-        elif event_type == "identity":
-            self.relationship_state.update_history(0.02 * importance)
-
-        if importance >= 0.85:
-            self.relationship_state.add_milestone(event_id, topic)
+        """关系更新（兼容包装器，委托至 GrowthEngine.apply_relationship()）"""
+        self.growth_engine.apply_relationship(event, self.relationship_state)
 
     # =================================================
     # 完整整合（批量处理）
@@ -327,11 +478,16 @@ class GrowthPipeline:
                 event_type = event.get("event_type", "")
                 history_events = self.matcher.get_history(canonical_topic, event_type)
 
-                evaluated = self.evaluator.evaluate(event, history_events)
+                evaluated = self.evaluator.evaluate(
+                    event, history_events,
+                    experience_meaning=self._resolve_experience_meaning(event),
+                )
                 if evaluated.get("growth_allowed", False):
                     record = self.growth_engine.apply_evaluated(evaluated)
                     if record:
-                        self.growth_records.add(record)
+                        # Phase 3.8.3-B：通过 Adapter 转换为 PersonalityGrowthRecord
+                        personality_record = self.narrative_adapter.convert(record)
+                        self.growth_records.add(personality_record)
                         new_records.append(record)
 
                 result = self.growth_engine.apply(event)
@@ -339,35 +495,10 @@ class GrowthPipeline:
                 if result.get("status") == "applied":
                     applied += 1
                     processed.extend(event.get("source_ids", []))
-                    self._update_relationship(event)
-
-                    # 产生人格影响记录
-                    if result.get("delta"):
-                        for dim, delta in result["delta"].items():
-                            if abs(delta) > 0.001:
-                                confidence = self._calculate_influence_confidence(event, result)
-                                influence_type = result.get("change_type", InfluenceType.POSITIVE_GROWTH)
-                                if isinstance(influence_type, str):
-                                    try:
-                                        influence_type = InfluenceType(influence_type)
-                                    except ValueError:
-                                        influence_type = InfluenceType.POSITIVE_GROWTH
-
-                                influence = PersonalityInfluence(
-                                    influence_id=f"inf_{uuid.uuid4().hex[:8]}",
-                                    timestamp=datetime.now().isoformat(),
-                                    source_event_id=event.get("event_id", ""),
-                                    source_event_description=event.get("canonical_topic", ""),
-                                    affected_dimension=dim,
-                                    before_value=result.get("before", {}).get(dim, 0.5),
-                                    after_value=result.get("before", {}).get(dim, 0.5) + delta,
-                                    delta=delta,
-                                    influence_type=influence_type,
-                                    impact_weight=min(abs(delta), 1.0),
-                                    confidence=confidence,
-                                    evidence=event.get("source_ids", []),
-                                )
-                                self.new_influences.append(influence)
+                    self.growth_engine.apply_relationship(event, self.relationship_state)
+                    self.new_influences.extend(
+                        self.growth_engine.generate_personality_influence(event, result)
+                    )
 
             except Exception as e:
                 print(f"⚠️ 成长事件失败: {event.get('topic')}, {e}")

@@ -1,0 +1,478 @@
+========== QianWuYuyi-AI 项目检查报告 ==========
+
+========== 当前路径 ==========
+/root/QianWuYuyi-AI
+
+========== 项目一级结构 ==========
+total 2.3M
+drwxr-xr-x 17 root root 4.0K Jul 30 17:14 .
+dr-xr-x--- 11 root root 4.0K Jul 30 17:08 ..
+-rwxr-xr-x  1 root root  15K Jul 28 22:14 api_server.py
+-rw-r--r--  1 root root 3.6K Jul 28 17:15 api_server.py.backup
+drwxr-xr-x  3 root root 4.0K Jul 26 07:21 astrbot_plugins
+drwxr-xr-x  3 root root 4.0K Jul 28 22:47 A.雪芽2.0
+-rwxr-xr-x  1 root root 2.6K Jul 29 14:47 config.yaml
+-rwxr-xr-x  1 root root 1.2K Jul 28 17:15 config.yaml.backup
+-rwxr-xr-x  1 root root 1.2K Jul 28 17:26 config.yaml.before_fix
+-rwxr-xr-x  1 root root 1.2K Jul 28 17:52 config.yaml.before_upgrade
+-rw-r--r--  1 root root 1.2K Jul 27 00:32 config.yaml.example
+-rw-r--r--  1 root root 1.2K Jul 27 00:51 config.yaml.save
+drwxr-xr-x  5 root root 4.0K Jul 28 19:13 data
+drwxr-xr-x  3 root root 4.0K Jul 28 17:15 data.backup
+drwxr-xr-x  2 root root 4.0K Jul 26 07:21 docs
+-rw-r--r--  1 root root   53 Jul 28 19:10 .env
+drwxr-xr-x  8 root root 4.0K Jul 30 17:08 .git
+drwxr-xr-x  3 root root 4.0K Jul 26 07:21 .github
+-rw-r--r--  1 root root  136 Jul 26 07:21 .gitignore
+-rw-r--r--  1 root root 1.4K Jul 26 07:21 import_chat.py
+-rwxr-xr-x  1 root root 9.0K Jul 28 22:15 initiative_sender.py
+drwxr-xr-x  2 root root 4.0K Jul 28 17:33 logs
+-rw-r--r--  1 root root 3.6K Jul 28 17:52 main.py
+-rw-r--r--  1 root root 3.6K Jul 28 17:15 main.py.backup
+-rw-r--r--  1 root root 1.5K Jul 26 07:21 pull_request_template.md
+drwxr-xr-x  2 root root 4.0K Jul 27 05:12 __pycache__
+-rwxr-xr-x  1 www  www  359K Jul 28 17:11 QianWuYuyi-AI_Fmk3R.zip
+-rw-r--r--  1 root root  559 Jul 26 07:21 README.md
+-rw-r--r--  1 root root  114 Jul 28 17:52 requirements.txt
+drwxr-xr-x  2 root root 4.0K Jul 26 07:21 scripts
+drwxr-xr-x 37 root root 4.0K Jul 29 14:46 src
+drwxr-xr-x  3 root root 4.0K Jul 28 17:52 static
+-rw-r--r--  1 root root 1.9K Jul 26 07:21 test_memory.py
+drwxr-xr-x  5 root root 4.0K Jul 28 22:46 tests
+drwxr-xr-x  5 root root 4.0K Jul 28 17:51 upgrade_phase3
+-rwxr-xr-x  1 root root 1.8M Jul 28 17:20 upgrade_phase3.zip
+drwxr-xr-x  6 root root 4.0K Jul 26 08:09 venv
+-rw-r--r--  1 root root  153 Jul 30 17:14 yuyi_check_report.txt
+-rw-r--r--  1 root root 7.4K Jul 28 17:52 yuyi.py
+-rw-r--r--  1 root root 7.4K Jul 28 17:15 yuyi.py.backup
+
+========== 项目目录大小 ==========
+2.6G	.
+
+========== 数据/记忆文件 ==========
+data/audit/audit_logs.json
+data/chroma_db.backup_20260728_175800/chroma.sqlite3
+data/chroma_db.backup_20260728_175800/index_status.json
+data/chroma_db/chroma.sqlite3
+data/chroma_db/index_status.json
+data/growth_state.json
+data/memory.json
+
+========== Admin 文件 ==========
+src/admin/api/__pycache__/routes.cpython-311.pyc
+src/admin/api/routes.py
+src/admin/api/routes.py.backup
+src/admin/audit.py
+src/admin/config_manager.py
+src/admin/core/audit.py
+src/admin/core/config_manager.py
+src/admin/core/__init__.py
+src/admin/core/l2d_adapter.py
+src/admin/core/__pycache__/audit.cpython-311.pyc
+src/admin/core/__pycache__/config_manager.cpython-311.pyc
+src/admin/core/__pycache__/__init__.cpython-311.pyc
+src/admin/core/__pycache__/l2d_adapter.cpython-311.pyc
+src/admin/core/schema/admin.yaml
+src/admin/core/schema/control.yaml
+src/admin/core/schema/initiative.yaml
+src/admin/core/schema/remote.yaml
+src/admin/core/schema/screen.yaml
+src/admin/core/schema/token_opt.yaml
+src/admin/core/schema_validator.py
+src/admin/__init__.py
+src/admin/__pycache__/__init__.cpython-311.pyc
+static/admin/css/components/button.css
+static/admin/css/components/card.css
+static/admin/css/components/status.css
+static/admin/css/components/toast.css
+static/admin/css/design-tokens.css
+static/admin/css/style.css
+static/admin/icons/core/cat-ear.svg
+static/admin/icons/core/crystal.svg
+static/admin/icons/core/heart.svg
+static/admin/icons/core/star.svg
+static/admin/icons/core/wing.svg
+static/admin/icons/emotion/heartbeat.svg
+static/admin/icons/emotion/ripple.svg
+static/admin/icons/emotion/smile.svg
+static/admin/icons/memory/book.svg
+static/admin/icons/memory/database.svg
+static/admin/icons/memory/stardust.svg
+static/admin/icons/memory/water-drop.svg
+static/admin/icons/module/audit.svg
+static/admin/icons/module/config.svg
+static/admin/icons/module/control.svg
+static/admin/icons/module/energy-ring.svg
+static/admin/icons/module/neural.svg
+static/admin/icons/module/remote.svg
+static/admin/icons/module/screen.svg
+static/admin/icons/system/home.svg
+static/admin/icons/system/log.svg
+static/admin/icons/system/mind.svg
+static/admin/icons/system/modules.svg
+static/admin/icons/system/pulse.svg
+static/admin/icons/system/shield.svg
+static/admin/images/yuyi-character.jpg
+static/admin/images/yuyi-character-ref.txt
+static/admin/index.html
+static/admin/js/app.js
+static/admin/js/app.js.backup
+static/admin/js/dashboard.js
+static/admin/js/theme-manager.js
+static/admin/js/toast.js
+static/admin/js/yuyi-agents.js
+static/admin/js/yuyi-audio.js
+static/admin/js/yuyi-autonomous.js
+static/admin/js/yuyi-avatar.js
+static/admin/js/yuyi-background.js
+static/admin/js/yuyi-character.js
+static/admin/js/yuyi-cognitive.js
+static/admin/js/yuyi-growth-preview.js
+static/admin/js/yuyi-memory-graph.js
+static/admin/js/yuyi-radar.js
+static/admin/js/yuyi-reasoning.js
+static/admin/js/yuyi-relationship-timeline.js
+static/admin/js/yuyi-remote.js
+static/admin/js/yuyi-replies.js
+static/admin/js/yuyi-state-manager.js
+static/admin/js/yuyi-timeline.js
+static/admin/l2d.html.bak2
+static/admin/libs/CubismCore.js
+static/admin/libs/live2dcubismcore.min.js
+static/admin/libs/pixi-live2d-display.min.js.bak
+static/admin/themes/yuyi-default.json
+
+========== Personality 文件 ==========
+src/personality/behavior_engine.py
+src/personality/behavior_resolver.py
+src/personality/belief_verifier.py
+src/personality/conflict_resolver.py
+src/personality/core_identity.py
+src/personality/evolution_evaluator.py
+src/personality/evolution_record.py
+src/personality/growth_accumulator.py
+src/personality/identity_core.py
+src/personality/identity_resolver.py
+src/personality/__init__.py
+src/personality/module.py
+src/personality/personality_adapter.py
+src/personality/personality_controller.py
+src/personality/personality_evolution.py
+src/personality/personality_growth_record.py
+src/personality/personality_history.py
+src/personality/personality_influence.py
+src/personality/personality_profile.py
+src/personality/personality_prompt.py
+src/personality/personality_resolver.py
+src/personality/personality_tension.py
+src/personality/personality_vector.py
+src/personality/__pycache__/behavior_resolver.cpython-311.pyc
+src/personality/__pycache__/core_identity.cpython-311.pyc
+src/personality/__pycache__/growth_accumulator.cpython-311.pyc
+src/personality/__pycache__/identity_core.cpython-311.pyc
+src/personality/__pycache__/__init__.cpython-311.pyc
+src/personality/__pycache__/module.cpython-311.pyc
+src/personality/__pycache__/personality_controller.cpython-311.pyc
+src/personality/__pycache__/personality_evolution.cpython-311.pyc
+src/personality/__pycache__/personality_growth_record.cpython-311.pyc
+src/personality/__pycache__/personality_history.cpython-311.pyc
+src/personality/__pycache__/personality_profile.cpython-311.pyc
+src/personality/__pycache__/personality_resolver.cpython-311.pyc
+src/personality/__pycache__/personality_tension.cpython-311.pyc
+src/personality/__pycache__/personality_vector.cpython-311.pyc
+src/personality/__pycache__/relationship_state.cpython-311.pyc
+src/personality/__pycache__/self_model_builder.cpython-311.pyc
+src/personality/__pycache__/self_model_context_provider.cpython-311.pyc
+src/personality/__pycache__/self_model.cpython-311.pyc
+src/personality/__pycache__/self_model_store.cpython-311.pyc
+src/personality/__pycache__/self_model_v3.cpython-311.pyc
+src/personality/__pycache__/traits.cpython-311.pyc
+src/personality/__pycache__/trait_state.cpython-311.pyc
+src/personality/reflection_engine.py
+src/personality/reflection_record.py
+src/personality/relationship_state.py
+src/personality/self_model_builder.py
+src/personality/self_model_builder_v3.py
+src/personality/self_model_context_provider.py
+src/personality/self_model.py
+src/personality/self_model_store.py
+src/personality/self_model_v3.py
+src/personality/self_narrative_context.py
+src/personality/self_narrative_history.py
+src/personality/signal_decay.py
+src/personality/trait_relations.py
+src/personality/traits.py
+src/personality/trait_state.py
+src/personality/trait_state_updater.py
+src/personality/value_system.py
+
+========== Growth 文件 ==========
+src/growth/behavior_resolver.py
+src/growth/event_extractor.py
+src/growth/event_history_matcher.py
+src/growth/event_history_store.py
+src/growth/event_identity_resolver.py
+src/growth/event_normalizer.py
+src/growth/event_validator.py
+src/growth/growth_engine.py
+src/growth/growth_evaluator.py
+src/growth/growth_loop.py
+src/growth/growth_record.py
+src/growth/growth_schema.py
+src/growth/growth_state.py
+src/growth/meaning_resolver.py
+src/growth/memory_former.py
+src/growth/pipeline.py
+src/growth/proposal/constants.py
+src/growth/proposal_events.py
+src/growth/proposal/__init__.py
+src/growth/proposal_manager.py
+src/growth/proposal/proposal.py
+src/growth/proposal/reviewer.py
+src/growth/proposal/storage.py
+src/growth/proposal_store.py
+src/growth/__pycache__/growth_record.cpython-311.pyc
+src/growth/__pycache__/growth_state.cpython-311.pyc
+src/growth/schemas.py
+src/growth/topic_tracker.py
+
+========== Runtime Core 文件 ==========
+src/context/context_manager.py
+src/context/__init__.py
+src/context/time_window.py
+src/contracts/audit_schema.py
+src/contracts/cognitive_event_types.py
+src/contracts/event_schema.py
+src/contracts/growth_schema.py
+src/contracts/state_schema.py
+src/core/capability_boundary.py
+src/core/event_bus.py
+src/core/heartbeat.py
+src/core/__init__.py
+src/core/module_interface.py
+src/core/module_interface.py.backup
+src/core/module_loader.py
+src/core/persona.py
+src/core/__pycache__/heartbeat.cpython-311.pyc
+src/core/__pycache__/__init__.cpython-311.pyc
+src/core/__pycache__/module_loader.cpython-311.pyc
+src/core/self_model.py
+src/core/yuyi_cognitive_core.py
+src/core/yuyi_core.py
+
+========== 最近修改文件 ==========
+2026-07-30 17:14 ./yuyi_check_report.txt
+2026-07-30 17:08 ./.git/index
+2026-07-30 16:50 ./logs/api_server.log
+2026-07-30 15:54 ./data/memory.json
+2026-07-30 15:54 ./data/audit/audit_logs.json
+2026-07-30 12:16 ./src/data/audit/admin/admin_audit_20260730.jsonl
+2026-07-30 12:16 ./src/config.yaml
+2026-07-30 12:16 ./src/config/backup/config_20260730_121606_033591.yaml
+2026-07-30 12:16 ./src/config/backup/config_20260730_121605_508755.yaml
+2026-07-30 12:16 ./src/config/backup/config_20260730_121604_476969.yaml
+2026-07-30 12:16 ./src/config/backup/config_20260730_121603_728284.yaml
+2026-07-30 12:16 ./src/config/backup/config_20260730_121602_762482.yaml
+2026-07-30 12:16 ./src/config/backup/config_20260730_121601_209606.yaml
+2026-07-30 11:52 ./data/growth_state.json
+2026-07-30 11:52 ./data/chroma_db/chroma.sqlite3
+2026-07-30 11:51 ./src/config/backup/config_20260730_121600_219820.yaml
+2026-07-30 11:51 ./src/config/backup/config_20260730_115144_208802.yaml
+2026-07-30 11:51 ./src/config/backup/config_20260730_115142_385486.yaml
+2026-07-30 11:51 ./data/chroma_db/index_status.json
+2026-07-29 14:56 ./src/data/audit/admin/admin_audit_20260729.jsonl
+2026-07-29 14:56 ./src/config/backup/config_20260730_115137_239843.yaml
+2026-07-29 14:56 ./src/config/backup/config_20260729_145603_277050.yaml
+2026-07-29 14:56 ./src/config/backup/config_20260729_145602_565552.yaml
+2026-07-29 14:56 ./src/config/backup/config_20260729_145601_370476.yaml
+2026-07-29 14:55 ./src/config/backup/config_20260729_145600_553781.yaml
+2026-07-29 14:55 ./src/config/backup/config_20260729_145559_689288.yaml
+2026-07-29 14:47 ./src/__pycache__/engine.cpython-311.pyc
+2026-07-29 14:47 ./src/admin/api/__pycache__/routes.cpython-311.pyc
+2026-07-29 14:47 ./config.yaml
+2026-07-29 14:46 ./src/engine.py
+2026-07-29 14:46 ./src/admin/api/routes.py
+2026-07-29 01:16 ./static/admin/libs/CubismCore.js
+2026-07-29 01:06 ./static/admin/libs/pixi-live2d-display.min.js.bak
+2026-07-29 01:00 ./static/admin/l2d.html.bak2
+2026-07-29 00:33 ./static/admin/libs/live2dcubismcore.min.js
+2026-07-29 00:14 ./src/config/backup/config_20260729_145558_947938.yaml
+2026-07-29 00:14 ./src/config/backup/config_20260729_001434_000607.yaml
+2026-07-29 00:14 ./src/config/backup/config_20260729_001433_342910.yaml
+2026-07-29 00:14 ./src/config/backup/config_20260729_001432_650382.yaml
+2026-07-29 00:14 ./src/config/backup/config_20260729_001431_905417.yaml
+2026-07-28 23:36 ./src/data/audit/admin/admin_audit_20260728.jsonl
+2026-07-28 23:36 ./src/config/backup/config_20260729_001431_347465.yaml
+2026-07-28 23:36 ./src/config/backup/config_20260728_233627_230269.yaml
+2026-07-28 23:36 ./src/config/backup/config_20260728_233626_267355.yaml
+2026-07-28 23:36 ./src/config/backup/config_20260728_233624_746363.yaml
+2026-07-28 23:36 ./src/config/backup/config_20260728_233623_547245.yaml
+2026-07-28 23:32 ./src/config/backup/config_20260728_233622_873545.yaml
+2026-07-28 23:32 ./src/config/backup/config_20260728_233215_003951.yaml
+2026-07-28 23:32 ./src/config/backup/config_20260728_233214_214471.yaml
+2026-07-28 23:32 ./src/config/backup/config_20260728_233213_437704.yaml
+2026-07-28 23:32 ./src/config/backup/config_20260728_233210_883733.yaml
+2026-07-28 22:54 ./src/admin/core/__pycache__/l2d_adapter.cpython-311.pyc
+2026-07-28 22:48 ./A.雪芽2.0/A.雪芽2.0.4096/texture_09.png
+2026-07-28 22:48 ./A.雪芽2.0/A.雪芽2.0.4096/texture_08.png
+2026-07-28 22:48 ./A.雪芽2.0/A.雪芽2.0.4096/texture_07.png
+2026-07-28 22:48 ./A.雪芽2.0/A.雪芽2.0.4096/texture_06.png
+2026-07-28 22:48 ./A.雪芽2.0/A.雪芽2.0.4096/texture_05.png
+2026-07-28 22:48 ./A.雪芽2.0/A.雪芽2.0.4096/texture_04.png
+2026-07-28 22:48 ./A.雪芽2.0/A.雪芽2.0.4096/texture_03.png
+2026-07-28 22:48 ./A.雪芽2.0/A.雪芽2.0.4096/texture_02.png
+2026-07-28 22:48 ./A.雪芽2.0/A.雪芽2.0.4096/texture_01.png
+2026-07-28 22:47 ./A.雪芽2.0/飞头only head.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/长发关闭.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/衬衫打开.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/脸黑.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/脸红.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/碎发关闭.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/疑问.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/生气.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/猫耳开.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/猫猫嘴.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/爱心眼.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/水印关闭Watermark close.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/束缚衣关闭（18禁慎用.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/星星眼.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/按键鼠标R.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/按键鼠标L.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/按键W.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/按键S.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/按键D.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/按键A.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/手势-麦克风.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/手势-游戏机.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/手势-棉花棒.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/手势-打电话.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/手势-举手.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/宕机.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/头侧.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/外套关闭.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/哭泣.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/呆毛关闭.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/发饰关闭.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/侧发关闭.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/丸子头关闭.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/丸子头侧发都关闭.exp3.json
+2026-07-28 22:47 ./A.雪芽2.0/soya.motion3.json
+2026-07-28 22:47 ./A.雪芽2.0/items_pinned_to_model.json
+2026-07-28 22:47 ./A.雪芽2.0/icon.png
+2026-07-28 22:47 ./A.雪芽2.0/A.雪芽2.0.xyplugin.json
+2026-07-28 22:47 ./A.雪芽2.0/A.雪芽2.0.vtube.json
+
+========== Git 状态 ==========
+On branch refactor/growth-schema
+Your branch is up to date with 'origin/refactor/growth-schema'.
+
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+	modified:   src/orchestrator.py
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   api_server.py
+	modified:   config.yaml
+	modified:   initiative_sender.py
+	modified:   logs/api.log
+	modified:   requirements.txt
+	modified:   src/core/__init__.py
+	modified:   src/engine.py
+	modified:   src/memory/vector.py
+	modified:   src/orchestrator.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	"A.\351\233\252\350\212\2752.0/"
+	QianWuYuyi-AI_Fmk3R.zip
+	api_server.py.backup
+	config.yaml.backup
+	config.yaml.before_fix
+	config.yaml.before_upgrade
+	config.yaml.example
+	config.yaml.save
+	data.backup/
+	logs/api_server.log
+	logs/initiative.log
+	main.py.backup
+	src/admin/
+	src/audit/
+	src/context/
+	src/contracts/
+	src/control/
+	src/core/event_bus.py
+	src/core/heartbeat.py
+	src/core/module_interface.py
+	src/core/module_interface.py.backup
+	src/core/module_loader.py
+	src/core/yuyi_cognitive_core.py
+	src/dream/
+	src/emotion/module.py
+	src/events/
+	src/goal/
+	src/growth/growth_loop.py
+	src/growth/proposal/
+	src/growth/proposal_events.py
+	src/growth/proposal_manager.py
+	src/growth/proposal_store.py
+	src/initiative/
+	src/memory/module.py
+	src/memory/vector.py.backup
+	src/orchestrator.py.backup
+	src/orchestrator.py.bak
+	src/orchestrator.py.broken
+	src/permission/
+	src/personality/module.py
+	src/personality/personality_adapter.py
+	src/proactive/
+	src/reflection_system/
+	src/remote/
+	src/screen/
+	src/thinking/
+	src/token_opt/
+	src/understanding/
+	static/
+	tests/growth/
+	tests/test_admin_phase0.py
+	tests/test_admin_phase05_integration.py
+	tests/test_admin_phase1.py
+	tests/test_cognitive_dashboard.py
+	tests/test_contracts.py
+	tests/test_design_system.py
+	tests/test_goal_system.py
+	tests/test_interaction_layer.py
+	tests/test_l2d_adapter.py
+	tests/test_orchestrator_integration.py
+	tests/test_personality_layer.py
+	tests/test_phase3_autonomous.py
+	tests/test_phase3_cognitive_core.py
+	tests/test_reflection_system.py
+	tests/test_understanding_layer.py
+	upgrade_phase3.zip
+	upgrade_phase3/
+	yuyi.py.backup
+	yuyi_check_report.txt
+
+
+* refactor/growth-schema
+
+d708f21 feat(initiative): add background initiative_sender script
+f1ca8cd chore(config): add initiative configuration template
+a36dda3 feat(orchestrator): add generate_initiative for proactive initiative generation
+d95be6e feat(orchestrator): add generate_initiative for proactive message generation
+afab0dd 更新：添加服务器稳定运行的完整版本（含 api_server、engine、logs）
+abe496d feat(qq): 添加 AstrBot 插件，支持通过 QQ 调用浅雾羽依
+d323ff9 Merge pull request #3 from Kiyokasuzu1/feat/phase13.2-complete
+0742c57 添加 scripts/integration_smoke_test.py：集成冒烟测试（Memory/Emotion/Relationship）
+4abb6d8 添加 scripts/test_live2d_bridge.py：测试 live2d_bridge 广播与接收
+65db372 添加 src/live2d/live2d_bridge.py：非阻塞 WebSocket 广播服务（降级支持）
+
+========== 当前 Python 进程 ==========
+root        1411  0.0  2.3 280904 94448 ?        S    Jul19  10:27 /www/server/panel/pyenv/bin/python3 /www/server/panel/BT-Panel
+root        1432  0.2  2.1 1237212 87076 ?       Sl   Jul19  39:31 /www/server/panel/pyenv/bin/python3 /www/server/panel/BT-Task
+root      432425  0.1 12.8 2169952 515588 ?      Ssl  Jul27   5:42 /root/.local/share/uv/tools/astrbot/bin/python /root/.local/bin/astrbot run
+root      591673  0.0 18.2 2266564 731044 ?      Ssl  Jul29   1:24 /root/QianWuYuyi-AI/venv/bin/python /root/QianWuYuyi-AI/api_server.py
+root      640387  0.0 15.4 1930188 619168 ?      Ssl  11:51   0:19 /root/QianWuYuyi-AI/venv/bin/python /root/QianWuYuyi-AI/initiative_sender.py
+root      652412  0.0  0.0   6336  2040 pts/0    S+   17:14   0:00 grep python

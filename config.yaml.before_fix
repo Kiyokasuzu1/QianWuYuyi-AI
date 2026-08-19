@@ -1,0 +1,39 @@
+# config.yaml — 项目配置模板（包含 memory/llm 与主动消息模块配置）
+# 注意：把敏感键（如 llm.api_key）放在环境变量或 secrets 中，config.yaml 仅做模板用途。
+
+memory:
+  json_path: data/memory.json
+  chroma_path: data/chroma_db
+  embedding_model: all-MiniLM-L6-v2
+  search_top_k: 8
+  min_relevance: 0.3
+  target_user_id: "366648462"
+
+llm:
+  api_key: "${DEEPSEEK_API_KEY}"
+  api_base: "https://api.deepseek.com"
+  model: "deepseek-v4-pro"
+  temperature: 0.7
+  max_tokens: 2048
+
+# 以下为主动消息（initiative）模块配置
+initiative:
+  # AstrBot HTTP API 地址（默认）
+  astrbot_url: "http://127.0.0.1:11451"
+  # OneBot API 地址（备用）
+  onebot_url: "http://127.0.0.1:3000"
+  # api_type: astrbot | onebot
+  api_type: "onebot"
+  # 目标 QQ（可为单个 QQ 或逗号分隔的多个 QQ）
+  target_user_qq: "366648462"
+  # 随机化检查最小/最大间隔（秒）
+  min_check_seconds: 300
+  max_check_seconds: 900
+  # 是否启用随机化检查间隔
+  check_randomize: true
+  # 连续空结果时的最大 backoff 倍数
+  max_backoff_multiplier: 4.0
+  # HTTP 请求超时时间（秒）
+  request_timeout: 8.0
+
+# End of config.yaml

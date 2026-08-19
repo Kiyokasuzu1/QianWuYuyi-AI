@@ -1,0 +1,22 @@
+QianWuYuyi-AI 浅雾羽依
+========================================
+Version: 8.5 (Phase 4.0.3-C)
+Codename: Governance Bypass Closure
+Build Date: 2026-08-15
+========================================
+
+本版本完成项：
+[Phase 4.0.3-C] Governance Bypass Closure
+  - RuntimeCore from_pcr() 路径接入 GovernancePolicy.evaluate()
+  - accept_self_model_suggestion() 走 ApprovalQueue.approve() → Updater.apply_proposal()
+  - SelfModelUpdaterAdapter.apply_suggestion() 增加安全闸：拒绝未审批 Proposal
+  - 硬契约：SelfModelStore 仅接受 AUTO_APPLY 或已批准 Proposal 写入
+  - 验收测试 16/16 通过，回归测试 136/136 通过
+
+包含子版本：
+- Phase 3.8.5: Growth Pipeline Dual Update Fix
+- Phase 3.8.6: SelfModelUpdater Adapter 收敛
+- Phase 3.8.7: Persistence 原子化
+- Phase 4.0.0: SelfModel + PersonalityGrowthHistory 持久化
+- Phase 4.0.3-A/B: GovernancePolicy + ApprovalQueue 契约
+- Phase 4.0.3-C: RuntimeCore 旧审批链接入 Governance Contract（当前版本）

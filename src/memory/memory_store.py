@@ -8,15 +8,50 @@ Phase 11.6 Final:
 - user_key owner 绑定
 - 外部不可覆盖 owner
 - 兼容旧版 path 调用
+
+Phase C.2.3:
+- 集成 PollutionGuard 防止污染数据进入 memory.json
 """
 
 import json
+import logging
 import os
+import shutil
+import threading
 import uuid
 from datetime import datetime
 from typing import List, Dict, Optional, Union
 
 from src.identity.user_context import UserContext
+from src.memory.atomic_write import atomic_write_json
+
+logger = logging.getLogger(__name__)
+
+try:
+    from src.memory.pollution_guard import check as _pollution_check
+    _POLLUTION_GUARD_AVAILABLE = True
+except Exception:  # pragma: no cover
+    _POLLUTION_GUARD_AVAILABLE = False
+    _pollution_check = None
+
+
+# ==========================
+# Phase 2.2: 按路径写锁
+# ==========================
+# 同一路径的所有 MemoryStore 实例共享一把可重入锁,
+# 使 add/delete/clear 的「读-改-写」序列互斥,避免并发互相覆盖。
+_PATH_LOCKS: Dict[str, threading.RLock] = {}
+_PATH_LOCKS_GUARD = threading.Lock()
+
+
+def _path_lock(path: str) -> threading.RLock:
+    key = os.path.abspath(path)
+    with _PATH_LOCKS_GUARD:
+        lock = _PATH_LOCKS.get(key)
+        if lock is None:
+            lock = threading.RLock()
+            _PATH_LOCKS[key] = lock
+        return lock
 
 
 class MemoryStore:
@@ -76,23 +111,34 @@ class MemoryStore:
     # ==========================
 
     def add(self, *args, **kwargs):
+        """写入一条记忆。
+
+        Phase 4.0-R2.4.2: 支持 3 种调用契约（向后兼容 + kwargs 修复）：
+
+        1. add(memory_dict)                       → 推荐：直接传 dict record
+        2. add(user_id, content, role, metadata)  → 旧位置参数格式
+        3. add(user_id=..., content=..., ...)     → kwargs 格式（YuyiCore / MemorySystem 在用）
+
+        不支持：args + kwargs 混用（直接返回 None，防止歧义）。
+        """
 
         memory = None
 
+        # Phase 4.0-R2.4.2: kwargs 格式（MemorySystem / YuyiCore 在用，之前静默失败）
+        # 优先判断：只有 kwargs、没有 args 时，把 kwargs 本身当作 memory dict。
+        # 这样 MemorySystem.add() 的 self.store.add(user_id=..., role=..., content=..., metadata=...)
+        # 以及 YuyiCore.chat() 的 self.memory.add(user_id=..., ...) 都能正确写入。
+        if len(args) == 0 and kwargs:
+            memory = dict(kwargs)
 
         # 新格式:
         # add(memory_dict)
-
-        if len(args) == 1 and isinstance(args[0], dict):
-
+        elif len(args) == 1 and isinstance(args[0], dict) and not kwargs:
             memory = dict(args[0])
-
 
         # 旧格式:
         # add(user_id, content, role, metadata)
-
-        elif len(args) >= 2:
-
+        elif len(args) >= 2 and not kwargs:
             user_id = args[0]
             content = args[1]
 
@@ -108,22 +154,15 @@ class MemoryStore:
                 else {}
             )
 
-
             memory = {
-
                 "user_id": user_id,
-
                 "content": content,
-
                 "role": role,
-
-                "metadata": dict(metadata)
-
+                "metadata": dict(metadata),
             }
 
-
         else:
-
+            # 不支持的调用格式（如 args+kwargs 混用），防止歧义写入
             return None
 
 
@@ -173,6 +212,23 @@ class MemoryStore:
 
         memory["metadata"] = metadata
 
+        # ==========================
+        # Phase C.2.3: PollutionGuard 入口校验
+        # ==========================
+        if _POLLUTION_GUARD_AVAILABLE and _pollution_check is not None:
+            try:
+                allowed, reason = _pollution_check(memory)
+                if not allowed:
+                    logger.info(
+                        "[MemoryStore] PollutionGuard rejected memory: %s | id=%s",
+                        reason,
+                        memory.get("id", "<no-id>"),
+                    )
+                    return None
+            except Exception as _pg_exc:  # noqa: BLE001
+                # PollutionGuard 异常不应阻塞主流程,但要记录
+                logger.warning("[MemoryStore] PollutionGuard 异常(已隔离): %s", _pg_exc)
+
 
 
         # 自动生成 ID
@@ -194,23 +250,25 @@ class MemoryStore:
 
 
 
-        memories = self.load()
+        with _path_lock(self.path):
+
+            memories = self.load()
 
 
-        # 防重复
+            # 防重复
 
-        if any(
-            m.get("id") == memory["id"]
-            for m in memories
-        ):
+            if any(
+                m.get("id") == memory["id"]
+                for m in memories
+            ):
 
-            return None
+                return None
 
 
 
-        memories.append(memory)
+            memories.append(memory)
 
-        self._save(memories)
+            self._save(memories)
 
 
         return memory
@@ -231,28 +289,86 @@ class MemoryStore:
 
     def load(self) -> List[Dict]:
 
-        try:
+        with _path_lock(self.path):
 
-            with open(
-                self.path,
-                "r",
-                encoding="utf-8"
-            ) as f:
+            try:
 
-                data = json.load(f)
+                with open(
+                    self.path,
+                    "r",
+                    encoding="utf-8"
+                ) as f:
 
-
-                if isinstance(data,list):
-
-                    return data
+                    data = json.load(f)
 
 
-        except Exception:
+                    if isinstance(data,list):
 
-            pass
+                        return data
+
+
+                logger.error(
+                    "[MemoryStore] load failed (corrupt format): %s: top-level is not a list",
+                    self.path,
+                )
+
+
+            except FileNotFoundError:
+
+                # 文件不存在 = 正常初始态(构造函数会主动创建),不视为损坏
+
+                pass
+
+
+            except Exception as exc:
+
+                logger.error(
+                    "[MemoryStore] load failed (corrupt file): %s: %s",
+                    self.path,
+                    exc,
+                )
+
+                self._backup_corrupt_file()
+
+
+            else:
+
+                self._backup_corrupt_file()
 
 
         return []
+
+
+    def _backup_corrupt_file(self) -> None:
+        """损坏文件留底:复制为 memory.json.corrupt.<timestamp>。
+
+        用复制而非移动:原文件保持原地不动,避免干扰可能正在写入该文件的
+        并发方;覆盖只发生在下一次合法的原子 _save,届时损坏现场已留底,
+        历史数据不会静默丢失。
+        """
+
+        try:
+
+            backup_path = (
+                f"{self.path}.corrupt."
+                f"{datetime.now().strftime('%Y%m%dT%H%M%S%f')}"
+            )
+
+            shutil.copy2(self.path, backup_path)
+
+            logger.warning(
+                "[MemoryStore] corrupt file backed up: %s -> %s",
+                self.path,
+                backup_path,
+            )
+
+        except Exception as exc:
+
+            logger.error(
+                "[MemoryStore] corrupt file backup failed: %s: %s",
+                self.path,
+                exc,
+            )
 
 
 
@@ -322,21 +438,25 @@ class MemoryStore:
         memory_id: str
     ):
 
-        memories = [
+        with _path_lock(self.path):
 
-            m for m in self.load()
+            memories = [
 
-            if m.get("id") != memory_id
+                m for m in self.load()
 
-        ]
+                if m.get("id") != memory_id
 
-        self._save(memories)
+            ]
+
+            self._save(memories)
 
 
 
     def clear(self):
 
-        self._save([])
+        with _path_lock(self.path):
+
+            self._save([])
 
 
 
@@ -351,22 +471,17 @@ class MemoryStore:
 
         try:
 
-            with open(
-                self.path,
-                "w",
-                encoding="utf-8"
-            ) as f:
+            with _path_lock(self.path):
 
-                json.dump(
+                atomic_write_json(
+                    self.path,
                     data,
-                    f,
-                    ensure_ascii=False,
-                    indent=2
                 )
 
 
         except Exception as e:
 
-            print(
-                f"[MemoryStore] save failed: {e}"
+            logger.error(
+                "[MemoryStore] save failed: %s",
+                e
             )

@@ -1,0 +1,11 @@
+{
+    "Type": "Live2D Expression",
+    "IsModelCustomizationExpression": false,
+    "Parameters": [
+        {
+            "Id": "open_Cheek",
+            "Value": 1.0,
+            "Blend": "Add"
+        }
+    ]
+}
