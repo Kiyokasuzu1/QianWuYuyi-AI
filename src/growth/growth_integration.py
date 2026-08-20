@@ -386,6 +386,48 @@ class GrowthIntegrationService:
             # 触发完整 update（如提供了 history + trait_states）
             if hasattr(self.self_model_store, "should_update") and hasattr(self.self_model_store, "update"):
                 if self.self_model_store.should_update(self.growth_history):
+                    # P2.3-B.13 P0-3（B.12 B-1）：治理模式开启后，
+                    # Growth → SelfModel 全模型重建不再静默直写 Store——
+                    # 重建意图经 SelfModelMutationAdapter → Gateway 裁决
+                    # （不注入 rebuild 执行件 → 不自动重建，待人工链路）。
+                    _b13_governed = False
+                    try:
+                        from src.personality.self_model_mutation_adapter import (
+                            is_self_model_mutation_gateway_enabled,
+                        )
+
+                        _b13_governed = bool(is_self_model_mutation_gateway_enabled())
+                    except Exception:  # noqa: BLE001
+                        _b13_governed = False
+                    if _b13_governed:
+                        try:
+                            from src.personality.self_model_mutation_adapter import (
+                                get_self_model_mutation_adapter,
+                            )
+
+                            _adapter = get_self_model_mutation_adapter()
+                            _req = _adapter.build_request(
+                                source_event={
+                                    "type": "self_model_rebuild_intent",
+                                    "growth_count": int(self.growth_history.count()),
+                                },
+                                target_path="self_model.update",
+                                proposed_change={
+                                    "path": "self_model.update",
+                                    "change_type": "rebuild",
+                                    "reason": "growth_history_changed",
+                                    "confidence": 0.5,
+                                },
+                                evidence=[
+                                    {"ref": "growth_history_refresh", "type": "growth_accumulation"},
+                                ],
+                                context_snapshot={"source": "growth_integration"},
+                                risk_level="low",
+                            )
+                            _adapter.route(_req)
+                        except Exception as _gov_exc:  # noqa: BLE001
+                            logger.warning("[self_model_update_governed_failed] %s", _gov_exc)
+                        return
                     # P5.0-E #3: trait_states 以 PersonalityState 演化结果为真源
                     # （SelfModel 不自己猜 Growth，只消费已生效的演化值）。
                     # 仅 version>0 时注入；否则保持旧行为（config.trait_states）。

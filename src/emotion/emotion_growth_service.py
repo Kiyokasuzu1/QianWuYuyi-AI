@@ -58,43 +58,86 @@ class EmotionGrowthService:
         beliefs = self.belief_extractor.extract(patterns)
 
         if beliefs:
-            # 获取当前激活的自我模型
-            model = self.self_model_store.get_active_self_model()
-            if model is None:
-                model = SelfModelV3()
+            # P2.3-B.13 P0-4（B.12 B-2）：治理模式开启后，情绪信念不再
+            # 合并内存模型 + store.save() 直写——改经 SelfModelMutationAdapter
+            # → Gateway（NEED_REVIEW 复核，永不自动应用）。
+            _b13_governed = False
+            try:
+                from src.personality.self_model_mutation_adapter import (
+                    is_self_model_mutation_gateway_enabled,
+                )
 
-            # 合并信念
-            self.bridge.merge(model, beliefs)
-
-            # Phase 6.2: Authority Closure — 优先走 Adapter
-            if self._self_model_adapter is not None:
+                _b13_governed = bool(is_self_model_mutation_gateway_enabled())
+            except Exception:  # noqa: BLE001
+                _b13_governed = False
+            if _b13_governed:
                 try:
-                    from src.personality.self_belief import SelfBelief
-                    belief_objs: list = []
-                    for b in beliefs:
-                        try:
-                            content = getattr(b, "text", None) or str(b)
-                            belief_objs.append(SelfBelief(
-                                domain="preference",
-                                content=f"emotion_growth:{content}",
-                                confidence=0.5,
-                                sources=["emotion_growth_service"],
-                            ))
-                        except Exception:
-                            continue
-                    self._self_model_adapter.apply_external_change(
-                        change_type="emotion",
-                        reason="emotion_pattern_analysis",
-                        source="emotion_growth_service",
-                        confidence=0.5,
-                        beliefs_to_add=belief_objs,
+                    from src.personality.self_model_mutation_adapter import (
+                        from_emotion_event,
+                        get_self_model_mutation_adapter,
                     )
-                except Exception:
-                    # 降级：legacy save
-                    self.self_model_store.save(model)
+
+                    for b in beliefs:
+                        _text = getattr(b, "text", None) or str(b)
+                        _refs = [
+                            str(s) for s in (getattr(b, "sources", None) or [])
+                            if s
+                        ] or [f"emotion_pattern:{str(_text)[:24]}"]
+                        _sm_req = from_emotion_event(
+                            str(_text),
+                            confidence=0.5,
+                            evidence_refs=_refs,
+                        )
+                        if _sm_req is not None:
+                            get_self_model_mutation_adapter().route(
+                                _sm_req.to_mutation_request(
+                                    source_event={
+                                        "type": "emotion_belief_intent",
+                                        "source": "emotion_growth_service",
+                                    },
+                                ),
+                            )
+                except Exception:  # noqa: BLE001 治理接线异常隔离
+                    logger.warning("[emotion_growth_governed_failed] 已隔离")
+                # 治理路径不执行内存合并与直写 save
             else:
-                # 兼容性：保持原行为
-                self.self_model_store.save(model)
+                # 获取当前激活的自我模型
+                model = self.self_model_store.get_active_self_model()
+                if model is None:
+                    model = SelfModelV3()
+
+                # 合并信念
+                self.bridge.merge(model, beliefs)
+
+                # Phase 6.2: Authority Closure — 优先走 Adapter
+                if self._self_model_adapter is not None:
+                    try:
+                        from src.personality.self_belief import SelfBelief
+                        belief_objs: list = []
+                        for b in beliefs:
+                            try:
+                                content = getattr(b, "text", None) or str(b)
+                                belief_objs.append(SelfBelief(
+                                    domain="preference",
+                                    content=f"emotion_growth:{content}",
+                                    confidence=0.5,
+                                    sources=["emotion_growth_service"],
+                                ))
+                            except Exception:
+                                continue
+                        self._self_model_adapter.apply_external_change(
+                            change_type="emotion",
+                            reason="emotion_pattern_analysis",
+                            source="emotion_growth_service",
+                            confidence=0.5,
+                            beliefs_to_add=belief_objs,
+                        )
+                    except Exception:
+                        # 降级：legacy save
+                        self.self_model_store.save(model)
+                else:
+                    # 兼容性：保持原行为
+                    self.self_model_store.save(model)
 
         # 无论是否产生信念，分析完成后都重置计数器
         self.manager.reset_analysis_counter()

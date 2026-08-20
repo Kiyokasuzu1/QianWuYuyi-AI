@@ -28,6 +28,23 @@ from src.growth.growth_record import GrowthRecord, create_growth_record
 from src.growth.growth_schema import MAX_SINGLE_EVENT_DELTA
 
 
+def _record_legacy_growth_audit(source_path, payload):
+    """P2.6 Phase A：旧链成长直写观察（只读，失败静默吞掉，不改变任何行为）。"""
+    try:
+        from src.governance.audit_probe import record_governance_audit
+
+        record_governance_audit(
+            source_path=source_path,
+            domain="growth",
+            mutation_type="growth_state_update",
+            decision="direct_apply",
+            payload_summary=payload,
+            triggered_by="legacy_growth_pipeline",
+        )
+    except Exception:
+        pass
+
+
 class GrowthEngine:
 
     def __init__(self, state: Optional[GrowthState] = None):
@@ -168,6 +185,16 @@ class GrowthEngine:
             metrics = rule.get("metrics", {})
             mode = "first"
 
+        _record_legacy_growth_audit(
+            "legacy_growth_event_apply",
+            {
+                "event_id": event.get("event_id", ""),
+                "meaning": meaning,
+                "mode": mode,
+                "importance": importance,
+            },
+        )
+
         before, delta = self._apply_metrics(metrics, importance)
 
         if not existed and rule.get("milestone", False):
@@ -303,6 +330,15 @@ class GrowthEngine:
             before = {}
             for dim in weighted_metrics:
                 before[dim] = self.state.get_metric(dim)
+
+            _record_legacy_growth_audit(
+                "legacy_growth_apply",
+                {
+                    "proposal_id": proposal_id,
+                    "dimensions": sorted(weighted_metrics.keys()),
+                    "confidence": confidence,
+                },
+            )
 
             self.state.update_metrics(weighted_metrics)
             self.state.save()

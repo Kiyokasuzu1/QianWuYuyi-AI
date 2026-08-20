@@ -42,6 +42,30 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
 
+def _record_governance_decision(decision, growth_record):
+    """P2.6 Phase A：SelfModel 治理决策观察（只读，失败静默吞掉，不改变任何行为）。"""
+    try:
+        from src.governance.audit_probe import record_governance_audit
+
+        rule = SelfModelGovernancePolicy.RULES.get(decision.growth_level)
+        record_governance_audit(
+            source_path="legacy_self_model_policy",
+            domain="self_model",
+            mutation_type="self_model_governance_decision",
+            decision=decision.action.value,
+            payload_summary={
+                "growth_level": decision.growth_level,
+                "confidence": decision.confidence,
+                "threshold_context": (rule or {}).get("min_confidence"),
+                "reason": decision.reason,
+            },
+            triggered_by="legacy_orchestrator",
+            request_id=str(growth_record.get("record_id", "") or ""),
+        )
+    except Exception:
+        pass
+
+
 class GovernanceAction(Enum):
     """治理决策动作"""
     DENY = "deny"
@@ -118,14 +142,21 @@ class SelfModelGovernancePolicy:
     DEFAULT_LEVEL = "context"
 
     def evaluate(self, growth_record: Dict[str, Any]) -> GovernanceDecision:
-        """评估 GrowthRecord → GovernanceDecision。
+        """评估 GrowthRecord → GovernanceDecision（P2.6 Phase A：附带只读审计观察）。
 
         Args:
             growth_record: GrowthRecord 字典（来自 GrowthPipeline 或 GrowthIntegrationService）
 
         Returns:
-            GovernanceDecision（不可变）
+            GovernanceDecision（不可变）——与 Phase A 之前完全一致；
+            审计记录失败静默吞掉，不影响决策结果。
         """
+        decision = self._evaluate_rule(growth_record)
+        _record_governance_decision(decision, growth_record)
+        return decision
+
+    def _evaluate_rule(self, growth_record: Dict[str, Any]) -> GovernanceDecision:
+        """纯规则决策（原 evaluate 逻辑，无副作用）。"""
         level = growth_record.get("growth_level", self.DEFAULT_LEVEL)
         confidence = float(growth_record.get("confidence", 0.5))
 

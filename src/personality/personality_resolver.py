@@ -20,6 +20,10 @@ Phase 6.2: 增加可选 self_model_adapter 参数；注入时通过 Adapter 写�
 
 from typing import Any, Dict, Optional, List, TYPE_CHECKING
 from src.growth.growth_state import GrowthState, resolve_authority_growth_state
+from src.personality.mutation_adapter import (
+    PersonalityMutationAdapter,
+    is_personality_mutation_gateway_enabled,
+)
 from src.personality.personality_profile import PersonalityProfile
 from src.personality.behavior_resolver import BehaviorResolver
 from src.personality.relationship_state import RelationshipState
@@ -80,6 +84,10 @@ class PersonalityResolver:
         self.self_model_store = SelfModelStore()
         # Phase 6.2: 可选 SelfModelAdapter 注入
         self._self_model_adapter = self_model_adapter
+        # P2.3-B.4: Mutation 治理迁移层（默认关闭 → 旧行为字节不变）
+        self._mutation_adapter = PersonalityMutationAdapter()
+        # 迁移模式下发出的 MutationRequest（旧模式恒为空；供可观测/测试）
+        self.mutation_requests: List[Any] = []
 
     def set_self_model_adapter(self, adapter: Any) -> None:
         """Phase 6.2: 运行时注入 Adapter"""
@@ -163,6 +171,15 @@ class PersonalityResolver:
 
             old_value = trait_state["current_value"]
             new_value = updated_state["current_value"]
+
+            if is_personality_mutation_gateway_enabled():
+                # P2.3-B.4 迁移模式：计算 + 提议 —— 漂移不直接提交，
+                # 经 MutationGateway 治理（ACCEPT 才可能进入 apply 链）
+                if abs(new_value - old_value) > 0.005:
+                    self._propose_trait_mutation(dim, old_value, new_value, growth_delta)
+                evolved[dim] = old_value
+                continue
+
             if abs(new_value - old_value) > 0.005:
                 self.personality_history.record_change(
                     before={dim: old_value},
@@ -329,34 +346,39 @@ class PersonalityResolver:
         # ---- Phase 3.4 Step 4：更新并注入 SelfModel ----
         # Phase 6.2: Authority Closure — 若 adapter 注入则路由
         if self.self_model_store.should_update(self.growth_history):
-            try:
-                # P5.0-E #2: SelfModel 消费演化维度（personality_state → trait_states）
-                _merged_ts = dict(self._trait_states or {})
-                for _k, _v in evolved_overlay.items():
-                    _merged_ts[_k] = {"current_value": _v}
-                self.self_model_store.update(self.growth_history, _merged_ts)
-            except Exception:
-                pass
-            if self._self_model_adapter is not None:
+            if is_personality_mutation_gateway_enabled():
+                # P2.3-B.4 迁移模式：SelfModel 更新意图经 Gateway 治理，
+                # 不再静默直写 Store / Adapter
+                self._propose_self_model_mutation()
+            else:
                 try:
-                    # 收集被影响的 traits，写入 SelfModelAdapter
-                    affected: Dict[str, float] = {}
-                    for tname, tstate in (self._trait_states or {}).items():
-                        try:
-                            last_delta = float(getattr(tstate, "last_delta", 0.0) or 0.0)
-                        except Exception:
-                            last_delta = 0.0
-                        if abs(last_delta) > 1e-9:
-                            affected[tname] = round(last_delta, 5)
-                    self._self_model_adapter.apply_external_change(
-                        change_type="personality",
-                        reason="personality_resolver_update",
-                        source="personality_resolver",
-                        confidence=0.5,
-                        affected_traits=affected,
-                    )
+                    # P5.0-E #2: SelfModel 消费演化维度（personality_state → trait_states）
+                    _merged_ts = dict(self._trait_states or {})
+                    for _k, _v in evolved_overlay.items():
+                        _merged_ts[_k] = {"current_value": _v}
+                    self.self_model_store.update(self.growth_history, _merged_ts)
                 except Exception:
                     pass
+                if self._self_model_adapter is not None:
+                    try:
+                        # 收集被影响的 traits，写入 SelfModelAdapter
+                        affected: Dict[str, float] = {}
+                        for tname, tstate in (self._trait_states or {}).items():
+                            try:
+                                last_delta = float(getattr(tstate, "last_delta", 0.0) or 0.0)
+                            except Exception:
+                                last_delta = 0.0
+                            if abs(last_delta) > 1e-9:
+                                affected[tname] = round(last_delta, 5)
+                        self._self_model_adapter.apply_external_change(
+                            change_type="personality",
+                            reason="personality_resolver_update",
+                            source="personality_resolver",
+                            confidence=0.5,
+                            affected_traits=affected,
+                        )
+                    except Exception:
+                        pass
 
         self_model = self.self_model_store.get()
         identity_summary = self_model.get("identity_summary", "") if self_model else ""
@@ -491,3 +513,64 @@ class PersonalityResolver:
     def get_trait_states(self) -> Dict[str, TraitState]:
         """返回当前所有维度的 TraitState（供 Orchestrator 等外部模块调用）"""
         return self._trait_states
+
+    # ============================================================
+    # P2.3-B.4: 迁移模式提议方法（开关默认关闭时永不调用）
+    # ============================================================
+    def _propose_trait_mutation(
+        self,
+        dim: str,
+        old_value: float,
+        new_value: float,
+        growth_delta: float,
+    ) -> None:
+        """trait 漂移 → MutationRequest → Gateway（不直接提交状态）。
+
+        迁移模式下 resolve() 从「计算 + 修改」变为「计算 + 提议」：
+        漂移不写入 _trait_states / history，只经治理链裁决。
+        """
+        request = self._mutation_adapter.build_request(
+            source_event={
+                "type": "growth_accumulation_drift",
+                "dimension": dim,
+                "growth_delta": round(float(growth_delta), 6),
+                "occurrence_count": 1,
+            },
+            actor_identity="system",
+            target_path=f"personality.traits.{dim}",
+            proposed_change={
+                "path": f"personality.traits.{dim}",
+                "before": round(float(old_value), 6),
+                "after": round(float(new_value), 6),
+                "delta": round(float(new_value) - float(old_value), 6),
+                "confidence": 0.5,
+            },
+            evidence=[{"ref": f"accumulation:{dim}", "type": "growth_accumulation"}],
+            context_snapshot={"source": "personality_resolver"},
+            risk_level="low",
+        )
+        self.mutation_requests.append(request)
+        self._mutation_adapter.route(request)
+
+    def _propose_self_model_mutation(self) -> None:
+        """SelfModel 重建意图 → MutationRequest → Gateway（不直接写 Store）。"""
+        request = self._mutation_adapter.build_request(
+            source_event={
+                "type": "self_model_refresh",
+                "growth_count": int(self.growth_history.count()),
+                "occurrence_count": 1,
+            },
+            actor_identity="system",
+            target_domain="self_model",
+            target_path="self_model.update",
+            proposed_change={
+                "path": "self_model.update",
+                "reason": "growth_history_changed",
+                "confidence": 0.5,
+            },
+            evidence=[{"ref": "growth_history_refresh", "type": "growth_accumulation"}],
+            context_snapshot={"source": "personality_resolver"},
+            risk_level="low",
+        )
+        self.mutation_requests.append(request)
+        self._mutation_adapter.route(request)

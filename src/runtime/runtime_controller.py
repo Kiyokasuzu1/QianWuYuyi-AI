@@ -32,6 +32,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.personality.evolution_record import build_evolution_record
+from src.personality.mutation_adapter import (
+    PersonalityMutationAdapter,
+    is_personality_mutation_gateway_enabled,
+)
 from src.personality.personality_state import PersonalityState, reset_personality_state
 from src.response_phase4.mock_response_engine import (
     MockResponseEngine,
@@ -153,6 +157,11 @@ class RuntimeController:
             except Exception as e:  # noqa: BLE001
                 logger.warning("[R2.7.6-P0] DeepSeekAdapter 初始化失败，将只用 Mock：%s", e)
                 self._deepseek_adapter = None
+
+        # P2.3-B.4: Personality Mutation Gateway 迁移层（默认关闭 → 旧路径不变；
+        # 开启后 _apply_delta_safely 不再伪造 p_rt_*/a_rt_* 直写 PersonalityState）
+        self._mutation_adapter = PersonalityMutationAdapter()
+        self._mutation_outcomes: List[Dict[str, Any]] = []
 
         # 启动日志：打印实际加载的 R2.7.6 配置
         logger.info(
@@ -366,7 +375,14 @@ class RuntimeController:
                 )
                 if proposed_delta:
                     self._apply_delta_safely(ps, proposed_delta, turn_uuid=turn_uuid)
-                    delta_applied = proposed_delta
+                    if is_personality_mutation_gateway_enabled():
+                        # P2.3-B.4 迁移模式：只有 Gateway ACCEPT 且 apply
+                        # adapter 落实才计入 delta_applied（如实汇报）
+                        last = self._mutation_outcomes[-1] if self._mutation_outcomes else {}
+                        if last.get("applied"):
+                            delta_applied = proposed_delta
+                    else:
+                        delta_applied = proposed_delta
 
             # 8. Update relationship
             relationship["interaction_count"] = interaction_count
@@ -483,7 +499,13 @@ class RuntimeController:
         turn_uuid: str,
     ) -> None:
         """严格的 RP-3 / RPG-3：每次 apply 单 trait |Δ| ≤ 0.10（比 RPG-3 更保守，
-        因为消息频率更高）。"""
+        因为消息频率更高）。
+
+        P2.3-B.4 P0 红线修复：personality_mutation_gateway_enabled=True 时，
+        不再伪造 p_rt_*/a_rt_* 审批直写 PersonalityState；改为生成
+        MutationRequest → MutationGateway 决策，未 ACCEPT 不落任何状态。
+        默认 False 保持旧路径（渐进迁移，不删除旧行为）。
+        """
         for k, v in list(delta.items()):
             if abs(float(v)) > 0.10:
                 delta[k] = 0.10 if v > 0 else -0.10
@@ -492,6 +514,41 @@ class RuntimeController:
             f"trait.{k}": min(1.0, max(0.0, float(ps.traits.get(k, 0.5)) + float(v)))
             for k, v in delta.items()
         }
+
+        if is_personality_mutation_gateway_enabled():
+            # 伪审批 ID 禁止出现在任何字段（build_request 自带防线）；
+            # Gateway 未 ACCEPT 时本 turn 不写入 PersonalityState。
+            request = self._mutation_adapter.build_request(
+                source_event={
+                    "type": "chat_turn_delta",
+                    "turn_uuid": turn_uuid,
+                    "occurrence_count": 1,
+                },
+                actor_identity="user",
+                target_path="personality.traits",
+                proposed_change={
+                    "path": "personality.traits",
+                    "before": before,
+                    "after": after,
+                    "delta": {k: round(float(v), 6) for k, v in delta.items()},
+                    "confidence": 0.78,
+                },
+                evidence=[{"ref": f"turn:{turn_uuid}", "type": "user_behavior"}],
+                context_snapshot={
+                    "turn_uuid": turn_uuid,
+                    "source": "runtime_controller",
+                },
+                risk_level="low",
+            )
+            outcome = self._mutation_adapter.route(request)
+            self._mutation_outcomes.append(outcome)
+            logger.info(
+                "[P2.3-B.4] personality mutation gateway: decision=%s applied=%s "
+                "turn=%s reason=%s",
+                outcome["decision"], outcome["applied"], turn_uuid, outcome["reason"],
+            )
+            return
+
         rec = build_evolution_record(
             proposal_id=f"p_rt_{turn_uuid}",
             approval_id=f"a_rt_{turn_uuid}",

@@ -524,6 +524,50 @@ class SelfModelManager:
 
                 # 同时更新 core_values 的 weight（仅 milestone/identity 类型）
             if source_type in {"identity", "milestone"} and affected:
+                # P2.3-B.13 P0-1（B.12 B-4 红线）：治理模式开启后，
+                # identity/milestone GrowthRecord 不再直改 core_values.weight——
+                # 改经 SelfModelMutationAdapter 路由（core_values 邻域强制
+                # NEED_REVIEW，永不自动应用，等待 B.11 人工复核）。
+                _b13_governed = False
+                try:
+                    from src.personality.self_model_mutation_adapter import (
+                        is_self_model_mutation_gateway_enabled,
+                    )
+
+                    _b13_governed = bool(is_self_model_mutation_gateway_enabled())
+                except Exception:  # noqa: BLE001
+                    _b13_governed = False
+                if _b13_governed:
+                    for dim, delta in affected.items():
+                        _sm_req = None
+                        try:
+                            from src.personality.self_model_mutation_adapter import (
+                                from_growth_record,
+                                get_self_model_mutation_adapter,
+                            )
+
+                            _sm_req = from_growth_record(
+                                dict(gr),
+                                target_path=f"self_model.core_values.{dim}",
+                                change_type="core_value_weight",
+                                before=None,
+                                proposed_after=None,
+                                risk_level="high",
+                            )
+                            if _sm_req is not None:
+                                get_self_model_mutation_adapter().route(
+                                    _sm_req.to_mutation_request(
+                                        source_event={
+                                            "type": "core_value_weight_intent",
+                                            "growth_record_id": rid,
+                                            "dimension": dim,
+                                        },
+                                    ),
+                                )
+                        except Exception:  # noqa: BLE001 治理接线异常跳过写入
+                            _sm_req = None
+                    # 治理路径不直写（core_values 强制 NEED_REVIEW）
+                    continue
                 for dim, delta in affected.items():
                     for cv in self.identity.core_values:
                         if cv.value_id == dim or cv.name == dim:
@@ -672,7 +716,24 @@ class SelfModelManager:
         - bond_strength → Preference "bond_strength"
         - familiarity → Preference "familiarity_level"
         - trust → Preference "trust_level"
+
+        P2.3-B.9: relationship → self_model 跨域治理开关
+        （relationship_self_model_gateway_enabled，默认 False → 旧行为）。
+        开启后本函数不直写 SelfIdentity.preferences：每条 relationship 数值
+        经 RelationshipMutationAdapter.route_self_model_influence 走完整
+        MutationGateway（跨域目标强制 NEED_REVIEW，绝不自动应用）。
         """
+        # P2.3-B.9 开关读取（fail-open：异常时保持旧行为）
+        governed_self_model = False
+        try:
+            from src.relationship.mutation_adapter import (
+                is_relationship_self_model_gateway_enabled,
+            )
+
+            governed_self_model = bool(is_relationship_self_model_gateway_enabled())
+        except Exception:  # noqa: BLE001
+            governed_self_model = False
+
         lt = snapshot.long_term
         bond = max(0.0, min(1.0, lt.bond_strength))
         familiarity = max(0.0, min(1.0, lt.familiarity))
@@ -684,6 +745,22 @@ class SelfModelManager:
             ("trust_level", trust),
         ]:
             pref_key = f"relationship::{key}"
+            if governed_self_model:
+                # P2.3-B.9：跨域写入改经 MutationGateway（NEED_REVIEW 复核队列）。
+                # 治理接线异常时跳过写入（fail-closed），绝不静默恢复直写。
+                verdict = None
+                try:
+                    from src.relationship.mutation_adapter import (
+                        get_relationship_mutation_adapter,
+                    )
+
+                    verdict = get_relationship_mutation_adapter().route_self_model_influence(
+                        key, val, confidence=0.5,
+                    )
+                except Exception:  # noqa: BLE001
+                    verdict = None
+                if verdict is None or verdict.get("decision") != "ACCEPT":
+                    continue
             if pref_key not in self._preference_keys:
                 pref = Preference(
                     domain="relationship",
@@ -714,10 +791,47 @@ class SelfModelManager:
         familiarity = relationship_state.get("interaction_familiarity_level") or relationship_state.get("familiarity")
         closeness = relationship_state.get("closeness")
 
+        # P2.3-B.13 P0-5（B.12 B-5 漏网）：legacy dict 路径治理——
+        # self_model_mutation_gateway_enabled 开启后，relationship → self_model
+        # 跨域写入改经 SelfModelMutationAdapter（Gateway 裁决，未 ACCEPT 不写）。
+        _b13_governed = False
+        try:
+            from src.personality.self_model_mutation_adapter import (
+                is_self_model_mutation_gateway_enabled,
+            )
+
+            _b13_governed = bool(is_self_model_mutation_gateway_enabled())
+        except Exception:  # noqa: BLE001
+            _b13_governed = False
+
         # 以偏好形式存在（relationship 域），不修改核心价值观与特质
         for key, val in [("attachment_level", attach), ("familiarity_level", familiarity), ("closeness", closeness)]:
             if val is None or val == "":
                 continue
+            if _b13_governed:
+                _verdict = None
+                try:
+                    from src.personality.self_model_mutation_adapter import (
+                        from_relationship_event,
+                        get_self_model_mutation_adapter,
+                    )
+
+                    _sm_req = from_relationship_event(
+                        key, val,
+                        before=None,
+                        confidence=0.5,
+                        evidence_refs=[f"relationship_state::{key}"],
+                    )
+                    if _sm_req is not None:
+                        _verdict = get_self_model_mutation_adapter().route(
+                            _sm_req.to_mutation_request(
+                                source_event={"type": "relationship_state_apply"},
+                            ),
+                        )
+                except Exception:  # noqa: BLE001 治理接线异常跳过写入
+                    _verdict = None
+                if _verdict is None or _verdict.get("decision") != "ACCEPT":
+                    continue
             pref_key = f"relationship::{key}"
             if pref_key not in self._preference_keys:
                 pref = Preference(

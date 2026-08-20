@@ -5,7 +5,7 @@ Phase 3.5.27: Relationship Model + Intelligence Engine
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from src.contracts.relationship_intelligence_schema import (
     RelationshipInteractionRecord,
@@ -78,7 +78,14 @@ class RelationshipIntelligenceEngine:
         user_message: str,
         evidence_id: str = "",
         emotion_tag: str = "",
+        allowed_dimensions: Optional[Set[str]] = None,
     ) -> Dict[str, Any]:
+        """处理一次关系互动（旧 API 保持；allowed_dimensions 为新增可选参数）。
+
+        P2.3-B.9：allowed_dimensions=None 时与旧行为完全一致；
+        非 None 时仅应用白名单内的维度（RuntimeCore 在 MutationGateway
+        裁决 ACCEPT 后注入；REJECT / NEED_REVIEW / DEFER 维度不改变状态）。
+        """
         before_stage = state.relationship_stage
         event = self.extractor.extract(user_message, evidence_id=evidence_id)
         evaluation = self.evaluator.evaluate(event) if event is not None else None
@@ -100,20 +107,33 @@ class RelationshipIntelligenceEngine:
         shared_experience: Optional[SharedExperienceRecord] = None
         milestones: List[RelationshipMilestoneRecord] = []
 
+        # P2.3-B.9: allowed_dimensions=None 时与旧行为完全一致；非 None 时
+        # 仅应用 Gateway 裁决 ACCEPT 的维度（REJECT/NEED_REVIEW/DEFER 维度
+        # 不改变状态——单入口治理，禁止多源直写）。
+        fam_applied = trust_applied = collab_applied = freq_applied = False
+
         if evaluation and evaluation.passed and event is not None:
             trust_delta, familiarity_delta, collaboration_delta = self._plan_deltas(ev_type)
             prev_trust = state.trust
             prev_familiarity = state.familiarity
             prev_collab = state.collaboration
 
-            if familiarity_delta > 0:
-                state.familiarity = min(1.0, state.familiarity + familiarity_delta)
-            if trust_delta > 0:
-                state.trust = min(1.0, state.trust + trust_delta)
-            if collaboration_delta > 0:
-                state.collaboration = min(1.0, state.collaboration + collaboration_delta)
+            def _allowed(dim: str) -> bool:
+                return allowed_dimensions is None or dim in allowed_dimensions
 
-            state.interaction_frequency = min(1.0, max(state.interaction_frequency, 0.1) + 0.03)
+            if familiarity_delta > 0 and _allowed("familiarity"):
+                state.familiarity = min(1.0, state.familiarity + familiarity_delta)
+                fam_applied = True
+            if trust_delta > 0 and _allowed("trust"):
+                state.trust = min(1.0, state.trust + trust_delta)
+                trust_applied = True
+            if collaboration_delta > 0 and _allowed("collaboration"):
+                state.collaboration = min(1.0, state.collaboration + collaboration_delta)
+                collab_applied = True
+
+            if _allowed("interaction_frequency"):
+                state.interaction_frequency = min(1.0, max(state.interaction_frequency, 0.1) + 0.03)
+                freq_applied = True
             state.last_interaction_at = ev_ts
             state.relationship_stage = self._infer_stage(state)
 
@@ -172,14 +192,25 @@ class RelationshipIntelligenceEngine:
 
             state.updated_at = ev_ts
 
+        # P2.3-B.9: 治理模式下日志 delta 如实反映「已应用」增量，
+        # 被 REJECT/NEED_REVIEW/DEFER 拦截的维度记录为 0（不允许声称已变更）。
+        if allowed_dimensions is not None:
+            record_trust = trust_delta if trust_applied else 0.0
+            record_familiarity = familiarity_delta if fam_applied else 0.0
+            record_collaboration = collaboration_delta if collab_applied else 0.0
+        else:
+            record_trust, record_familiarity, record_collaboration = (
+                trust_delta, familiarity_delta, collaboration_delta,
+            )
+
         record = RelationshipInteractionRecord(
             message_summary=user_message[:120],
             event_type=(ev_type if event is not None else ""),
             evidence_ids=list(ev_evidence) if event is not None else ([evidence_id] if evidence_id else []),
             emotion_tag=emotion_tag,
-            trust_delta=round(trust_delta, 4),
-            familiarity_delta=round(familiarity_delta, 4),
-            collaboration_delta=round(collaboration_delta, 4),
+            trust_delta=round(record_trust, 4),
+            familiarity_delta=round(record_familiarity, 4),
+            collaboration_delta=round(record_collaboration, 4),
             stage_after=state.relationship_stage,
         )
         model.interaction_history.append(record.to_dict())
