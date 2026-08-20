@@ -73,87 +73,31 @@ def _build_memory_query(
     return query[:1000]
 
 
+# P2.3-A.3.2（归一化入口统一）：
+# 本函数保留原签名作为 wrapper，委托唯一归一化入口
+# src.runtime.adapters.context_normalizer.normalize_context()。
+# 归一化语义与合并前逐字段一致（None / mutable / frozen v1 / v2 / dict），
+# 行为等价由 tests/test_runtime_core_adapter_reserve.py 与
+# tests/test_context_normalizer.py 锁定；normalizer 拒绝无法识别输入时
+# 此处回退全新 mutable（旧宽容行为，0 行为变化）。
+# 见 docs/architecture/runtime_context_normalization_plan.md。
 def _normalize_runtime_ctx(external_ctx: Any) -> RuntimeContext:
     """若外部 ctx 不是本模块 mutable RuntimeContext 实例，则重建并拷贝可用字段。
 
     - mutable RuntimeContext（src/runtime/context/runtime_context.py） → 直接返回
-    - 其他类型（含 frozen lifecycle_context、旧 runtime_context.py 等） → 新建 mutable，
-      拷贝 session_id / timestamp / user_input / metadata / user_id 等有用字段。
+    - 其他类型（含 frozen lifecycle_context、request_context v2、legacy dict 等） →
+      新建 mutable，拷贝 session_id / timestamp / user_input / metadata / user_id
+      等有用字段（投影规则见 context_normalizer.normalize_context）。
+
+    P2.3-A.3.2: 统一归一化入口 wrapper（调用点零改动）。
     """
-    # Fast path: 已经是正确类型
-    if isinstance(external_ctx, RuntimeContext):
-        return external_ctx
-
-    mutable = RuntimeContext()
-    if external_ctx is None:
-        return mutable
-
-    # 拷贝同名字段（兼容 frozen lifecycle_context 和旧 RuntimeContext）
-    for attr in ("session_id", "user_input", "timestamp", "schema_version",
-                  "memory_context", "emotion_state", "personality_snapshot",
-                  "growth_proposals", "identity_context_text", "identity_snapshot_ref"):
-        try:
-            value = getattr(external_ctx, attr, None)
-        except Exception:
-            value = None
-        if value not in (None, "", [], {}):
-            try:
-                setattr(mutable, attr, value)
-            except Exception:
-                pass
-
-    # 适配 frozen lifecycle_context: inputs["user_input"] / metadata / started_at / user_id
     try:
-        inputs = getattr(external_ctx, "inputs", None)
-        if isinstance(inputs, dict):
-            if not mutable.user_input:
-                candidate = inputs.get("user_input") or inputs.get("content")
-                if isinstance(candidate, str) and candidate.strip():
-                    mutable.user_input = candidate
-            user_id = inputs.get("user_id")
-            if user_id is not None:
-                try:
-                    mutable._ctx_user_id = user_id  # type: ignore[attr-defined]
-                except Exception:
-                    pass
-            # ── V1.1.1 Context Continuity: inputs["recent_history"] → ctx.history ──
-            # Pipeline 在 run() 注入（按 user_id 隔离的最近会话）；此处拷贝到
-            # mutable ctx 后，Stage 2（记忆检索）与 Stage 14（回复生成
-            # history=list(getattr(ctx, "history", ...))）、ResponseAdapter
-            # build_request（ctx._recent_history）两个既有消费点同时生效。
-            recent_history = inputs.get("recent_history")
-            if isinstance(recent_history, list) and recent_history:
-                cleaned = [
-                    item for item in recent_history
-                    if isinstance(item, dict) and isinstance(item.get("content"), str)
-                ]
-                if cleaned:
-                    try:
-                        mutable.history = cleaned  # type: ignore[attr-defined]
-                        mutable._recent_history = cleaned  # type: ignore[attr-defined]
-                    except Exception:
-                        pass
-    except Exception:
-        pass
-    try:
-        metadata = getattr(external_ctx, "metadata", None)
-        if isinstance(metadata, dict):
-            user_id = metadata.get("user_id")
-            if user_id is not None and not getattr(mutable, "_ctx_user_id", None):
-                try:
-                    mutable._ctx_user_id = user_id  # type: ignore[attr-defined]
-                except Exception:
-                    pass
-    except Exception:
-        pass
-    try:
-        started_at = getattr(external_ctx, "started_at", None)
-        if isinstance(started_at, str) and started_at and mutable.timestamp == mutable.timestamp:
-            # 如果 started_at 是有效 ISO，覆盖默认值（两者一致时说明尚未修改过默认）
-            mutable.timestamp = started_at
-    except Exception:
-        pass
-    return mutable
+        from src.runtime.adapters.context_normalizer import normalize_context
+        return normalize_context(external_ctx)
+    except Exception as exc:  # noqa: BLE001
+        # 旧行为：任意无法识别输入 → 全新 mutable，不抛异常。保持 0 行为变化。
+        logger.debug("[RuntimeCore] 归一化回退全新 mutable ctx: %s", exc)
+        return RuntimeContext()
 from src.runtime.events import Event
 from src.runtime.self_state import SelfState
 from src.runtime.world_state import WorldState
@@ -2230,6 +2174,25 @@ class RuntimeCore(ModuleBase):
             if self._approval_queue is not None:
                 approved = self._approval_queue.approve(target)
                 if approved is None:
+                    # P2.3-B.13 P0-2：治理模式（self_model_mutation_gateway_enabled）
+                    # 开启后，不在 ApprovalQueue 中的 proposal 不再直接批准——
+                    # 伪审批 fallback 收敛为 fail-closed（默认 flag=False 保持旧行为）
+                    _b13_governed = False
+                    try:
+                        from src.personality.self_model_mutation_adapter import (
+                            is_self_model_mutation_gateway_enabled,
+                        )
+
+                        _b13_governed = bool(is_self_model_mutation_gateway_enabled())
+                    except Exception:  # noqa: BLE001
+                        _b13_governed = False
+                    if _b13_governed:
+                        logger.info(
+                            "[P2.3-B.13] accept_self_model_suggestion: proposal %s "
+                            "不在 ApprovalQueue 中，治理模式拒绝直接批准",
+                            target,
+                        )
+                        return False
                     # 不在 ApprovalQueue 中 → 尝试直接批准（兼容旧行为）
                     logger.info(
                         "accept_self_model_suggestion: proposal %s 不在 ApprovalQueue 中，"
@@ -3309,6 +3272,18 @@ class RuntimeCore(ModuleBase):
         ):
             return None
         try:
+            # P2.3-B.9: 治理迁移开关。flag=False → 旧路径字节不变；
+            # flag=True → 经 RelationshipMutationAdapter → MutationGateway
+            # 裁决后仅应用 ACCEPT 维度（单入口治理状态变化）。
+            from src.relationship.mutation_adapter import (
+                is_relationship_mutation_gateway_enabled,
+            )
+            if is_relationship_mutation_gateway_enabled():
+                return self._record_relationship_interaction_governed(
+                    user_message=user_message,
+                    evidence_id=evidence_id,
+                    emotion_tag=emotion_tag,
+                )
             result = self.relationship_intelligence_engine.process_interaction(
                 state=self.relationship_state_runtime,
                 model=self.relationship_model_runtime,
@@ -3333,6 +3308,117 @@ class RuntimeCore(ModuleBase):
             return result
         except Exception as e:
             logger.warning(f"record_relationship_interaction 失败（已隔离）: {e}")
+            return None
+
+    def _get_relationship_mutation_adapter(self) -> Any:
+        """P2.3-B.9: 关系 mutation 适配器惰性持有（构造零写入）。"""
+        if getattr(self, "_relationship_mutation_adapter", None) is None:
+            from src.relationship.mutation_adapter import (
+                RelationshipMutationAdapter,
+            )
+
+            self._relationship_mutation_adapter = RelationshipMutationAdapter()
+        return self._relationship_mutation_adapter
+
+    def _record_relationship_interaction_governed(
+        self,
+        *,
+        user_message: str,
+        evidence_id: str = "",
+        emotion_tag: str = "",
+    ) -> Optional[Dict[str, Any]]:
+        """P2.3-B.9（flag=True）：关系互动经 MutationGateway 单入口治理。
+
+        链路：
+            RelationshipEventExtractor（计划增量）
+                ↓ 逐维度
+            RelationshipMutationAdapter.from_relationship_event → MutationRequest
+                ↓
+            MutationGateway（identity→boundary→evidence→conflict→audit）
+                ↓
+            ACCEPT      → 加入 allowed_dimensions，进入原 apply 方法
+            REJECT      → 该维度不改变状态
+            NEED_REVIEW → 进入 adapter.pending_proposals（不改变状态）
+            DEFER       → 进入 adapter.deferred（不改变状态）
+
+        与旧路径相同的持久化 / growth 证据转发 / notify 保持不变；
+        返回值额外携带 mutation 治理明细（mode/decisions/applied）。
+        任何异常 fail-soft（返回 None，不影响主链）。
+        """
+        try:
+            engine = self.relationship_intelligence_engine
+            adapter = self._get_relationship_mutation_adapter()
+
+            event = engine.extractor.extract(user_message, evidence_id=evidence_id)
+            evaluation = engine.evaluator.evaluate(event) if event is not None else None
+
+            planned: Dict[str, float] = {}
+            if evaluation is not None and getattr(evaluation, "passed", False) and event is not None:
+                ev_type = str(event.get("type") or "")
+                trust_delta, familiarity_delta, collaboration_delta = (
+                    engine._plan_deltas(ev_type)
+                )
+                planned = {
+                    "trust": trust_delta,
+                    "familiarity": familiarity_delta,
+                    "collaboration": collaboration_delta,
+                    "interaction_frequency": 0.03,
+                }
+
+            ev_conf = float(event.get("confidence", 0.0) or 0.0) if event is not None else 0.0
+            decisions: List[Dict[str, Any]] = []
+            accepted_dims: List[str] = []
+            for dim, delta in planned.items():
+                if delta is None or float(delta) <= 0:
+                    continue
+                request = adapter.from_relationship_event(
+                    event,
+                    dimension=dim,
+                    delta=float(delta),
+                    confidence=ev_conf,
+                    evidence_id=evidence_id,
+                    mutation_source="runtime_stage03",
+                )
+                if request is None:
+                    continue
+                envelope = adapter.route(request, apply_route=None)
+                decisions.append(envelope)
+                if envelope.get("decision") == "ACCEPT":
+                    accepted_dims.append(dim)
+
+            # 原 apply 方法（仅应用 Gateway ACCEPT 的维度；无计划增量时
+            # allowed_dimensions=None → 与旧路径行为完全一致）
+            allowed_dimensions = set(accepted_dims) if planned else None
+            result = engine.process_interaction(
+                state=self.relationship_state_runtime,
+                model=self.relationship_model_runtime,
+                user_message=user_message,
+                evidence_id=evidence_id,
+                emotion_tag=emotion_tag,
+                allowed_dimensions=allowed_dimensions,
+            )
+            self.relationship_repository.save_state(self.relationship_state_runtime)
+            self.relationship_repository.save_relationship_model(self.relationship_model_runtime)
+            growth_evidence_state = self._forward_relationship_event_to_growth(
+                result.get("event")
+            )
+            self.notify_relationship_changed({
+                "reason": "interaction_recorded",
+                "interaction": result.get("interaction"),
+                "trust_change": result.get("trust_change"),
+                "milestones": result.get("milestones", []),
+                "growth_evidence_state": growth_evidence_state,
+            })
+            result = dict(result)
+            result["mutation"] = {
+                "mode": "governed",
+                "gateway": "relationship_mutation_gateway",
+                "decisions": decisions,
+                "applied": accepted_dims,
+            }
+            return result
+        except Exception as e:
+            logger.warning(f"record_relationship_interaction(governed) 失败（已隔离）: {e}")
             return None
 
     # --------------------------------------------------------
@@ -5170,6 +5256,10 @@ class RuntimeCore(ModuleBase):
     ) -> None:
         if getattr(ctx, "_control_blocked", False):
             return
+        # P2.3-B.7 (B.6 C2 修复)：补 can_modify_emotion 身份门。
+        # sandbox/未知身份跳过情绪状态更新；safe_mode / maintenance_mode 原逻辑
+        # 不变（仍由 _control_blocked 决定）。关系更新等其他子步骤不受影响。
+        gate_ok = self._emotion_update_allowed(ctx)
         em = getattr(self, "emotion_manager", None)
         # P5.0-A: RuntimeCore 是 EmotionManager 权威持有者（get_emotion_manager
         # 懒加载）；此前只读 self.emotion_manager（默认 None）导致主链情绪断链。
@@ -5180,7 +5270,7 @@ class RuntimeCore(ModuleBase):
                     em = getter()
                 except Exception:
                     em = None
-        if em is not None:
+        if em is not None and gate_ok:
             try:
                 # 兼容旧接口（若未来存在）；EmotionManager 真实 API 为
                 # process_event(EmotionEvent) + state(EmotionState)。
@@ -5225,6 +5315,68 @@ class RuntimeCore(ModuleBase):
         # Phase 4.2-B: Stage 3 子步骤 —— Relationship Update
         # （任务卡方案 B：不动 17 阶段冻结表；emotion 未启用时关系更新仍执行）
         self._relationship_update(event, ctx)
+
+    def _emotion_update_allowed(self, ctx: RuntimeContext) -> bool:
+        """P2.3-B.7 (B.6 C2 修复)：stage_03 情绪更新的身份门。
+
+        can_modify_emotion 为 fail-closed 语义（sandbox/unknown 拒绝），与
+        orchestrator P2.1.3 gate 对齐；safe_mode / maintenance_mode 原逻辑不变。
+        uid 回退链与 stage_02 同源（ctx.user_id → config memory.target_user_id）；
+        两者均缺失时保持旧行为（放行，仅日志），避免破坏历史直调方。
+        """
+        try:
+            from src.security.identity import resolve_identity
+            from src.security.permission import can_modify_emotion
+
+            uid = getattr(ctx, "user_id", "") or ""
+            if not uid:
+                cfg = getattr(self, "config", None)
+                uid = (
+                    cfg.get("memory", {}).get("target_user_id")
+                    if isinstance(cfg, dict)
+                    else ""
+                )
+            if not uid:
+                logger.info("[P2.3-B.7] stage_03 身份门跳过：user_id 未知（保持旧行为）")
+                return True
+            if not can_modify_emotion(resolve_identity(uid)):
+                logger.info("[P2.3-B.7] stage_03 情绪更新被身份门拒绝（user_id=%s）", uid)
+                return False
+            return True
+        except Exception as exc:  # noqa: BLE001 门自身异常不影响主链（fail-open，仅日志）
+            logger.warning("[P2.3-B.7] stage_03 身份门异常（fail-open）: %s", exc)
+            return True
+
+    def _relationship_update_allowed(self, ctx: RuntimeContext) -> bool:
+        """P2.3-B.9: stage_03 关系更新的身份门（行为与 B.7 emotion 一致）。
+
+        can_modify_relationship 为 fail-closed 语义（sandbox/unknown 拒绝），
+        与 orchestrator P2.1.3-R gate 对齐；uid 回退链与 emotion 门同源
+        （ctx.user_id → config memory.target_user_id）；两者均缺失时保持
+        旧行为（放行，仅日志），避免破坏历史直调方。门自身异常 fail-open。
+        """
+        try:
+            from src.security.identity import resolve_identity
+            from src.security.permission import can_modify_relationship
+
+            uid = getattr(ctx, "user_id", "") or ""
+            if not uid:
+                cfg = getattr(self, "config", None)
+                uid = (
+                    cfg.get("memory", {}).get("target_user_id")
+                    if isinstance(cfg, dict)
+                    else ""
+                )
+            if not uid:
+                logger.info("[P2.3-B.9] stage_03 关系身份门跳过：user_id 未知（保持旧行为）")
+                return True
+            if not can_modify_relationship(resolve_identity(uid)):
+                logger.info("[P2.3-B.9] stage_03 关系更新被身份门拒绝（user_id=%s）", uid)
+                return False
+            return True
+        except Exception as exc:  # noqa: BLE001 门自身异常不影响主链（fail-open，仅日志）
+            logger.warning("[P2.3-B.9] stage_03 关系身份门异常（fail-open）: %s", exc)
+            return True
 
     # --------------------------------------------------------
     # Phase 4.2-B: Relationship Update（Stage 3 子步骤）
@@ -5274,11 +5426,14 @@ class RuntimeCore(ModuleBase):
                             evidence_id = ""
                 if not evidence_id and exp_id:
                     evidence_id = str(exp_id)
-                self.record_relationship_interaction(
-                    user_message=user_message,
-                    evidence_id=evidence_id,
-                    emotion_tag=emotion_tag,
-                )
+                # P2.3-B.9: 身份门（与 B.7 emotion 行为一致）——
+                # sandbox/未知身份跳过关系状态更新；user_id 未知保持旧行为。
+                if self._relationship_update_allowed(ctx):
+                    self.record_relationship_interaction(
+                        user_message=user_message,
+                        evidence_id=evidence_id,
+                        emotion_tag=emotion_tag,
+                    )
 
             # ---- 读路径：C.5 只读输出形态 → ctx.relationship_snapshot ----
             # Phase 4.0.4-Pre: user_id 必须使用每请求提取的值，不能用 config 默认值 "yuyi"，

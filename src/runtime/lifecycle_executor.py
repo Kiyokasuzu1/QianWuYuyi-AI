@@ -55,42 +55,19 @@ from src.runtime.events import Event
 logger = logging.getLogger(__name__)
 
 
-# Phase 4.0.4-Pre: 保证 LifecycleExecutor 收到的 ctx 永远是 mutable RuntimeContext。
-# 与 runtime_core.py:_normalize_runtime_ctx 同语义（此处不 import 避免环，
-# 直接做 isinstance 检查 + 必要时重建）。
+# P2.3-A.3.2: 归一化入口统一——本函数保留原签名作为 wrapper，
+# 委托 src.runtime.adapters.context_normalizer.normalize_context()（中立 adapter 层，
+# 无环）。语义变化（有意）：executor 直调路径由此获得 D1-D3 补齐
+# （user_id / history / recent_history），与 runtime_core 侧语义一致；
+# 生产主路径 ctx 恒为 mutable fast-path 直通，行为不变。
+# normalizer 拒绝输入时回退全新 mutable（旧宽容行为）。
 def _normalize_mutable_ctx(external_ctx: Any) -> RuntimeContext:
-    if isinstance(external_ctx, RuntimeContext):
-        return external_ctx
-    mutable = RuntimeContext()
-    if external_ctx is None:
-        return mutable
-    for attr in ("session_id", "user_input", "timestamp", "schema_version",
-                  "memory_context", "emotion_state", "personality_snapshot",
-                  "growth_proposals", "identity_context_text", "identity_snapshot_ref"):
-        try:
-            value = getattr(external_ctx, attr, None)
-        except Exception:
-            value = None
-        if value not in (None, "", [], {}):
-            try:
-                setattr(mutable, attr, value)
-            except Exception:
-                pass
     try:
-        inputs = getattr(external_ctx, "inputs", None)
-        if isinstance(inputs, dict) and not mutable.user_input:
-            candidate = inputs.get("user_input") or inputs.get("content")
-            if isinstance(candidate, str) and candidate.strip():
-                mutable.user_input = candidate
-    except Exception:
-        pass
-    try:
-        started_at = getattr(external_ctx, "started_at", None)
-        if isinstance(started_at, str) and started_at:
-            mutable.timestamp = started_at
-    except Exception:
-        pass
-    return mutable
+        from src.runtime.adapters.context_normalizer import normalize_context
+        return normalize_context(external_ctx)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[LifecycleExecutor] 归一化回退全新 mutable ctx: %s", exc)
+        return RuntimeContext()
 
 
 # ============================================================
@@ -196,6 +173,27 @@ class LifecycleExecutor:
         self.last_stage_order = []
         self.execution_count += 1
 
+        # P2.4-B.15 Task 1：cycle_started 事件发布（flag 默认 False → 零行为差异）
+        from src.runtime.cognitive_activation import (
+            apply_runtime_cognitive_activation,
+            is_lifecycle_cycle_events_enabled,
+            publish_cycle_event,
+            run_growth_loop_adapter,
+            run_stage_adapter,
+            STAGE_CYCLE_EVENTS,
+        )
+
+        # Phase 5：staging 激活入口（生产唯一接线点）。
+        # staging flag 默认 False → no-op；True 时开启最小激活组合。
+        apply_runtime_cognitive_activation()
+
+        _b15_events = is_lifecycle_cycle_events_enabled()
+        _b15_trace_id = str(getattr(ctx, "session_id", "") or "")
+        if _b15_events:
+            publish_cycle_event(core, "cycle_started", {
+                "stages": len(RUNTIME_LIFECYCLE_ORDER),
+            }, trace_id=_b15_trace_id)
+
         # 1) 遍历 17 个阶段（与 RUNTIME_LIFECYCLE_ORDER 严格对齐 = 17 项）
         for stage in RUNTIME_LIFECYCLE_ORDER:
             # a) 设置上下文当前阶段（供 stage 方法读取 / 诊断面板显示）
@@ -230,11 +228,38 @@ class LifecycleExecutor:
                         core_errors[stage.name] = err_repr
                 except Exception:
                     pass
+                if _b15_events:
+                    publish_cycle_event(core, "cycle_failed", {
+                        "stage": stage.name, "error": err_repr,
+                    }, trace_id=_b15_trace_id)
                 self._logger.warning(
                     "[LifecycleExecutor] stage=%s 失败（已隔离，不中断）: %s",
                     stage.name, exc,
                 )
                 continue  # fail-soft: 继续下一阶段
+
+            # P2.4-B.15 Task 1/2：阶段成功后——
+            #   · 发布该阶段对应的已有 cycle_* 事件（无专属常量的阶段不发布）
+            #   · 旁路 stage adapter（07-13 flag 门控，False = 完全跳过）
+            if _b15_events:
+                publish_cycle_event(
+                    core, STAGE_CYCLE_EVENTS.get(stage.name, ""),
+                    {"stage": stage.name},
+                    trace_id=_b15_trace_id,
+                )
+            run_stage_adapter(core, stage.name, event, ctx)
+
+        # P2.4-B.15 Task 1：cycle_completed 事件发布（flag 默认 False）
+        if _b15_events:
+            publish_cycle_event(core, "cycle_completed", {
+                "stages": len(self.last_stage_order),
+            }, trace_id=_b15_trace_id)
+
+        # P2.5：Growth Loop 最小激活入口（独立 flag 默认 False → no-op；
+        # 只读评估 → 内存 pending proposal；禁止 apply，零文件 I/O）
+        run_growth_loop_adapter(
+            core, ctx, executed_stages=self.last_stage_order,
+        )
 
         return ctx
 

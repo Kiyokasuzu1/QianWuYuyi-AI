@@ -72,6 +72,10 @@ logger = logging.getLogger(__name__)
 RUNTIME_EVENT_ADAPTER_SCHEMA_VERSION = "1.0"
 RUNTIME_EVENT_SOURCE = "runtime"
 
+# P2.3-A.2.6：能力判断用受支持 schema 版本集（替代 isinstance 硬门）。
+# 契约面同源：lifecycle v1.0 与 request_context v2 均可转事件。
+_SUPPORTED_CONTEXT_SCHEMA_VERSIONS = frozenset({"1.0", "2.0"})
+
 # 事件类型常量
 RUNTIME_LIFECYCLE_EVENT_COMPLETED = "runtime.lifecycle.completed"
 RUNTIME_LIFECYCLE_EVENT_FAILED = "runtime.lifecycle.failed"
@@ -161,19 +165,22 @@ def context_to_event(context: "RuntimeContext") -> Dict[str, Any]:
         不可变事件 payload (dict)。
 
     Raises:
-        EventAdapterError: context 不是 RuntimeContext 实例时。
+        EventAdapterError: context 不具备受支持 RuntimeContext 能力
+            （schema_version ∉ {1.0, 2.0}）时。
 
     Notes:
         - 纯函数:不修改 context,不发事件,不读全局状态。
         - 深拷贝:outputs / metadata / error 全部独立。
         - 非法 state 映射为 ``runtime.lifecycle.unknown``。
     """
-    # 延迟 import 避免循环依赖
-    from src.runtime.lifecycle_context import RuntimeContext
-
-    if not isinstance(context, RuntimeContext):
+    # P2.3-A.2.6：能力判断替代 isinstance 硬门。字段提取全部走
+    # getattr 兜底，lifecycle v1.0 与 request_context v2 均兼容；
+    # v2 无 duration_ms → _extract_duration_ms 兜底 None。
+    sv = getattr(context, "schema_version", None)
+    if not (isinstance(sv, str) and sv in _SUPPORTED_CONTEXT_SCHEMA_VERSIONS):
         raise EventAdapterError(
-            f"context 必须是 RuntimeContext,实际: {type(context).__name__}"
+            f"context 必须携带受支持 schema_version ∈ "
+            f"{sorted(_SUPPORTED_CONTEXT_SCHEMA_VERSIONS)}，实际: {type(context).__name__}"
         )
 
     # 1) 基础字段

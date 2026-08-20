@@ -193,6 +193,157 @@ def _runtime_path_audit_finalize(
 
 
 # ============================================================
+# P2.3-A.3.0 —— RuntimeContext v2 shadow 校验（只读投影，不改变业务流）
+# ============================================================
+def _shadow_validate_context_v2(context: Any) -> None:
+    """把 pipeline 终态 v1 context 投影为 v2，校验关键字段一致。
+
+    任务书 P2.3-A.3.0 Phase 3 要求：仅 debug/validation hook，禁止改变业务流程。
+
+    - 只读：不修改 context（投影走派生副本），不写任何状态；
+    - 隔离：任何异常吞掉并 debug 日志，绝不向上抛（不影响 run() 返回路径）；
+    - 校验字段：session_id / request_id / trace_id / user_id /
+      outputs.reply / outputs.source（v1 契约值 vs v2 legacy_view 投影值）。
+    不一致仅 logger.warning，供 DEBUG 级别诊断 shadow 链漂移。
+    """
+    try:
+        from src.runtime.adapters.pipeline_context_adapter import (
+            from_pipeline_context,
+        )
+        v2 = from_pipeline_context(context)
+        v2_view_outputs = v2.legacy_view().get("outputs") or {}
+        v1_inputs = getattr(context, "inputs", None) or {}
+        v1_outputs = getattr(context, "outputs", None) or {}
+        v1_snapshot = (
+            v1_outputs.get("snapshot")
+            if isinstance(v1_outputs.get("snapshot"), dict) else {}
+        )
+        v1_meta = getattr(context, "metadata", None) or {}
+
+        mismatches = []
+        # 1) session_id
+        if str(getattr(v2, "session_id", "")) != str(getattr(context, "session_id", "")):
+            mismatches.append(
+                f"session_id: v1={getattr(context, 'session_id', None)!r} "
+                f"v2={getattr(v2, 'session_id', None)!r}"
+            )
+        # 2) request_id：pipeline 以 lifecycle_id 作为 request 身份
+        v1_request = v1_meta.get("request_id")
+        if not (isinstance(v1_request, str) and v1_request):
+            v1_request = str(getattr(context, "lifecycle_id", "") or "")
+        if str(v2.request.request_id) != v1_request:
+            mismatches.append(
+                f"request_id: v1={v1_request!r} v2={v2.request.request_id!r}"
+            )
+        # 3) trace_id
+        v1_trace = v1_meta.get("trace_id")
+        if not (isinstance(v1_trace, str) and v1_trace):
+            v1_trace = str(getattr(context, "lifecycle_id", "") or "")
+        if str(v2.request.trace_id) != v1_trace:
+            mismatches.append(
+                f"trace_id: v1={v1_trace!r} v2={v2.request.trace_id!r}"
+            )
+        # 4) user_id：v1 inputs 有非空 user_id 时逐值比对；缺省时 v2 落沙盒身份
+        v1_user = v1_inputs.get("user_id")
+        v2_user = (v2.inputs or {}).get("user_id")
+        if isinstance(v1_user, str) and v1_user:
+            if str(v2_user) != v1_user:
+                mismatches.append(
+                    f"user_id: v1={v1_user!r} v2={v2_user!r}"
+                )
+        elif str(v2_user) != str(v2.identity.id):
+            mismatches.append(
+                f"user_id: v1 缺省应落沙盒 v2={v2_user!r} sandbox={v2.identity.id!r}"
+            )
+        # 5) outputs.reply（v1 契约 snapshot.reply vs v2 legacy_view 顶层投影）
+        v1_reply = v1_snapshot.get("reply")
+        v1_reply = v1_reply if isinstance(v1_reply, str) else ""
+        if str(v2_view_outputs.get("reply", "")) != v1_reply:
+            mismatches.append(
+                f"outputs.reply: v1={v1_reply!r} v2={v2_view_outputs.get('reply')!r}"
+            )
+        # 6) outputs.source（v1 契约 snapshot.reply_source vs v2 legacy_view source）
+        v1_source = v1_snapshot.get("reply_source")
+        v1_source = v1_source if isinstance(v1_source, str) and v1_source else "unknown"
+        if str(v2_view_outputs.get("source", "unknown")) != v1_source:
+            mismatches.append(
+                f"outputs.source: v1={v1_source!r} v2={v2_view_outputs.get('source')!r}"
+            )
+
+        if mismatches:
+            logger.warning(
+                "[RuntimePipeline] shadow v2 校验不一致（lifecycle_id=%s）: %s",
+                getattr(context, "lifecycle_id", "unknown"),
+                "; ".join(mismatches),
+            )
+        else:
+            logger.debug(
+                "[RuntimePipeline] shadow v2 校验通过: session_id=%s lifecycle_id=%s state=%s",
+                getattr(context, "session_id", ""),
+                getattr(context, "lifecycle_id", ""),
+                getattr(context, "state", ""),
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[RuntimePipeline] shadow v2 校验异常（已隔离）: %s", exc)
+
+
+# ============================================================
+# P2.3-A.3.1 —— 请求级 Context 构造 factory（flag 分派 + v2 失败自动回滚）
+# ============================================================
+def _create_runtime_context(
+    *,
+    session_id: str,
+    lifecycle_id: str,
+    inputs: Dict[str, Any],
+    metadata: Dict[str, Any],
+    use_v2: bool,
+) -> tuple:
+    """按 runtime_context_v2_enabled 分派构造请求级 Context。
+
+    - use_v2=False → lifecycle_context.RuntimeContext（v1，既有行为）；
+    - use_v2=True  → request_context.RuntimeContext（v2），构造失败时
+      记录 warning 并自动回滚 v1（A.3.1 要求"必须可回滚"）。
+
+    Returns:
+        (context, is_v2)：context 为实际使用的实例；is_v2 供下游按模式
+        区分（shadow 校验只在 v1 模式投影），业务代码不做 if isinstance。
+    """
+    if not use_v2:
+        from src.runtime.lifecycle_context import RuntimeContext
+
+        return RuntimeContext(
+            session_id=session_id,
+            lifecycle_id=lifecycle_id,
+            inputs=inputs,
+            metadata=metadata,
+        ), False
+    try:
+        from src.runtime.adapters.pipeline_context_adapter import (
+            create_pipeline_context_v2,
+        )
+
+        v2 = create_pipeline_context_v2(
+            session_id=session_id,
+            lifecycle_id=lifecycle_id,
+            inputs=inputs,
+            metadata=metadata,
+        )
+        return v2, True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[RuntimePipeline] v2 Context 创建失败（自动回滚 v1）: %s", exc,
+        )
+        from src.runtime.lifecycle_context import RuntimeContext
+
+        return RuntimeContext(
+            session_id=session_id,
+            lifecycle_id=lifecycle_id,
+            inputs=inputs,
+            metadata=metadata,
+        ), False
+
+
+# ============================================================
 # 协议(允许测试 fake)
 # ============================================================
 class OrchestratorLike(Protocol):
@@ -299,6 +450,7 @@ class RuntimePipeline:
         interaction_recorder: Optional[Any] = None,
         trace_recorder: Optional[Any] = None,
         status_tracker: Optional[Any] = None,
+        runtime_context_v2_enabled: bool = False,
     ) -> None:
         """构造 Pipeline。
 
@@ -323,6 +475,11 @@ class RuntimePipeline:
             status_tracker: (Phase 7.0 新增) 可选 RuntimeStatusTracker,
                 实现 ``record_request_start(...)`` 和 ``record_response(...)``。
                 None 表示不追踪状态,行为与之前完全一致。
+            runtime_context_v2_enabled: (P2.3-A.3.1 新增) 请求级 Context 主对象
+                切换开关。False（默认）= 保持 v1 lifecycle_context.RuntimeContext；
+                True = 构造点产出 v2 request_context.RuntimeContext，
+                v2 创建失败自动回滚 v1。仅影响本 pipeline 实例的 Context
+                主对象，不影响任何其他 runtime 配置。
         """
         if orchestrator is None:
             raise RuntimePipelineError("orchestrator 不能为 None")
@@ -368,6 +525,8 @@ class RuntimePipeline:
         # 任何 hook 异常都被隔离,绝不影响主链路。
         self._trace_recorder = trace_recorder
         self._status_tracker = status_tracker
+        # P2.3-A.3.1: 请求级 Context 主对象切换开关（默认 False = 保持 v1）
+        self._runtime_context_v2_enabled = bool(runtime_context_v2_enabled)
 
     # --------------------------------------------------------
     # 属性
@@ -434,6 +593,11 @@ class RuntimePipeline:
     def status_tracker(self) -> Optional[Any]:
         """Phase 7.0: 注入的 RuntimeStatusTracker(只读,未注入时 None)。"""
         return self._status_tracker
+
+    @property
+    def runtime_context_v2_enabled(self) -> bool:
+        """P2.3-A.3.1: 是否启用 v2 请求级 Context 主对象（只读）。"""
+        return self._runtime_context_v2_enabled
 
     @property
     def event_sink(self) -> Optional[Any]:
@@ -608,6 +772,8 @@ class RuntimePipeline:
         流程（Phase 4.0.2 升级）:
             1) 解析 user_message
             2) 创建 RuntimeContext (state=initial)
+               【P2.3-A.3.1】factory 按 runtime_context_v2_enabled 分派
+               v1 lifecycle_context / v2 request_context；v2 失败自动回滚 v1
             3) state -> running
             4) 【Phase 6.5】token_optimizer.optimize(user_message)  (可选)
                任何异常 -> fallback 原始输入,不影响主流程。
@@ -620,12 +786,11 @@ class RuntimePipeline:
             9) persistence_hook.persist(context)  (可选)
             10) event_sink.emit(...)                  (可选)
         """
-        # 0) 延迟 import RuntimeContext
+        # 0) 延迟 import 生命周期常量（Context 本体由 _create_runtime_context 分派构造）
         from src.runtime.lifecycle_context import (
             LIFECYCLE_STATE_FAILED,
             LIFECYCLE_STATE_RUNNING,
             LIFECYCLE_STATE_SUCCESS,
-            RuntimeContext,
         )
 
         # 1) 解析 user_message
@@ -634,7 +799,9 @@ class RuntimePipeline:
         # 1.5) Phase 4.0.1 Step 02-A: 解析 user_id（向后兼容；缺失则 None，不抛错）
         user_id = self._extract_user_id(input_data)
 
-        # 2) 创建 RuntimeContext
+        # 2) 创建 RuntimeContext（P2.3-A.3.1: factory 按 runtime_context_v2_enabled
+        #    分派 v1/v2；v2 创建失败自动回滚 v1；两路径六字段一致性由
+        #    adapters/pipeline_context_adapter.create_pipeline_context_v2 保证）
         session_id = self._build_session_id()
         lifecycle_id = self._build_lifecycle_id()
         # ── Phase 7.0: 轻量 Trace + Status 钩子(异常隔离,绝不影响主链路) ──
@@ -700,7 +867,7 @@ class RuntimePipeline:
                     "[RuntimePipeline] 注入 recent_history 失败（已隔离，按无历史继续）: %s",
                     exc_hist_inject,
                 )
-            context = RuntimeContext(
+            context, context_is_v2 = _create_runtime_context(
                 session_id=session_id,
                 lifecycle_id=lifecycle_id,
                 inputs=runtime_inputs,
@@ -710,6 +877,7 @@ class RuntimePipeline:
                     # Phase 4.0-R2.1：结构化运行路径审计（只读，用于收敛诊断）
                     "runtime_path_audit": audit,
                 },
+                use_v2=self._runtime_context_v2_enabled,
             )
         except Exception as exc:  # noqa: BLE001
             # 极端:context 创建失败
@@ -1102,6 +1270,12 @@ class RuntimePipeline:
                 clear_cognitive_context()
             except Exception:  # noqa: BLE001
                 pass
+
+        # ── P2.3-A.3.0: RuntimeContext v2 shadow 校验（仅 DEBUG 级启用）──
+        # v1 主路径时投影校验 v1→v2 六字段一致性；v2 主路径（P2.3-A.3.1）时
+        # context 本身就是 v2，无需 shadow 投影。异常隔离，绝不改变业务流。
+        if logger.isEnabledFor(logging.DEBUG) and not context_is_v2:
+            _shadow_validate_context_v2(context)
 
         return context
 

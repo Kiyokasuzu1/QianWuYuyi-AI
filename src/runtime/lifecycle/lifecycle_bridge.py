@@ -52,6 +52,11 @@ logger = logging.getLogger(__name__)
 # ============================================================
 RUNTIME_LIFECYCLE_BRIDGE_SCHEMA_VERSION = "1.0"
 
+# P2.3-A.2.6：能力判断用受支持 schema 版本集（替代 isinstance 硬门）。
+# lifecycle v1.0 与 request_context v2 的生命周期变更面同源
+# （with_update / mark_success / mark_failed），均可被桥接。
+_SUPPORTED_CONTEXT_SCHEMA_VERSIONS = frozenset({"1.0", "2.0"})
+
 
 # ============================================================
 # 异常
@@ -221,12 +226,23 @@ def run_with_context(
     from src.runtime.lifecycle_context import (
         LIFECYCLE_STATE_FAILED,
         LIFECYCLE_STATE_RUNNING,
-        RuntimeContext,
     )
 
-    if not isinstance(context, RuntimeContext):
+    # P2.3-A.2.6：能力判断替代 isinstance 硬门。
+    # 桥接所需能力 = 生命周期变更面（with_update + mark_success + mark_failed）
+    # 与受支持 schema_version；legacy v1.0 行为不变，v2 同等放行。
+    sv = getattr(context, "schema_version", None)
+    if not (
+        isinstance(sv, str)
+        and sv in _SUPPORTED_CONTEXT_SCHEMA_VERSIONS
+        and callable(getattr(context, "with_update", None))
+        and callable(getattr(context, "mark_success", None))
+        and callable(getattr(context, "mark_failed", None))
+    ):
         raise LifecycleBridgeError(
-            f"context 必须是 RuntimeContext,实际: {type(context).__name__}"
+            f"context 不具备生命周期桥接能力"
+            f"(schema_version ∈ {sorted(_SUPPORTED_CONTEXT_SCHEMA_VERSIONS)} "
+            f"+ with_update/mark_success/mark_failed)，实际: {type(context).__name__}"
         )
 
     # 生命周期名: 优先用参数,否则用 manager.name,否则 'manager'

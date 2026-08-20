@@ -20,7 +20,7 @@ Phase 6.2 —— RuntimeContext 持久化桥接 Hook。
 
 依赖:
     - stdlib (logging, threading)
-    - RuntimeContext (仅做 isinstance 检查)
+    - RuntimeContext (仅做能力检查，P2.3-A.2.6 起替代 isinstance 硬门)
     - RuntimeContextStorage (Phase 6.1, 通过构造注入)
 
 典型用法:
@@ -47,6 +47,11 @@ logger = logging.getLogger(__name__)
 # Schema 版本常量
 # ============================================================
 RUNTIME_PERSISTENCE_HOOK_SCHEMA_VERSION = "1.0"
+
+# P2.3-A.2.6：能力判断用受支持 schema 版本集（替代 isinstance 硬门）。
+# lifecycle v1.0 与 request_context v2 均具备 schema_version + to_dict，
+# 均可交由 storage.save 持久化；其余类型维持 saved=False 拒绝。
+_SUPPORTED_CONTEXT_SCHEMA_VERSIONS = frozenset({"1.0", "2.0"})
 
 
 # ============================================================
@@ -144,20 +149,29 @@ class RuntimePersistenceHook:
             - **不抛**异常
             - **不修改** context
         """
-        # 1) 校验 context 类型
+        # 1) 能力判断（P2.3-A.2.6，替代 isinstance 硬门）：
+        #    schema_version ∈ {1.0, 2.0} + 可调用 to_dict()。
+        #    legacy v1.0 行为不变；v2 不再被静默跳过（交由 storage.save 落盘）。
         try:
-            from src.runtime.lifecycle_context import RuntimeContext
-            if not isinstance(context, RuntimeContext):
+            sv = getattr(context, "schema_version", None)
+            if not (
+                isinstance(sv, str)
+                and sv in _SUPPORTED_CONTEXT_SCHEMA_VERSIONS
+                and callable(getattr(context, "to_dict", None))
+            ):
                 return {
                     "saved": False,
                     "lifecycle_id": "",
-                    "reason": f"invalid context type: {type(context).__name__}",
+                    "reason": (
+                        f"invalid context: schema_version={sv!r}, "
+                        f"type={type(context).__name__}"
+                    ),
                 }
         except Exception:  # noqa: BLE001
             return {
                 "saved": False,
                 "lifecycle_id": "",
-                "reason": "RuntimeContext import failed",
+                "reason": "context capability check failed",
             }
 
         lifecycle_id = str(getattr(context, "lifecycle_id", "") or "")

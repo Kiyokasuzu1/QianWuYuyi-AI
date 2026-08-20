@@ -25,14 +25,18 @@ Phase 6.1 —— RuntimeContext 持久化适配层。
         <lifecycle_id>.json
         <lifecycle_id>.json.tmp    (写入中临时)
 
-JSON schema (v1.0):
-    {
-        "schema_version": "1.0",
-        "saved_at": "<ISO 8601 UTC>",
-        "context": {
-            ... context.to_dict() ...
+JSON schema:
+    v1.0 信封（lifecycle_context.RuntimeContext）:
+        {
+            "schema_version": "1.0",
+            "saved_at": "<ISO 8601 UTC>",
+            "context": { ... context.to_dict() ... }
         }
-    }
+    v2.0 信封（request_context.RuntimeContext，P2.3-A.2.6 起）:
+        同构，schema_version="2.0"，context 为 v2 七层展开 dict。
+    load 按信封 schema_version 分派反序列化器：
+        "1.0" → lifecycle_context.RuntimeContext.from_dict（旧逻辑不变）
+        "2.0" → request_context.RuntimeContext.from_dict
 """
 from __future__ import annotations
 
@@ -56,7 +60,9 @@ logger = logging.getLogger(__name__)
 # Schema 版本常量
 # ============================================================
 RUNTIME_CONTEXT_STORAGE_SCHEMA_VERSION = "1.0"
-SUPPORTED_SCHEMA_VERSIONS = frozenset({"1.0"})
+# P2.3-A.2.6：新增 "2.0"（request_context v2）支持。信封版本与 context 自身
+# schema_version 一致；"1.0" 读路径与既有文件完全不变。
+SUPPORTED_SCHEMA_VERSIONS = frozenset({"1.0", "2.0"})
 
 # 默认存储目录
 DEFAULT_BASE_DIR = "data/runtime_context"
@@ -238,14 +244,23 @@ class RuntimeContextStorage:
         Raises:
             ContextStorageError: 序列化失败 / 写入失败。
             InvalidLifecycleIdError: lifecycle_id 非法。
-            ValueError: context 不是 RuntimeContext 实例。
+            ValueError: context 不具备受支持 RuntimeContext 能力
+                （schema_version ∉ SUPPORTED_SCHEMA_VERSIONS 或无 to_dict）。
         """
-        # 延迟 import 避免循环
-        from src.runtime.lifecycle_context import RuntimeContext
-
-        if not isinstance(context, RuntimeContext):
+        # P2.3-A.2.6：能力判断替代 isinstance 硬门。
+        # 契约面 = schema_version ∈ SUPPORTED_SCHEMA_VERSIONS + 可调用 to_dict()；
+        # lifecycle v1.0 与 request_context v2 均满足，legacy 行为不变，
+        # 其余类型照旧 ValueError（不静默、不猜测）。
+        context_schema = getattr(context, "schema_version", None)
+        if not (
+            isinstance(context_schema, str)
+            and context_schema in SUPPORTED_SCHEMA_VERSIONS
+            and callable(getattr(context, "to_dict", None))
+        ):
             raise ValueError(
-                f"context 必须是 RuntimeContext,实际: {type(context).__name__}"
+                f"context 必须是受支持的 RuntimeContext "
+                f"(schema_version ∈ {sorted(SUPPORTED_SCHEMA_VERSIONS)})，"
+                f"实际: {type(context).__name__}"
             )
 
         lifecycle_id = _validate_lifecycle_id(context.lifecycle_id)
@@ -260,9 +275,10 @@ class RuntimeContextStorage:
                 f"context.to_dict() 失败: {exc}"
             ) from exc
 
-        # 2) 构造 payload
+        # 2) 构造 payload（信封版本与 context 自身 schema_version 一致：
+        #    v1 文件字节级不变，v2 使用 "2.0" 信封，load 侧按信封分派）
         payload: Dict[str, Any] = {
-            "schema_version": RUNTIME_CONTEXT_STORAGE_SCHEMA_VERSION,
+            "schema_version": context_schema,
             "saved_at": timestamp,
             "context": context_dict,
         }
@@ -348,9 +364,18 @@ class RuntimeContextStorage:
             if not isinstance(ctx_dict, dict):
                 return None
 
-            # 6) 构造 RuntimeContext
+            # 6) 按信封版本分派反序列化器：
+            #    "2.0" → request_context v2 from_dict（P2.3-A.2.6）
+            #    "1.0" → lifecycle_context v1 from_dict（旧逻辑不变）
             try:
-                ctx = RuntimeContext.from_dict(ctx_dict)
+                if sv == "2.0":
+                    # 延迟 import：本模块顶层仅 stdlib（isolation 契约）
+                    from src.runtime.request_context import (
+                        RuntimeContext as RuntimeContextV2,
+                    )
+                    ctx = RuntimeContextV2.from_dict(ctx_dict)
+                else:
+                    ctx = RuntimeContext.from_dict(ctx_dict)
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "[ContextStorage] RuntimeContext.from_dict 失败: %s", exc
