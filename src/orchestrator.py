@@ -49,6 +49,9 @@ from src.security.permission import (
     can_modify_relationship,
 )
 
+# P2.6 Phase B-1：治理统一开关（默认关闭 → 旧路径字节不变）
+from src.governance.governance_unification import is_governance_unification_enabled
+
 # Phase A.1: Historical Experience Recovery
 # 仅在初始化阶段使用，不影响运行时 process() 流程
 from src.recovery.experience_loader import ExperienceLoader
@@ -1350,29 +1353,7 @@ class Orchestrator:
             and can_modify_personality(_request_identity)
         ):
             try:
-                _auto_applied = 0
-                _pending = 0
-                _denied = 0
-                for _record in _growth_result["growth_records"]:
-                    _decision = self._governance_policy.evaluate(_record)
-                    if _decision.action.value == "deny":
-                        _denied += 1
-                        continue
-                    _proposal = self._self_model_updater.create_proposal_from_growth(_record)
-                    if _proposal is None:
-                        continue
-                    if _decision.action.value == "auto_apply":
-                        self._self_model_updater.apply_proposal(_proposal)
-                        _auto_applied += 1
-                    elif _decision.action.value == "approval_required":
-                        if self._approval_queue is not None:
-                            self._approval_queue.enqueue(_proposal)
-                            _pending += 1
-                if _auto_applied or _pending or _denied:
-                    print(
-                        f"[Orchestrator] Phase 4.0.3 Governance: "
-                        f"auto_apply={_auto_applied} pending={_pending} denied={_denied}"
-                    )
+                self._process_self_model_governance(_growth_result)
             except Exception as _smu_exc:
                 print(f"[Orchestrator] Phase 4.0.3 SelfModel 更新失败（已隔离，不影响聊天）: {_smu_exc}")
 
@@ -2070,9 +2051,13 @@ class Orchestrator:
             try:
                 repo = getattr(em_manager, "repository", None)
                 if repo is not None and hasattr(repo, "save"):
+                    # P2.3-B.7 (B.6 E-03 修复)：禁止现场改写共享 repo.filepath；
+                    # 改为显式 per-user EmotionRepository 实例（外部 API 不变）
+                    from src.emotion.emotion_repository import EmotionRepository
+
                     try:
-                        repo.filepath = per_user_file
-                        repo.save(em_manager.state)
+                        per_user_repo = EmotionRepository(str(per_user_file))
+                        per_user_repo.save(em_manager.state)
                     except Exception:
                         _atomic_write_emotion_fallback(
                             per_user_file, em_manager
@@ -2219,6 +2204,107 @@ class Orchestrator:
         except Exception as e:
             print(f"[Orchestrator] relationship post-processing failed: {e}")
             return assembled_context
+
+    def _process_self_model_governance(self, _growth_result):
+        """P2.6 Phase B-1：Step 14.6 SelfModel 治理执行层（自 process() 抽出，便于治理测试）。
+
+        A 态（统一开关关闭）与抽出前行为逐字节等价：
+        - auto_apply        → SelfModelUpdater.apply_proposal（立即生效）
+        - approval_required → 内存队列 enqueue
+        - deny              → 跳过
+        B 态（统一开关开启）：
+        - auto_apply / approval_required → B-store pending 持久化 + enqueue，零 apply
+        - deny              → 跳过
+        """
+        _auto_applied = 0
+        _pending = 0
+        _denied = 0
+        for _record in _growth_result["growth_records"]:
+            _decision = self._governance_policy.evaluate(_record)
+            if _decision.action.value == "deny":
+                _denied += 1
+                continue
+            _proposal = self._self_model_updater.create_proposal_from_growth(_record)
+            if _proposal is None:
+                continue
+            if _decision.action.value == "auto_apply":
+                if is_governance_unification_enabled():
+                    # P2.6 Phase B-1：统一治理模式下 auto_apply 降级为
+                    # approval_required——提案化 + B-store 持久化 + 零 apply
+                    self._persist_self_model_governance_proposal(_proposal, _record, _decision)
+                    if self._approval_queue is not None:
+                        self._approval_queue.enqueue(_proposal)
+                        _pending += 1
+                else:
+                    self._self_model_updater.apply_proposal(_proposal)
+                    _auto_applied += 1
+            elif _decision.action.value == "approval_required":
+                if is_governance_unification_enabled():
+                    # B 态：approval_required 同样持久化到 B-store 账本
+                    self._persist_self_model_governance_proposal(_proposal, _record, _decision)
+                if self._approval_queue is not None:
+                    self._approval_queue.enqueue(_proposal)
+                    _pending += 1
+        if _auto_applied or _pending or _denied:
+            print(
+                f"[Orchestrator] Phase 4.0.3 Governance: "
+                f"auto_apply={_auto_applied} pending={_pending} denied={_denied}"
+            )
+        return {"auto_applied": _auto_applied, "pending": _pending, "denied": _denied}
+
+    def _persist_self_model_governance_proposal(self, proposal, record, decision):
+        """P2.6 Phase B-1：把 SelfModel 治理提案持久化为 B-store GrowthProposal。
+
+        统一治理模式下 auto_apply / approval_required 决策的落账动作：
+        - proposal_type="self_model"、status="pending"，仅落盘，绝不 apply；
+        - 完整载荷（SelfModelChangeProposal + 治理决策）存入 metadata，
+          供 Phase C approved 消费器反序列化；
+        - 任何异常静默隔离，不影响聊天主链路。
+        """
+        try:
+            from src.growth.proposal.proposal import GrowthProposal
+            from src.growth.proposal.constants import (
+                PROPOSAL_TYPE,
+                PROPOSAL_STATUS,
+                PRIORITY_LEVEL,
+            )
+            from src.growth.proposal.storage import get_proposal_storage
+
+            decision_dict = {
+                "action": getattr(decision.action, "value", str(decision.action)),
+                "growth_level": getattr(decision, "growth_level", ""),
+                "confidence": getattr(decision, "confidence", 0.0),
+                "reason": getattr(decision, "reason", ""),
+            }
+            proposal_dict = proposal.to_dict() if hasattr(proposal, "to_dict") else {}
+
+            governance_proposal = GrowthProposal(
+                proposal_type=PROPOSAL_TYPE["SELF_MODEL"],
+                status=PROPOSAL_STATUS["PENDING"],
+                source="orchestrator",
+                source_event_id=str(record.get("source_event_id", "") or ""),
+                user_id=self.target_user_id or "default",
+                affected_dimensions=dict(record.get("affected_dimensions", {}) or {}),
+                before_state={},
+                after_state={},
+                confidence=float(record.get("confidence", 0.0) or 0.0),
+                reason=str(record.get("reason", "") or ""),
+                evidence=[str(record.get("source_event_id", ""))] if record.get("source_event_id") else [],
+                priority=PRIORITY_LEVEL["MEDIUM"],
+                metadata={
+                    "self_model_proposal": proposal_dict,
+                    "governance_decision": decision_dict,
+                    "source": "legacy_step_14_6",
+                },
+            )
+            get_proposal_storage().save(governance_proposal)
+            print(
+                f"[Orchestrator] P2.6 Phase B-1: self_model 治理提案已持久化 "
+                f"{governance_proposal.proposal_id} "
+                f"(action={decision_dict.get('action')})"
+            )
+        except Exception as _persist_exc:
+            print(f"[Orchestrator] P2.6 Phase B-1: self_model 治理提案持久化失败（已隔离）: {_persist_exc}")
 
     def _create_growth_proposal(self, user_id: str, proposal_type: str, before_state: dict, after_state: dict, reason: str, evidence: list):
         try:
