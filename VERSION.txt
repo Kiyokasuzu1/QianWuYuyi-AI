@@ -1,5 +1,5 @@
 QianWuYuyi-AI
-Version: v1.2.0
+Version: v1.2.1
 Release Date: 2026-08-22
 Runtime Mode: Full v1.2 ACTIVE (Self Understanding lifecycle online)
 Base Commit: v1.1.0-production 99f66b2 (production branch)

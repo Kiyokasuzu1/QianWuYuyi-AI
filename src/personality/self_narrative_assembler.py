@@ -199,6 +199,16 @@ class SelfNarrativeAssembler:
         refs: List[str] = []
         confs: List[float] = []
 
+        # v1.2.1 反查链: proposal_id → audit 映射（成长记录经
+        # source_growth_record_id(= proposal_id) 关联审计证据）。
+        audit_by_proposal: Dict[str, Dict[str, Any]] = {}
+        for a in (audit_entries or []):
+            if not isinstance(a, dict):
+                continue
+            pid = str(a.get("proposal_id") or "")
+            if pid:
+                audit_by_proposal[pid] = a
+
         for rec in (growth_records or []):
             if not isinstance(rec, dict):
                 continue
@@ -225,14 +235,28 @@ class SelfNarrativeAssembler:
                 if reason:
                     seg += f"（理由：{_clip(reason, 60)}）"
                 seg += f" [record:{rid}]"
-                lines.append(seg)
                 refs.append(f"growth:{rid}" if rid else f"growth:{ts}")
                 confs.append(conf)
+                # 反查链: 提案引用存在时, 必须与审计证据关联
+                prop_ref = str(rec.get("source_growth_record_id") or "").strip()
+                if prop_ref:
+                    linked = audit_by_proposal.get(prop_ref)
+                    if linked is not None:
+                        aid = str(linked.get("id") or prop_ref)
+                        approval = str(linked.get("approval_id") or "")
+                        seg += f" [经审批: 提案 {prop_ref}, 审批 {approval}]"
+                        refs.append(f"audit:{aid}")
+                        confs.append(1.0)
+                    else:
+                        seg += "（该变化缺少对应审批审计：来源不足）"
+                        refs.append("audit:missing")
+                lines.append(seg)
 
         if not lines:
             return None
 
         has_audit = bool(audit_entries)
+        # 独立审计行（无对应成长记录的审批事件也保留）
         for a in (audit_entries or []):
             if not isinstance(a, dict):
                 continue

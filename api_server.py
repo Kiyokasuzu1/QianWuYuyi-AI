@@ -56,6 +56,7 @@ except (ImportError, ModuleNotFoundError) as e:
     logger.warning(f"Orchestrator 导入失败，仅提供 Admin 控制台: {e}")
 
 from src.admin.api.routes import admin_bp, init_admin
+from src.events.handlers import register_builtin_handlers_once
 
 app = Flask(__name__)
 orchestrator = None
@@ -376,6 +377,11 @@ def init_orchestrator():
     # === Phase 3.5.3: 初始化 RuntimeBridge ===
     _init_runtime_bridge(config)
 
+    # R-1.1: Runtime 初始化后注册事件消费链（幂等；不改变初始化顺序、
+    # 不改变 Orchestrator 路由、不开新行为——memory.created 仅观察，
+    # importance<0.65 的记忆不会产生 GrowthProposal）
+    register_builtin_handlers_once()
+
     if _orchestrator_available:
         logger.info("初始化羽依 Orchestrator...")
         orchestrator = Orchestrator(config=config)
@@ -687,8 +693,22 @@ def _start_agent_status_writer(config: dict) -> None:
         interval: int = 5  # 秒
 
         def _run() -> None:
+            _last_tick_ts = 0.0
             while True:
                 try:
+                    # v1.1 Tick 接线: 每 60 秒驱动一次 RuntimeCore.tick()
+                    # (异常隔离, 绝不阻塞状态写盘与聊天主链)
+                    _now = time.time()
+                    if _now - _last_tick_ts >= 60.0:
+                        _last_tick_ts = _now
+                        try:
+                            from src.runtime.runtime_bridge import get_runtime_bridge
+                            _bridge = get_runtime_bridge()
+                            _core = _bridge.get_runtime_core() if _bridge is not None else None
+                            if _core is not None:
+                                _core.tick()
+                        except Exception:
+                            logger.exception("[v1.1 tick] RuntimeCore.tick 异常(已隔离)")
                     srv = get_agent_server()
                     if srv and getattr(srv, "_running", False):
                         status = {
@@ -765,6 +785,10 @@ def _start_agent_server(config: dict):
             "your-secret-token-here",    # 示例文件占位符
             "changeme",
         }
+        # v1.1 Tick 接线: 状态写盘线程同时承担 RuntimeCore 周期驱动,
+        # 因此即使 Agent Server 因弱 token 拒绝启动, 驱动线程也必须先运行。
+        _start_agent_status_writer(config)
+
         if auth_token in _WEAK_KNOWN_TOKENS:
             logger.error(
                 "[安全] Agent Server 拒绝启动：remote auth token 为空或属于公开弱默认值 "

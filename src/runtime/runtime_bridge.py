@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 RuntimeBridge —— RuntimeCore 与现有系统的集成桥接
 
@@ -15,6 +17,7 @@ RuntimeBridge —— RuntimeCore 与现有系统的集成桥接
 """
 
 import logging
+import time
 import threading
 from typing import Any, Dict, Optional
 
@@ -207,6 +210,26 @@ class RuntimeBridge:
             event_data = self._extract_event_data(event, event_type)
             self._runtime_core.inject_event(event_type, event_data)
 
+            # v1.2.1: 业务事件转发到 IntegrationHost EventLog
+            # （Reflection Cycle 的生产事件源接线）。fail-soft:
+            # Host 未构造 / 转换失败 / 任何异常都不影响 inject_event 主链。
+            try:
+                host = getattr(self._runtime_core, "_integration_host", None)
+                if host is not None and callable(
+                    getattr(host, "publish_business_event", None)
+                ):
+                    payload = dict(event_data) if isinstance(event_data, dict) else {}
+                    host.publish_business_event({
+                        "event_id": str(getattr(event, "event_id", "") or ""),
+                        "event_type": event_type,
+                        "source": str(getattr(event, "source", "") or "business"),
+                        "timestamp": getattr(event, "timestamp", "") or "",
+                        "payload": payload,
+                        "metadata": dict(getattr(event, "metadata", None) or {}),
+                    })
+            except Exception:
+                pass
+
         # 使用 subscribe_all 捕获所有事件
         try:
             get_event_bus().subscribe_all(_on_any_event)
@@ -270,6 +293,25 @@ class RuntimeBridge:
             "session_id": session_id,
         }
         self._runtime_core.inject_event("user.input", event_data)
+
+        # v1.2.1: message.received 转发到 IntegrationHost EventLog
+        # （生产聊天事件源接线; Reflection Cycle 依赖此输入）。
+        # fail-soft: Host 未构造 / 任何异常都不影响 inject_event 主链。
+        try:
+            host = getattr(self._runtime_core, "_integration_host", None)
+            if host is not None and callable(
+                getattr(host, "publish_business_event", None)
+            ):
+                host.publish_business_event({
+                    "event_id": "",
+                    "event_type": "message.received",
+                    "source": "orchestrator",
+                    "timestamp": float(time.time()),
+                    "payload": {"user_id": str(user_id or ""), "content": str(content or "")},
+                    "metadata": {},
+                })
+        except Exception:
+            pass
 
     # ==================== ActionDispatcher 对接 ====================
 

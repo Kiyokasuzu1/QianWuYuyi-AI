@@ -4,7 +4,7 @@
 # ── 项目版本号（每次更新递增，方便宝塔面板查询当前版本状态）──
 # 格式: Phase.子阶段.补丁号 (YYYY-MM-DD)
 # 查看方式: cat config.yaml | head -5  或  grep "system_version" config.yaml
-system_version: "v1.2.0"
+system_version: "v1.2.1"
 system_version_date: "2026-08-22"
 system_version_name: "v1.2.0 Self Understanding — 真实经历到自我理解的认知闭环"
 system_version_commit: "WORKTREE_LOCAL-pending-commit"
