@@ -260,6 +260,8 @@ def test_no_non_goal_module_imports_goal_state():
     # v1.3 Phase 5.3: initiative_candidate 生成层(任务指定 GoalState 只读方)
     # v1.3 Phase 5.4: runtime_integration_host 流水线钩子(initiative_pipeline_mode 门控)
     _read_allowed = {"orchestrator.py", "initiative_candidate.py", "runtime_integration_host.py"}
+    # v1.3 RC 3.6 (F2): host 成为 goal drain 唯一合法消费方(goal_drain_enabled 门控)
+    _write_allowed = {"runtime_integration_host.py"}
     _read_violations = []
     _write_violations = []
     for _py in _root.rglob("*.py"):
@@ -274,12 +276,12 @@ def test_no_non_goal_module_imports_goal_state():
         )
         if _has_read and _py.name not in _read_allowed:
             _read_violations.append(_rel)
-        if "src.goal.goal_approved_drain" in _text:
+        if "src.goal.goal_approved_drain" in _text and _py.name not in _write_allowed:
             _write_violations.append(_rel)
     assert not _read_violations, (
         f"GoalState 读取仅限聊天层指定接线点(orchestrator): {_read_violations}"
     )
-    assert not _write_violations, f"GoalDrain(写路径)仅限 goal 域: {_write_violations}"
+    assert not _write_violations, f"GoalDrain(写路径)仅限 goal 域 + host 接线点: {_write_violations}"
 
 
 # ============================================================

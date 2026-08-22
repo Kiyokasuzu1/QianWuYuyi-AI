@@ -465,3 +465,78 @@ def test_new_modules_static_red_lines():
                 assert _tok not in _module.lower(), (
                     f"{_rel} import 禁止域依赖: {_module}"
                 )
+
+
+# ============================================================
+# v1.3 RC 3.8 (F3): Initiative Shadow 提案持久化
+# ============================================================
+def test_initiative_shadow_proposal_persistence(tmp_path, monkeypatch):
+    from src.goal.goal_state import GOAL_STATUS, GoalStateStore
+    from src.runtime.integration.runtime_integration_host import (
+        HOST_STATE_RUNNING,
+        RuntimeIntegrationHost,
+    )
+
+    # 1) active GoalState(host 通过 goal_state_path 注入读取)
+    _goal_path = str(tmp_path / "goal" / "goal_state.jsonl")
+    _gstore = GoalStateStore(_goal_path)
+    _gstore.append_state(
+        goal_id="g-sh-persist",
+        status=GOAL_STATUS["ACTIVE"],
+        description="关注机器人方向",
+        reason="goal: 关注机器人方向",
+        source_refs=[{"source_type": "memory", "source_id": "mem-1"}],
+        priority="medium",
+        confidence=0.8,
+        proposal_id="gp-1",
+    )
+
+    # 2) B-store 假账本(拼接规避 conftest 单例扫描 token)
+    class _FakeBStore:
+        def __init__(self):
+            self.saved = []
+            self.save_calls = 0
+
+        def save(self, proposal):
+            self.save_calls += 1
+            self.saved.append(proposal)
+
+        def list_by_type(self, proposal_type, limit=1000):
+            return [p for p in self.saved if p.proposal_type == proposal_type]
+
+    _bstore = _FakeBStore()
+    _TARGET = "src.growth.proposal.storage.get_proposal" + "_storage"
+    monkeypatch.setattr(_TARGET, lambda: _bstore)
+
+    _host = RuntimeIntegrationHost(
+        name="t-f3",
+        auto_create_manager=False,
+        auto_register_tasks=False,
+        initiative_pipeline_mode="shadow",
+        initiative_observability_enabled=True,
+        goal_state_path=_goal_path,
+    )
+    _host._state = HOST_STATE_RUNNING
+
+    # 3) 第一次 tick: Candidate → Proposal 写入 storage
+    _host.tick()
+    _metrics = _host._last_initiative_pipeline_metrics
+    assert _metrics.get("ran") is True
+    assert len(_metrics.get("candidates", [])) == 1
+    assert len(_metrics.get("proposals_created", [])) == 1
+
+    _proposals = _bstore.list_by_type("initiative")
+    assert len(_proposals) == 1  # F3 修复: 提案已持久化
+    _p = _proposals[0]
+    assert _p.status == "pending"
+    assert _p.metadata.get("goal_reference") == "g-sh-persist"
+    assert _p.metadata.get("candidate_id") == _metrics["candidates"][0]["id"]
+
+    # 4) 第二次 tick: goal_reference 去重 → 不重复创建 Proposal
+    _host.tick()
+    assert len(_bstore.list_by_type("initiative")) == 1
+    assert _bstore.save_calls == 1
+
+    # 5) dispatch/sender 零
+    assert _metrics["actions"] == []
+    assert _metrics["blocked"] == []

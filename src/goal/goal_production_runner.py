@@ -198,10 +198,19 @@ class GoalProductionRunner:
         bridged = 0
         skipped_existing = 0
         if self.mode == "active":
+            # RC 3.6 (F1): 候选去重与提案去重分离。
+            # - 候选去重 = 候选库 fingerprint(上面 _new/_duplicate, 保持不变);
+            # - 提案去重 = 提案库 candidate_id(下方 _existing_candidate_ids);
+            # 桥接源 = detect 返回的全部候选(含 shadow 期已持久化候选)——
+            #   "Candidate 已存在" ≠ "已生成 Proposal"。
             _existing_candidate_ids = self._existing_bridged_candidate_ids()
-            for _c in _new[: self._max_per_run]:
+            for _c in candidates:
+                if bridged >= self._max_per_run:
+                    break
                 _cid = str(_c.get("id", "") or "")
-                if _cid and _cid in _existing_candidate_ids:
+                if not _cid:
+                    continue
+                if _cid in _existing_candidate_ids:
                     skipped_existing += 1
                     continue
                 try:

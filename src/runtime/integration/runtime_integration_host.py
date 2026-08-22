@@ -318,6 +318,8 @@ class RuntimeIntegrationHost:
         initiative_dispatch_enabled: bool = False,
         initiative_target_user: str = "",
         initiative_observability_enabled: bool = False,
+        goal_drain_enabled: bool = False,
+        goal_state_path: str = "data/goal/goal_state.jsonl",
     ) -> None:
         self._name = str(name or "runtime_integration_host")
 
@@ -373,6 +375,12 @@ class RuntimeIntegrationHost:
         self._initiative_observability_enabled = bool(initiative_observability_enabled)
         self._initiative_pipeline: Optional[Any] = None
         self._last_initiative_pipeline_metrics: Dict[str, Any] = {}
+
+        # v1.3 RC 3.6 (F2): Goal Approved Drain 接线（默认 off = 零运行）。
+        # approved goal 提案 → GoalState(active)，复用本宿主 tick，不新建循环/线程。
+        self._goal_drain_enabled = bool(goal_drain_enabled)
+        self._goal_state_path = str(goal_state_path or "data/goal/goal_state.jsonl")
+        self._last_goal_drain_metrics: Dict[str, Any] = {}
 
         # 状态机 / 锁
         self._state: str = HOST_STATE_CREATED
@@ -861,6 +869,10 @@ class RuntimeIntegrationHost:
         # active=桥接 PENDING 提案; 全部 fail-soft, 不新建调度器）
         self._run_goal_detection()
 
+        # v1.3 RC 3.6 (F2): Goal Approved Drain（approved 提案 → GoalState;
+        # goal_drain_enabled 门控, 默认 off; fail-soft）
+        self._run_goal_drain()
+
         # v1.3 Phase 5.4: Initiative 受治理流水线（默认 off; 复用本 tick, 不新建循环）
         self._run_initiative_pipeline()
 
@@ -889,9 +901,14 @@ class RuntimeIntegrationHost:
             from src.initiative.initiative_pipeline import InitiativePipeline
 
             if self._initiative_pipeline is None:
+                from src.growth.proposal.storage import get_proposal_storage
+
                 self._initiative_pipeline = InitiativePipeline(
                     mode=self._initiative_pipeline_mode,
-                    goal_store=GoalStateStore(),
+                    goal_store=GoalStateStore(self._goal_state_path),
+                    # RC 3.8 (F3): 复用现有 B-store(与 goal runner 同模式)——
+                    # 缺失时 shadow 提案仅内存生成且 goal_reference 去重失效
+                    proposal_storage=get_proposal_storage(),
                     safety_filter=ActionSafetyFilter(enabled=True),
                     target_user=self._initiative_target_user,
                     dispatch_enabled=self._initiative_dispatch_enabled,
@@ -907,6 +924,43 @@ class RuntimeIntegrationHost:
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "RuntimeIntegrationHost(%s) initiative pipeline 失败(已隔离): %s",
+                self._name, exc,
+            )
+
+    # ============================================================
+    # v1.3 RC 3.6 (F2): Goal Approved Drain（默认 off; fail-soft）
+    # ============================================================
+    def _run_goal_drain(self) -> None:
+        """后台 tick 内消费 approved goal 提案 → GoalState(active)。
+
+        - goal_drain_enabled=false → 直接返回, 零触碰;
+        - 复用既有 goal drain(类型过滤/来源校验/账本幂等/审计);
+        - 任何异常隔离, 不影响聊天主链。
+        """
+        try:
+            if not self._goal_drain_enabled:
+                return
+            from src.goal.goal_approved_drain import (
+                drain_approved_goal_proposals,
+            )
+            from src.goal.goal_state import GoalStateStore
+
+            _metrics = drain_approved_goal_proposals(
+                goal_store=GoalStateStore(self._goal_state_path),
+                config={
+                    "goal_drain_enabled": True,
+                    "goal_drain_limit": 5,
+                },
+            )
+            self._last_goal_drain_metrics = dict(_metrics or {})
+            if _metrics.get("applied"):
+                logger.info(
+                    "RuntimeIntegrationHost(%s) goal drain: applied=%s",
+                    self._name, _metrics.get("applied"),
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "RuntimeIntegrationHost(%s) goal drain 失败(已隔离): %s",
                 self._name, exc,
             )
 

@@ -1212,6 +1212,10 @@ class RuntimeCore(ModuleBase):
                     initiative_observability_enabled=bool(
                         self.config.get("initiative_observability_enabled", False)
                     ),
+                    # v1.3 RC 3.6 (F2): goal approved drain 接线(默认 off)
+                    goal_drain_enabled=bool(
+                        self.config.get("goal_drain_enabled", False)
+                    ),
                     initiative_target_user=str(
                         (self.config.get("initiative") or {}).get(
                             "target_user_qq", ""
