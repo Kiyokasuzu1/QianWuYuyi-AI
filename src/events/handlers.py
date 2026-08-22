@@ -69,6 +69,46 @@ def register_builtin_handlers():
     )
     subscribe_event(EventType.MEMORY_CREATED, relationship_candidate_handler)
 
+    # R-1.1: EmotionChangedEvent -> 下游观察接口（空消费者，不实现业务）
+    subscribe_event(EventType.EMOTION_CHANGED, emotion_changed_observer_handler)
+
+
+# ============================================================
+# R-1.1: 幂等注册包装
+# ============================================================
+_registered_once = False
+_register_lock = threading.Lock()
+
+
+def register_builtin_handlers_once():
+    """R-1.1: 幂等注册（生产启动点调用；多次调用不会重复 subscribe）。
+
+    内部复用 register_builtin_handlers（行为不变）；EventBus.subscribe 本身
+    也按函数对象去重，双层防护。
+    """
+    global _registered_once
+    with _register_lock:
+        if _registered_once:
+            return
+        register_builtin_handlers()
+        _registered_once = True
+
+
+# ============================================================
+# R-1.1: EmotionChanged 空消费者接口
+# ============================================================
+def emotion_changed_observer_handler(event: YuyiEvent) -> None:
+    """R-1.1: EMOTION_CHANGED 观察接口（占位消费者）。
+
+    约束（本阶段）：
+      - 只接收事件并安全返回；
+      - 不修改 EmotionState、不创建 Proposal、不写 Memory、
+        不触发 Growth、不触发 Relationship；
+      - 后续阶段在此接入真实下游观察逻辑。
+    """
+    _ = event
+    return None
+
 
 def audit_event_handler(event: YuyiEvent):
     try:

@@ -73,6 +73,24 @@ class GovernanceAction(Enum):
     APPROVAL_REQUIRED = "approval_required"
 
 
+# ============================================================
+# G-1.2: 本地 self_model 治理开关（默认关闭 → legacy 直写路径不变；
+# 不翻转任何全局治理 flag）
+# ============================================================
+_SELF_MODEL_GOVERNANCE_ENABLED = False
+
+
+def is_self_model_governance_enabled() -> bool:
+    """G-1.2: 本地 self_model 治理模式是否开启（默认 False = legacy）。"""
+    return _SELF_MODEL_GOVERNANCE_ENABLED
+
+
+def set_self_model_governance_enabled(enabled: bool) -> None:
+    """G-1.2: 显式开启/关闭 self_model 治理（测试/装配方调用；生产默认关闭）。"""
+    global _SELF_MODEL_GOVERNANCE_ENABLED
+    _SELF_MODEL_GOVERNANCE_ENABLED = bool(enabled)
+
+
 @dataclass(frozen=True)
 class GovernanceDecision:
     """不可变治理决策结果。

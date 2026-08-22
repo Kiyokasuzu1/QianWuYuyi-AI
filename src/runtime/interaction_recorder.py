@@ -51,6 +51,22 @@ class InteractionRecorder:
         from src.memory.memory_provider import MemoryProvider
 
         self._memory_provider = MemoryProvider
+        # R-1.2: 向量索引惰性单例（首次成功写入记忆后才创建；
+        # chroma 客户端构造较重，避免每轮重复初始化）
+        self._vector_memory = None
+
+    def _resolve_vector(self):
+        """R-1.2: 惰性获取向量索引（失败返回 None，不阻断聊天）。"""
+        if self._vector_memory is not None:
+            return self._vector_memory
+        try:
+            from src.memory.vector import VectorMemory
+
+            self._vector_memory = VectorMemory()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[InteractionRecorder] 向量索引初始化失败（已隔离）: %s", e)
+            self._vector_memory = None
+        return self._vector_memory
 
     def _resolve_store(self):
         """V1.0-1B: bridge-first 获取 MemoryStore authority。
@@ -123,6 +139,15 @@ class InteractionRecorder:
             # 写入 Memory（V1.0-1B: bridge-first Authority，Provider 仅 fallback）
             store = self._resolve_store()
             store.add(memory_record)
+
+            # R-1.2: 向量索引同步（复用 orchestrator Step 10 的 fail-soft 模式）——
+            # 向量不可用时不得阻断聊天；不改变 memory 内容、不改 embedding/schema。
+            try:
+                vector = self._resolve_vector()
+                if vector is not None:
+                    vector.add_memory(memory_record)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[InteractionRecorder] 向量同步失败（已隔离）: %s", e)
 
             # 发布 MemoryCreatedEvent（使用全局 EventBus）
             try:

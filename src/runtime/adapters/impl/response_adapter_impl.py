@@ -148,6 +148,15 @@ class ResponseAdapterImpl(ResponseAdapter):
                         identity_context_text = v.strip()
                         break
 
+            # v1.3 Phase 2: goal_context 预留——优先用 Provider 注入好的
+            # goal_context_text(默认未注入 → None, 行为与 v1.2 完全一致;
+            # 聊天层开关 goal_context_enabled 由上游 Provider/开关控制)。
+            goal_context_text: Optional[str] = None
+            if isinstance(personality_context, dict):
+                _gv = personality_context.get("goal_context_text")
+                if isinstance(_gv, str) and _gv.strip():
+                    goal_context_text = _gv.strip()
+
             # Phase 4.0.4-Pre：user_meta —— 对方是谁/怎么称呼/关系等级
             # 单处调用 UserResolver.build_user_meta，保证 RuntimeCore 主路径
             # 的昵称和语气稳定。失败（None/异常）时不传，等价于旧行为。
@@ -237,6 +246,8 @@ class ResponseAdapterImpl(ResponseAdapter):
                 context_prompt_blocks=request.context_prompt_blocks,
                 user_meta=user_meta,
                 communication_profile=communication_profile,
+                # v1.3 Phase 2: GoalContext（未注入 → None, 不进入 Prompt）
+                goal_context=goal_context_text,
             )
             self._last_reply = reply
             self._generate_count += 1

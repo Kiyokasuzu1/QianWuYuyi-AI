@@ -647,10 +647,34 @@ class SelfModelConsumer:
             self._stats["dedup_skipped"] += 1
             return result
 
+        # G-1.2: 治理模式 —— apply_pcr 改写为治理提案（不直接修改文件）
+        try:
+            from src.personality.self_model_governance import (
+                is_self_model_governance_enabled,
+            )
+
+            if is_self_model_governance_enabled():
+                return self._route_pcr_to_governance(result, pcr, proposal_id)
+        except Exception as _gov_check_exc:  # noqa: BLE001
+            logger.warning(
+                "SelfModelConsumer: governance check failed (已隔离): %s",
+                _gov_check_exc,
+            )
+
         # 3) apply_pcr
         if self._adapter is None:
             result["error"] = "adapter_unavailable"
             return result
+        try:
+            from src.governance.write_path_registry import warn_deprecated_once
+
+            warn_deprecated_once(
+                "selfmodel_consumer.admin_bypass",
+                "[G-0 deprecated] SelfModelConsumer 旁路 apply_pcr+save_state 写 self_model 文件, "
+                "无审批证明。迁移计划: G-1 引导至 governance review 审批流。",
+            )
+        except Exception:  # noqa: BLE001
+            pass
         try:
             envelope = self._adapter.apply_pcr(pcr)
         except Exception as e:
@@ -689,6 +713,61 @@ class SelfModelConsumer:
 
         result["selfmodel_updated"] = applied
         return result
+
+    def _route_pcr_to_governance(
+        self,
+        result: Dict[str, Any],
+        pcr: Dict[str, Any],
+        proposal_id: str,
+    ) -> Dict[str, Any]:
+        """G-1.2: PCR → SelfModelChangeProposal → 治理存储 pending（零文件写入）。
+
+        不调用 apply_pcr / save_state；identity 级按政策 DENY 跳过。
+        """
+        try:
+            from src.personality.self_model_governance import SelfModelGovernancePolicy
+            from src.personality.self_model_updater import SelfModelUpdater
+            from src.growth.proposal.storage import (
+                build_self_model_governance_proposal,
+                get_proposal_storage,
+            )
+
+            policy = SelfModelGovernancePolicy()
+            updater = SelfModelUpdater()
+            storage = get_proposal_storage()
+            persisted = 0
+            for growth_record in pcr.get("growth_records") or []:
+                decision = policy.evaluate(growth_record)
+                if decision.action.value == "deny":
+                    continue
+                sm_proposal = updater.create_proposal_from_growth(growth_record)
+                if sm_proposal is None:
+                    continue
+                governance_proposal = build_self_model_governance_proposal(
+                    source_event_id=str(proposal_id or ""),
+                    confidence=float(growth_record.get("confidence", 0.5) or 0.5),
+                    reason=str(growth_record.get("reason", "") or "consumer_governance"),
+                    self_model_payload=sm_proposal.to_dict(),
+                    decision_meta={
+                        "action": decision.action.value,
+                        "growth_level": decision.growth_level,
+                        "confidence": decision.confidence,
+                        "reason": decision.reason,
+                    },
+                )
+                if governance_proposal is None:
+                    continue
+                storage.save(governance_proposal)
+                persisted += 1
+            result["governed"] = True
+            result["governance_proposals"] = persisted
+            result["selfmodel_updated"] = False
+            result["error"] = None if persisted else "governance_no_proposals"
+            return result
+        except Exception as _gov_exc:  # noqa: BLE001
+            result["governed"] = False
+            result["error"] = f"governance_route_failed: {_gov_exc}"
+            return result
 
     def process_batch(self, proposals: List[Any]) -> List[Dict[str, Any]]:
         """批量处理 proposals；逐个 process，单点失败不阻断后续。"""

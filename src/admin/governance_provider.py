@@ -846,6 +846,81 @@ class GovernanceProvider:
             "message": f"Proposal {req.proposal_id} 已 {req.action}",
         }
 
+    # ==================== Goal Governance (v1.3 Phase 1.5) ====================
+
+    def get_goal_governance_snapshot(self, limit: int = 20) -> Dict[str, Any]:
+        """
+        只读：返回 Goal 提案治理视图（仅读 B-store，不读不写 GoalState）。
+
+        Returns:
+            {
+                "section": "goal",
+                "available": bool,
+                "data": {
+                    "proposals": [
+                        {
+                            "proposal_id", "goal_id", "description",
+                            "source_refs", "confidence", "priority",
+                            "created_at", "proposal_status",
+                            "reviewer_id", "reviewed_at", "applied_at", "reason"
+                        }, ...
+                    ],
+                    "by_status": {...},   # 提案状态分布
+                    "total": int,
+                },
+                "error": str
+            }
+        """
+        snapshot = GovernanceSnapshot(section="goal")
+        try:
+            _cap = max(1, int(limit))
+            proposals = self._storage.list_by_type(
+                PROPOSAL_TYPE["GOAL"], limit=max(_cap, 200)
+            )
+            views = [self._goal_proposal_view(p) for p in proposals]
+            by_status: Dict[str, int] = {}
+            for v in views:
+                _st = str(v.get("proposal_status") or "unknown")
+                by_status[_st] = by_status.get(_st, 0) + 1
+            snapshot.available = True
+            snapshot.data = {
+                "proposals": views[:_cap],
+                "by_status": by_status,
+                "total": len(views),
+            }
+        except Exception as e:
+            snapshot.error = str(e)
+            logger.warning(f"GovernanceProvider.get_goal_governance_snapshot 异常: {e}")
+        return snapshot.to_dict()
+
+    @staticmethod
+    def _goal_proposal_view(p: GrowthProposal) -> Dict[str, Any]:
+        """Goal 提案展示视图（只读投影，不触碰 GoalState）。
+
+        goal 载荷键与 src/goal/goal_proposal.py 的 GOAL_PAYLOAD_KEY 一致
+        （此处使用字面量，避免 admin 层引入 goal 包依赖）。
+        """
+        meta = getattr(p, "metadata", None)
+        payload: Dict[str, Any] = {}
+        if isinstance(meta, dict):
+            _gp = meta.get("goal_proposal")
+            if isinstance(_gp, dict):
+                payload = _gp
+        return {
+            "proposal_id": str(getattr(p, "proposal_id", "") or ""),
+            "goal_id": str(payload.get("goal_id", "") or ""),
+            "description": str(payload.get("description", "") or ""),
+            "source_refs": list(payload.get("source_refs", []) or []),
+            "confidence": float(payload.get("confidence", 0.0) or 0.0),
+            "priority": str(payload.get("priority", "") or ""),
+            "created_at": str(getattr(p, "timestamp", "") or ""),
+            "proposal_status": str(getattr(p, "status", "") or ""),
+            "reviewer_id": str(getattr(p, "reviewer_id", "") or ""),
+            "reviewed_at": getattr(p, "reviewed_at", None),
+            "applied_at": getattr(p, "applied_at", None),
+            "reason": str(getattr(p, "reason", "") or ""),
+        }
+
     # ==================== 工具方法 ====================
 
     def get_storage_stats(self) -> Dict[str, Any]:

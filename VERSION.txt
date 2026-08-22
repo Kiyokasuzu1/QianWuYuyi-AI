@@ -1,8 +1,8 @@
 QianWuYuyi-AI
-Version: v1.2.1
-Release Date: 2026-08-22
-Runtime Mode: Full v1.2 ACTIVE (Self Understanding lifecycle online)
-Base Commit: v1.1.0-production 99f66b2 (production branch)
+Version: v1.3.0-rc1
+Release Date: 2026-08-23
+Runtime Mode: RC FREEZE (v1.3 全部新增能力默认关闭, 生产行为等价 v1.2.1)
+Base Commit: v1.2.1 9761f4c0 (develop/v1.1; RC 工作区未提交, 等待授权)
 
 Enabled Modules:
 - RuntimeCore lifecycle integration (tick scheduler: AgentStatusWriter 60s throttle)

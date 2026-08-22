@@ -23,6 +23,26 @@ from src.emotion.emotional_trace import EmotionalTrace
 from src.emotion.emotion_trace_repository import EmotionTraceRepository
 from src.emotion.emotion_memory_bridge import EmotionMemoryBridge
 from src.emotion.mutation_adapter import is_emotion_mutation_gateway_enabled
+from src.governance.write_path_registry import warn_deprecated_once
+
+logger = logging.getLogger(__name__)
+
+# ============================================================
+# R-1.3.b: Emotion 治理提案链本地开关（默认 False = legacy 直写不变；
+# 与 B.7 mutation gateway flag 完全独立, 不翻转任何全局治理 flag）
+# ============================================================
+_EMOTION_GOVERNANCE_ENABLED = False
+
+
+def is_emotion_governance_enabled() -> bool:
+    """R-1.3.b: Emotion 治理提案模式是否开启（默认 False = legacy）。"""
+    return _EMOTION_GOVERNANCE_ENABLED
+
+
+def set_emotion_governance_enabled(enabled: bool) -> None:
+    """R-1.3.b: 显式开启/关闭（测试/装配方调用; 生产默认关闭）。"""
+    global _EMOTION_GOVERNANCE_ENABLED
+    _EMOTION_GOVERNANCE_ENABLED = bool(enabled)
 
 logger = logging.getLogger(__name__)
 
@@ -50,8 +70,45 @@ class EmotionManager:
         # P2.3-B.7：治理迁移适配器（按需构造，flag 关闭时完全不参与）
         self._mutation_adapter = mutation_adapter
 
+        # R-1.4: 进程内短窗口重复事件防护（防 5B 双引擎对同一消息双处理;
+        # 不改 EmotionEvent 结构; 不同事件不受影响）
+        self._last_event_sig: Optional[str] = None
+        self._last_event_ts: float = 0.0
+
     # ----------------- 情绪事件 -----------------
-    def process_event(self, event: EmotionEvent, memory_id: Optional[str] = None):
+    def _record_event_signature(self, event: EmotionEvent) -> bool:
+        """R-1.4: 记录事件签名并判定短窗口（2s）重复（每次调用都更新记录）。
+
+        签名 = sha1(event_type|description|intensity) 前 12 位;
+        所有 process_event 调用都会更新签名记录, 跳过仅当调用方
+        经 skip_if_recent_duplicate=True 显式要求时生效——
+        普通调用行为完全不变。
+        """
+        try:
+            import hashlib
+            import time
+
+            sig = hashlib.sha1(
+                (
+                    f"{getattr(event, 'event_type', '')}|"
+                    f"{getattr(event, 'description', '')}|"
+                    f"{float(getattr(event, 'intensity', 0.0) or 0.0):.3f}"
+                ).encode("utf-8")
+            ).hexdigest()[:12]
+        except Exception:  # noqa: BLE001
+            return False
+        now = time.time()
+        is_dup = sig == self._last_event_sig and (now - self._last_event_ts) < 2.0
+        self._last_event_sig = sig
+        self._last_event_ts = now
+        return is_dup
+
+    def process_event(
+        self,
+        event: EmotionEvent,
+        memory_id: Optional[str] = None,
+        skip_if_recent_duplicate: bool = False,
+    ):
         """处理情绪事件，更新内部状态并持久化轨迹。
 
         P2.3-B.7 治理分支（emotion_mutation_gateway_enabled，默认 False）：
@@ -64,10 +121,38 @@ class EmotionManager:
         轨迹 append 与 cognitive trace hook 两种模式一致保留。
         """
         before = self.state.to_dict()
+
+        # R-1.4: 每次调用都记录事件签名; 仅在 skip_if_recent_duplicate=True
+        # 且命中短窗口重复时跳过（用于 5B 双引擎回退场景, 默认行为不变）
+        _is_dup = self._record_event_signature(event)
+        if skip_if_recent_duplicate and _is_dup:
+            logger.info(
+                "[emotion_manager] R-1.4 短窗口重复事件已跳过: %s",
+                getattr(event, "event_type", ""),
+            )
+            return {
+                "delta": {},
+                "state_before": before,
+                "state_after": before,
+                "trace": None,
+                "dedup_skipped": True,
+            }
+
         delta = self.engine.process(event)
+
+        # R-1.3.b: Emotion 治理提案链（本地开关, 默认 False; 优先于 B.7 分支）
+        if is_emotion_governance_enabled():
+            return self._process_event_governance_proposals(
+                event, delta, before, memory_id=memory_id,
+            )
 
         if not is_emotion_mutation_gateway_enabled():
             # ── 旧路径（默认开启路径，与迁移前逐行一致）──
+            warn_deprecated_once(
+                "emotion_manager.process_event_legacy",
+                "[G-0 deprecated] process_event 旧路径直写情绪状态(apply_delta+save), "
+                "无 EmotionChangeProposal/审批/审计。迁移计划: G-2 接入 EmotionEvaluator→EmotionUpdater 链。",
+            )
             self.state = self.state.apply_delta(delta)
             self.repository.save(self.state)
 
@@ -84,6 +169,91 @@ class EmotionManager:
 
         # ── 治理路径（flag=True）──
         return self._process_event_governed(event, delta, before, memory_id=memory_id)
+
+    def _process_event_governance_proposals(
+        self,
+        event: EmotionEvent,
+        delta: EmotionDelta,
+        before: dict,
+        memory_id: Optional[str] = None,
+    ) -> dict:
+        """R-1.3.b: delta → EmotionChangeProposal → B-store pending（零状态写入）。
+
+        - 不直接修改 EmotionState、不落盘状态；
+        - 每个非零维度生成一条合法提案（11 维全量, evidence/confidence/before/after 完整）;
+        - 轨迹 append 与 cognitive trace hook 与 legacy 路径一致;
+        - 事件（EmotionChangedEvent）发布由调用方（orchestrator / runtime stage 3）负责, 本方法不变。
+        """
+        try:
+            from src.emotion.emotion_evaluator import (
+                DEFAULT_RULE_CONFIDENCE,
+                UNKNOWN_EVENT_CONFIDENCE,
+                EVENT_RULES,
+            )
+            from src.emotion.emotion_change_proposal import EmotionChangeProposal
+            from src.growth.proposal.proposal import GrowthProposal
+            from src.growth.proposal.constants import PROPOSAL_TYPE, PROPOSAL_STATUS
+            from src.growth.proposal.storage import get_proposal_storage
+
+            confidence = (
+                DEFAULT_RULE_CONFIDENCE
+                if getattr(event, "event_type", "") in EVENT_RULES
+                else UNKNOWN_EVENT_CONFIDENCE
+            )
+            persisted = 0
+            for dim in (
+                "valence", "arousal", "curiosity", "anxiety", "confidence",
+                "energy", "stability", "happiness", "sadness", "trust",
+                "attachment",
+            ):
+                value = getattr(delta, dim, 0.0) or 0.0
+                if abs(value) < 1e-9:
+                    continue
+                ecp = EmotionChangeProposal(
+                    emotion_dimension=dim,
+                    delta=round(float(value), 4),
+                    confidence=confidence,
+                    reason=(
+                        f"事件类型 {getattr(event, 'event_type', '')} 触发情绪评估规则"
+                        "（治理模式, 待审批）"
+                    ),
+                    evidence_ids=[memory_id] if memory_id else [],
+                    source_event_id=str(getattr(event, "id", "") or ""),
+                )
+                current_value = float(getattr(self.state, dim, 0.0) or 0.0)
+                governance_proposal = GrowthProposal(
+                    proposal_type=PROPOSAL_TYPE["EMOTION"],
+                    status=PROPOSAL_STATUS["PENDING"],
+                    source="emotion_manager",
+                    source_event_id=str(getattr(event, "id", "") or ""),
+                    before_state={dim: round(current_value, 4)},
+                    after_state={dim: round(current_value + value, 4)},
+                    affected_dimensions={dim: round(float(value), 4)},
+                    confidence=confidence,
+                    reason=ecp.reason,
+                    evidence=[memory_id] if memory_id else [],
+                    metadata={
+                        "emotion_proposal": ecp.to_dict(),
+                        "source": "emotion_governance",
+                    },
+                )
+                get_proposal_storage().save(governance_proposal)
+                persisted += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[emotion_manager] 治理提案生成失败（已隔离）: %s", exc)
+            persisted = -1
+
+        trace = self.bridge.bind(event, memory_id=memory_id)
+        self.trace_repository.append(trace)
+        self._emit_cognitive_trace_hook()
+
+        return {
+            "delta": delta.to_dict() if hasattr(delta, "to_dict") else {},
+            "state_before": before,
+            "state_after": before,  # 治理模式零状态变化（审批后经 drain 应用）
+            "trace": trace,
+            "governance": {"mode": "proposal_pending", "persisted": max(persisted, 0)},
+        }
 
     def _process_event_governed(
         self,
@@ -203,6 +373,11 @@ class EmotionManager:
                 now = datetime.now()
                 seconds = (now - last).total_seconds()
                 if seconds > 0:
+                    warn_deprecated_once(
+                        "emotion_manager.update_decay_legacy",
+                        "[G-0 deprecated] decay 直写情绪状态并落盘, 无提案/审计。"
+                        "迁移计划: G-2 经 EmotionUpdater decay 引擎 + 审计。",
+                    )
                     self.state = self.decay.apply(self.state, seconds)
                     self.repository.save(self.state)
             except (ValueError, TypeError):

@@ -982,40 +982,48 @@ class RuntimePipeline:
 
             # 5B) 【legacy fallback】Orchestrator.process 或 Runtime 未产生回复
             if not reply:
+                # R-1.5.0: 设置"本轮 runtime 已执行"轮级标记（按消息文本绑定,
+                # 非永久布尔; finally 恢复, 异常不污染下一轮）
+                _rt_ref = getattr(self, "_runtime", None)
+                _prev_marker = (
+                    getattr(_rt_ref, "_round_processed_text", None)
+                    if _rt_ref is not None else None
+                )
+                if _rt_ref is not None:
+                    _rt_ref._round_processed_text = effective_user_message
                 try:
-                    # Phase 4.0.1 Step 02-B R-3: 传递 user_id 给 orchestrator，
-                    # 避免 fallback 路径丢失身份（user_id 为 None 时兼容旧行为）
-                    raw_reply = self._orchestrator.process(
-                        effective_user_message,
-                        user_id=user_id,
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    # Orchestrator.process 内部已隔离,理论上不会抛;兜底
-                    logger.warning(
-                        "[RuntimePipeline] orchestrator.process 抛错(已隔离): %s", exc,
-                    )
-                    raw_reply = ""
                     try:
-                        orch_error = f"{type(exc).__name__}: {exc}"
-                    except Exception:  # noqa: BLE001
-                        orch_error = "unknown orchestrator error"
+                        # Phase 4.0.1 Step 02-B R-3: 传递 user_id 给 orchestrator，
+                        # 避免 fallback 路径丢失身份（user_id 为 None 时兼容旧行为）
+                        raw_reply = self._orchestrator.process(
+                            effective_user_message,
+                            user_id=user_id,
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        # Orchestrator.process 内部已隔离,理论上不会抛;兜底
+                        logger.warning(
+                            "[RuntimePipeline] orchestrator.process 抛错(已隔离): %s", exc,
+                        )
+                        raw_reply = ""
+                        try:
+                            orch_error = f"{type(exc).__name__}: {exc}"
+                        except Exception:  # noqa: BLE001
+                            orch_error = "unknown orchestrator error"
+                finally:
+                    if _rt_ref is not None:
+                        if _prev_marker is None:
+                            try:
+                                del _rt_ref._round_processed_text
+                            except Exception:  # noqa: BLE001
+                                pass
+                        else:
+                            _rt_ref._round_processed_text = _prev_marker
 
                 # 规范化 reply
                 if isinstance(raw_reply, str) and raw_reply.strip():
                     reply = raw_reply
-                    # ── V1.1.1 Context Continuity: legacy fallback 成功同样记录历史 ──
-                    # 此前只有 Runtime 路径记录：fallback 连续服务期间历史停止
-                    # 增长 → 下一轮上下文缺失。两分支互斥，不会双重记录。
-                    try:
-                        self._orchestrator.record_conversation_turn(
-                            effective_user_message, reply,
-                            user_id=user_id,
-                        )
-                    except Exception as exc_hist_fb:  # noqa: BLE001
-                        logger.warning(
-                            "[RuntimePipeline] legacy fallback 记录 history 失败（已隔离）: %s",
-                            exc_hist_fb,
-                        )
+                    # R-1.5.0: history 由 Orchestrator.process Step 9 单一权威写入
+                    # （已携带 user_id）; 此处不再重复记录, 消除 5B 双写
                 else:
                     reply = ""
 
@@ -1665,6 +1673,12 @@ class RuntimePipeline:
 
             record_fn = getattr(recorder, "record", None)
             if not callable(record_fn):
+                return
+
+            # R-1.2: legacy 回退轮已由 Orchestrator Step 10 写入同轮记忆
+            # （user_shared + MemoryCreatedEvent）——跳过 Recorder，消除同轮
+            # 双写；runtime 主链不受影响（_last_reply_source=="runtime" 时照常写）。
+            if getattr(self, "_last_reply_source", None) == "legacy":
                 return
 
             try:

@@ -287,9 +287,12 @@ def test_initiative_uses_same_context_chain_as_process():
         assert isinstance(call_kwargs.get('emotion_context'), dict), \
             "emotion_context 必须是字典"
 
-        # 4. relationship_context 必须是字典（之前传的是 {}）
-        assert isinstance(call_kwargs.get('relationship_context'), dict), \
-            "relationship_context 必须是字典"
+        # 4. relationship_context 必须有内容
+        # （4.1.2-B 起 relationship_context 由 dict 改为结构化关系文本块,
+        #   旧断言"必须是字典"已随架构契约变化失效）
+        rel_ctx = call_kwargs.get('relationship_context')
+        assert isinstance(rel_ctx, str) and rel_ctx.strip(), \
+            "relationship_context 必须为非空关系上下文"
 
         # 5. personality_context 必须存在
         assert call_kwargs.get('personality_context'), \

@@ -196,3 +196,64 @@ def list_pending_proposals(limit: int = 50) -> List[GrowthProposal]:
 
 def list_all_proposals(limit: int = 50) -> List[GrowthProposal]:
     return get_proposal_storage().list_all(limit=limit)
+
+
+def build_self_model_governance_proposal(
+    *,
+    source_event_id: str = "",
+    confidence: float = 0.5,
+    reason: str = "",
+    self_model_payload: Dict,
+    decision_meta: Dict,
+    source: str = "selfmodel_consumer",
+) -> Optional[GrowthProposal]:
+    """v1.3 RC 1.1 (K1): self_model 治理提案构造兼容层(producer 层)。
+
+    Phase 3.6.4 import 方向规则: legacy GrowthProposal 只允许出现在
+    storage/reviewer/governance_provider 兼容层。G-1.2 的提案构造逻辑
+    原位于 src/admin/selfmodel_consumer.py(被静态扫描禁止), 此处作为
+    兼容层 producer 提供, 行为与逐字段构造完全一致(恒 PENDING)。
+    """
+    try:
+        from src.growth.proposal.constants import PROPOSAL_STATUS, PROPOSAL_TYPE
+
+        return GrowthProposal(
+            proposal_type=PROPOSAL_TYPE["SELF_MODEL"],
+            status=PROPOSAL_STATUS["PENDING"],
+            source=str(source or "selfmodel_consumer"),
+            source_event_id=str(source_event_id or ""),
+            confidence=float(confidence or 0.5),
+            reason=str(reason or "consumer_governance"),
+            metadata={
+                "self_model_proposal": dict(self_model_payload or {}),
+                "governance_decision": dict(decision_meta or {}),
+                "source": str(source or "selfmodel_consumer"),
+            },
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[ProposalStorage] build_self_model_governance_proposal 失败(已隔离): %s", exc)
+        return None
+
+
+def find_proposal_same_source(
+    storage: ProposalStorage,
+    proposal_type: str,
+    source_event_id: str,
+) -> Optional[GrowthProposal]:
+    """R-1.5.0: 同源去重——同 proposal_type + 同 source_event_id 的非终态提案
+    已存在时返回该提案（调用方应复用而非重复创建）。
+
+    source_event_id 为空时不判定（无法去重, 保持旧行为）。
+    """
+    if not source_event_id:
+        return None
+    try:
+        for p in storage.list_by_type(proposal_type, limit=1000):
+            if (
+                str(getattr(p, "source_event_id", "") or "") == source_event_id
+                and getattr(p, "status", "") in ("pending", "approved")
+            ):
+                return p
+    except Exception:  # noqa: BLE001
+        return None
+    return None

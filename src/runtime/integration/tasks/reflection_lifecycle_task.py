@@ -265,6 +265,17 @@ class ReflectionLifecycleTask(BaseIntegrationTask):
                 "evidence_strength": float(last.evidence_strength),
                 "tick": getattr(context, "tick", None) if context else None,
                 "result_ids": [r.reflection_id for r in results],
+                # v1.1 Phase 2.2: 分析内容富化（additive payload, 供宿主转换为
+                # growth 经历记录; Reflection 只产分析结果, 不直接修改状态）
+                # 防御: 老式/fake ReflectionResult 可能没有 insights/suggested_changes。
+                "insights": [
+                    str(i.description)
+                    for i in (getattr(last, "insights", None) or [])
+                ],
+                "suggested_changes": [
+                    (s.to_dict() if hasattr(s, "to_dict") else str(s))
+                    for s in (getattr(last, "suggested_changes", None) or [])
+                ],
             },
             related_ids=[last.reflection_id] + list(last.source_event_ids),
             metadata={"schema_version": REFLECTION_LIFECYCLE_TASK_SCHEMA_VERSION},

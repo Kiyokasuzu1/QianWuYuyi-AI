@@ -28,12 +28,16 @@ Phase B.1.2 — ProposalManager 完整实现
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 from src.contracts import growth_schema, audit_schema
 from src.growth.proposal_store import ProposalStore, compute_fingerprint
-from src.personality.personality_adapter import PersonalityAdapter
+from src.personality.personality_adapter import (
+    PersonalityAdapter,
+    is_approval_record_enforced,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +175,23 @@ class ProposalManager:
         )
 
         # ============================================================
+        # v1.1 Phase 1: 内容哈希次级键（不改 schema, 存 evaluator_meta）。
+        # 事件链（evt_mem_*）与经历链（evt_exp_*）的 source_event_id 前缀不同,
+        # 主指纹无法跨链互认; 内容哈希使同一经历在双链间可互认去重。
+        # ============================================================
+        _content_key = ""
+        if isinstance(source_event, dict):
+            _content = str(source_event.get("raw_content") or source_event.get("content") or "")
+            if _content.strip():
+                import hashlib
+
+                _content_key = hashlib.sha1(
+                    f"{source_event.get('user_id', '')}|{_content.strip()}".encode("utf-8")
+                ).hexdigest()[:16]
+                proposal.evaluator_meta = dict(proposal.evaluator_meta or {})
+                proposal.evaluator_meta["content_fingerprint"] = _content_key
+
+        # ============================================================
         # Phase B.1.5 #4: 重复合并（dedupe）
         # ============================================================
         # 防御：非 dataclass 输入不应导致 to_dict 崩溃
@@ -183,6 +204,19 @@ class ProposalManager:
         except Exception as e:
             logger.warning("[proposal_dedupe_skipped] reason=%s", e)
             existing_id = None
+        if existing_id is None and _content_key:
+            # 次级键: 同内容哈希的非终态提案（跨链去重）
+            try:
+                for _p in self.store.list(limit=500):
+                    _meta = getattr(_p, "evaluator_meta", None) or {}
+                    if (
+                        str(_meta.get("content_fingerprint") or "") == _content_key
+                        and getattr(_p, "status", "") in ("pending", "proposed", "accepted")
+                    ):
+                        existing_id = getattr(_p, "id", "")
+                        break
+            except Exception as e:
+                logger.warning("[proposal_content_dedupe_skipped] reason=%s", e)
         if existing_id is not None:
             logger.info(
                 "[proposal_deduped] existing_id=%s new_id=%s",
@@ -296,8 +330,18 @@ class ProposalManager:
         # ============================================================
         # [proposal_accepted]
         # ============================================================
+        # G-1.3.3: 生成真实审批凭证并随提案持久化（禁止伪造批准字符串）
+        approval_record = {
+            "record_id": f"apr_{uuid.uuid4().hex[:10]}",
+            "proposal_id": str(proposal_id),
+            "reviewer_id": actor,
+            "reviewed_at": now_iso(),
+            "decision": "approve",
+        }
         proposal.status = "accepted"
         proposal.accepted_at = now_iso()
+        proposal.evaluator_meta = dict(proposal.evaluator_meta or {})
+        proposal.evaluator_meta["approval_record"] = approval_record
         try:
             self.store.update(proposal)
         except Exception as e:
@@ -332,6 +376,7 @@ class ProposalManager:
                 "proposal_id": proposal.id,
                 "status": "accepted",
                 "growth_record_id": (growth_record or {}).get("record_id", ""),
+                "approval_record_id": approval_record["record_id"],
             },
         ))
 
@@ -423,12 +468,28 @@ class ProposalManager:
         # ============================================================
         # [proposal_applied]
         # ============================================================
+        # G-1.3.3: 优先传真实审批凭证（accept 阶段随提案持久化）；
+        # 无凭证且 enforcement 开启 → 拒绝；否则 legacy fallback（adapter 内部告警）。
+        approval_record = (proposal.evaluator_meta or {}).get("approval_record")
         try:
-            apply_result = self.personality_adapter.apply_proposal(
-                proposal=proposal,
-                actor=actor,
-                mark_approved=True,
-            )
+            if approval_record is not None:
+                apply_result = self.personality_adapter.apply_proposal(
+                    proposal=proposal,
+                    actor=actor,
+                    approval_record=approval_record,
+                )
+            else:
+                if is_approval_record_enforced():
+                    return {
+                        "status": "approval_record_required",
+                        "proposal": proposal,
+                        "reason": "accept 阶段未生成审批凭证, enforcement 开启时拒绝 apply",
+                    }
+                apply_result = self.personality_adapter.apply_proposal(
+                    proposal=proposal,
+                    actor=actor,
+                    mark_approved=True,  # legacy fallback（adapter 内部 DeprecationWarning）
+                )
         except Exception as e:
             logger.error("[proposal_apply_failed] id=%s error=%s", proposal_id, e)
             return {"status": "apply_failed", "proposal": proposal, "reason": str(e)}

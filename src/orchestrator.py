@@ -52,6 +52,19 @@ from src.security.permission import (
 # P2.6 Phase B-1：治理统一开关（默认关闭 → 旧路径字节不变）
 from src.governance.governance_unification import is_governance_unification_enabled
 
+# Phase G-0 Governance Freeze：legacy 写路径一次性 DeprecationWarning（不改行为）
+from src.governance.write_path_registry import warn_deprecated_once
+
+
+def _self_model_governed() -> bool:
+    """G-1.2: 本地 self_model 治理开关或统一治理开关任一开启 → 走治理路径。"""
+    try:
+        from src.personality.self_model_governance import is_self_model_governance_enabled
+
+        return bool(is_governance_unification_enabled() or is_self_model_governance_enabled())
+    except Exception:  # noqa: BLE001
+        return bool(is_governance_unification_enabled())
+
 # Phase A.1: Historical Experience Recovery
 # 仅在初始化阶段使用，不影响运行时 process() 流程
 from src.recovery.experience_loader import ExperienceLoader
@@ -448,6 +461,13 @@ class Orchestrator:
             self._self_model_updater = None
             self._governance_policy = None
             self._approval_queue = None
+
+        # P2.6 Phase C-1: 启动兜底 drain 一次（默认关闭，空操作）
+        self._drain_approved_self_model_proposals()
+        # R-1.3.b: Emotion approved 提案消费（启动兜底; 默认关闭, 空操作）
+        self._drain_approved_emotion_proposals()
+        # v1.1 Phase 1: Relationship approved 提案消费（启动兜底; 默认关闭）
+        self._drain_approved_relationship_proposals()
 
         # Event Bus
         self.event_bus = get_event_bus()
@@ -1190,8 +1210,9 @@ class Orchestrator:
             conversation_id=conversation_id,
         )
 
-        # Step 9: 记录本次对话到历史
-        self.record_conversation_turn(user_message, reply)
+        # Step 9: 记录本次对话到历史（R-1.5.0: 携带 user_id, 作为 5B 路径的
+        # 单一权威写入点; pipeline 5A 路径仍由 pipeline 单独记录）
+        self.record_conversation_turn(user_message, reply, user_id=user_id)
 
         # Step 10: 保存记忆（异步/非阻塞）
         # P0-1: MemoryNormalizer — 写入前规整 content，避免 PollutionGuard 以 content_too_long 拒绝
@@ -1225,6 +1246,11 @@ class Orchestrator:
                     )
                 else:
                     _normalized_content = self._normalize_memory_content(cleaned_content)
+                    warn_deprecated_once(
+                        "orchestrator.memory_importance_hardcoded",
+                        "[G-0 deprecated] 新记忆 importance 硬编码 0.5, 未接情绪权重。"
+                        "迁移计划: G-2 经 EmotionMemoryWeightBridge.compute_weight 动态化。",
+                    )
                     memory_record = {
                         "id": f"mem_{datetime.now().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:12]}",
                         "content": _normalized_content,
@@ -1370,6 +1396,14 @@ class Orchestrator:
                 self.target_user_id, _request_identity.permission,
             )
 
+        # P2.6 Phase C-1: SelfModel approved 提案消费（Step 14.6 之后每轮一次；
+        # 默认关闭，config 关闭时行为与 Phase B-1 完全一致）
+        self._drain_approved_self_model_proposals()
+        # R-1.3.b: Emotion approved 提案消费（同生命周期; 默认关闭, 空操作）
+        self._drain_approved_emotion_proposals()
+        # v1.1 Phase 1: Relationship approved 提案消费（同生命周期; 默认关闭）
+        self._drain_approved_relationship_proposals()
+
         # Phase 5.0-A: 触发 SelfModel 5 阶段编排器
         # - 仅当 self_model_orchestrator 已被注入时执行
         # - 整个调用 try/except 隔离,任何异常都不影响 reply 返回
@@ -1417,7 +1451,13 @@ class Orchestrator:
         # 1) 尝试 Runtime 路径
         _bridge_source: Optional[str] = None
         try:
-            if self._runtime_bridge is not None:
+            # R-1.5.0: 本轮已由 pipeline 5A 执行过 RuntimeCore 时, 跳过嵌套重入
+            # （保留 legacy reply generation; 不改变回复生成逻辑）
+            _skip_nested_runtime = bool(
+                self._runtime_bridge is not None
+                and self._runtime_bridge.has_round_marker(user_message)
+            )
+            if self._runtime_bridge is not None and not _skip_nested_runtime:
                 runtime_reply = self._runtime_bridge.handle_message(user_message)
                 if runtime_reply is not None and isinstance(runtime_reply, str) and runtime_reply.strip():
                     self._runtime_call_count += 1
@@ -1453,6 +1493,26 @@ class Orchestrator:
             self._last_runtime_mode = "state_only"
             self._runtime_state_count += 1
         return reply
+
+    def _get_goal_context(self) -> str:
+        """v1.3 Phase 2: GoalContext 只读注入(默认关闭; 不读不改任何其他域)。
+
+        - goal_context_enabled=false → 返回空串, 完全不触碰 GoalState;
+        - 任何异常降级为空串, 不影响聊天(v1.2 行为);
+        - Goal 只是理解上下文, 不是成长事实, 不进入 Narrative。
+        """
+        try:
+            if not bool(self.config.get("goal_context_enabled", False)):
+                return ""
+            from src.goal.goal_resolver import resolve_goal_context_text
+            from src.goal.goal_state import DEFAULT_GOAL_STATE_PATH, GoalStateStore
+
+            _path = str(
+                self.config.get("goal_state_path", "") or DEFAULT_GOAL_STATE_PATH
+            )
+            return resolve_goal_context_text(goal_store=GoalStateStore(_path))
+        except Exception:
+            return ""
 
     def legacy_generate(
         self,
@@ -1537,6 +1597,8 @@ class Orchestrator:
                 else None,
                 user_meta=user_meta,
                 communication_profile=communication_profile,
+                # v1.3 Phase 2: GoalContext（默认关闭；只读 GoalState；失败降级为空）
+                goal_context=self._get_goal_context(),
             )
             if not isinstance(reply, str) or not reply.strip():
                 reply = "抱歉，我遇到了一些问题，请稍后再试。"
@@ -1638,6 +1700,10 @@ class Orchestrator:
         """
         self.history.append({"role": "user", "content": user_message})
         self.history.append({"role": "assistant", "content": reply})
+        # 部署加固: 全局历史仅保留最近 200 条（100 轮），防止 7x24 常驻进程
+        # 内存无限增长；prompt/持久化只使用更小的切片（history[-20:] / [-40:]）。
+        if len(self.history) > 200:
+            self.history = self.history[-200:]
         if isinstance(user_id, str) and user_id.strip():
             uid = user_id.strip()
             per_user = self._user_histories.setdefault(uid, [])
@@ -2018,7 +2084,9 @@ class Orchestrator:
             if self.emotion_event_detector is not None:
                 ev = self.emotion_event_detector.detect(user_message)
                 if ev is not None:
-                    em_manager.process_event(ev)
+                    # R-1.4: 5B 回退时 Runtime Stage 3 可能已处理同一消息——
+                    # 显式开启短窗口重复防护, 消除双引擎双重 mutation
+                    em_manager.process_event(ev, skip_if_recent_duplicate=True)
                     if assembled_context is not None:
                         assembled_context["trace"].append(
                             f"emotion_bridge_event: detected {ev.event_type} at {datetime.now().isoformat()}"
@@ -2165,15 +2233,18 @@ class Orchestrator:
                         trust_delta = abs(result["trust_delta_applied"])
                         familiarity_delta = abs(result["familiarity_delta_applied"])
 
+                        # R-1.5.0: 事件对象一次构造, event_id 同时用于发布与提案
+                        # 溯源（与 reviewer 事件链共享同一 source_event_id, 防双提案）
+                        _rel_event = RelationshipChangedEvent(
+                            user_id=user_id,
+                            dimension="trust" if trust_delta > familiarity_delta else "familiarity",
+                            old_value=old_trust if trust_delta > familiarity_delta else old_familiarity,
+                            new_value=new_trust if trust_delta > familiarity_delta else new_familiarity,
+                            reason=f"Interaction evaluated: passed={res.passed}",
+                            source="orchestrator",
+                        )
                         if trust_delta > 0.05 or familiarity_delta > 0.05:
-                            publish_event(RelationshipChangedEvent(
-                                user_id=user_id,
-                                dimension="trust" if trust_delta > familiarity_delta else "familiarity",
-                                old_value=old_trust if trust_delta > familiarity_delta else old_familiarity,
-                                new_value=new_trust if trust_delta > familiarity_delta else new_familiarity,
-                                reason=f"Interaction evaluated: passed={res.passed}",
-                                source="orchestrator",
-                            ))
+                            publish_event(_rel_event)
                             record_audit_log(
                                 operation_type="relationship.changed",
                                 source="orchestrator",
@@ -2192,6 +2263,7 @@ class Orchestrator:
                                 after_state={"trust": new_trust},
                                 reason=f"信任值变化超过阈值: {old_trust} -> {new_trust}",
                                 evidence=[event["id"]],
+                                source_event_id=str(getattr(_rel_event, "event_id", "") or ""),
                             )
 
                         assembled_context["trace"].append(
@@ -2228,19 +2300,24 @@ class Orchestrator:
             if _proposal is None:
                 continue
             if _decision.action.value == "auto_apply":
-                if is_governance_unification_enabled():
-                    # P2.6 Phase B-1：统一治理模式下 auto_apply 降级为
+                if _self_model_governed():
+                    # 治理模式（统一开关或 G-1.2 本地开关）下 auto_apply 降级为
                     # approval_required——提案化 + B-store 持久化 + 零 apply
                     self._persist_self_model_governance_proposal(_proposal, _record, _decision)
                     if self._approval_queue is not None:
                         self._approval_queue.enqueue(_proposal)
                         _pending += 1
                 else:
+                    warn_deprecated_once(
+                        "orchestrator.self_model_auto_apply",
+                        "[G-0 deprecated] self_model auto_apply 直写, 绕过 policy 审批档。"
+                        "迁移计划: G-1 默认走 governance persist+queue。",
+                    )
                     self._self_model_updater.apply_proposal(_proposal)
                     _auto_applied += 1
             elif _decision.action.value == "approval_required":
-                if is_governance_unification_enabled():
-                    # B 态：approval_required 同样持久化到 B-store 账本
+                if _self_model_governed():
+                    # 治理模式：approval_required 同样持久化到 B-store 账本
                     self._persist_self_model_governance_proposal(_proposal, _record, _decision)
                 if self._approval_queue is not None:
                     self._approval_queue.enqueue(_proposal)
@@ -2306,11 +2383,114 @@ class Orchestrator:
         except Exception as _persist_exc:
             print(f"[Orchestrator] P2.6 Phase B-1: self_model 治理提案持久化失败（已隔离）: {_persist_exc}")
 
-    def _create_growth_proposal(self, user_id: str, proposal_type: str, before_state: dict, after_state: dict, reason: str, evidence: list):
+    def _drain_approved_emotion_proposals(self) -> None:
+        """R-1.3.b: Emotion approved 提案消费（与 self_model drain 同生命周期）。
+
+        - 默认关闭（config emotion_drain_enabled=false → 空操作）;
+        - 经 RuntimeBridge 权威 EmotionManager 的 repository 应用;
+        - 不改变 self_model drain、不改变执行顺序、不影响旧 proposal 类型;
+        - fail-soft: 任何异常不影响聊天主链。
+        """
+        try:
+            from src.emotion.emotion_approved_drain import (
+                drain_approved_emotion_proposals,
+            )
+
+            em = None
+            try:
+                from src.runtime.runtime_bridge import get_runtime_bridge
+
+                em = get_runtime_bridge().get_emotion_manager()
+            except Exception:  # noqa: BLE001
+                em = None
+            if em is None or getattr(em, "repository", None) is None:
+                return
+            drain_approved_emotion_proposals(
+                repository=em.repository,
+                config={
+                    "emotion_drain_enabled": bool(
+                        self.config.get("emotion_drain_enabled", False)
+                    ),
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"[Orchestrator] emotion drain 失败（已隔离）: {exc}")
+
+    def _drain_approved_relationship_proposals(self) -> None:
+        """v1.1 Phase 1: Relationship approved 提案消费（与 emotion drain 同生命周期）。
+
+        - 默认关闭（config relationship_drain_enabled=false → 空操作）;
+        - 经 RuntimeBridge 权威 RuntimeCore 的 relationship_repository 应用;
+        - fail-soft: 任何异常不影响聊天主链。
+        """
+        try:
+            from src.relationship.relationship_approved_drain import (
+                drain_approved_relationship_proposals,
+            )
+
+            repo = None
+            try:
+                from src.runtime.runtime_bridge import get_runtime_bridge
+
+                _core = get_runtime_bridge().get_runtime_core()
+                repo = getattr(_core, "relationship_repository", None)
+            except Exception:  # noqa: BLE001
+                repo = None
+            if repo is None:
+                return
+            drain_approved_relationship_proposals(
+                repository=repo,
+                config={
+                    "relationship_drain_enabled": bool(
+                        self.config.get("relationship_drain_enabled", False)
+                    ),
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"[Orchestrator] relationship drain 失败（已隔离）: {exc}")
+
+    def _drain_approved_self_model_proposals(self) -> None:
+        """P2.6 Phase C-1: SelfModel approved 提案消费（approved → applied 闭环）。
+
+        调用点仅两处：__init__ 启动兜底一次 + process() Step 14.6 之后每轮一次。
+        - 默认关闭（config self_model_drain_enabled=false 时空操作），
+          flag=False 时行为与 Phase B-1 完全一致；
+        - 消费 B-store 中已 APPROVED 的 self_model 提案（admin 审批即授权，
+          不重复治理评估，decision 已冻结在 metadata["governance_decision"]）；
+        - 任何异常隔离，不影响聊天主链路。
+        """
+        try:
+            if self._self_model_updater is None or self.self_model_store is None:
+                return
+            from src.growth.self_model_approved_drain import (
+                drain_approved_self_model_proposals,
+            )
+
+            drain_approved_self_model_proposals(
+                updater=self._self_model_updater,
+                store=self.self_model_store,
+                config=self.config or {},
+            )
+        except Exception as _sd_exc:
+            print(f"[Orchestrator] P2.6 Phase C-1 self_model drain 失败（已隔离）: {_sd_exc}")
+
+    def _create_growth_proposal(
+        self,
+        user_id: str,
+        proposal_type: str,
+        before_state: dict,
+        after_state: dict,
+        reason: str,
+        evidence: list,
+        source_event_id: str = "",
+    ):
         try:
             from src.growth.proposal.proposal import GrowthProposal
             from src.growth.proposal.constants import PROPOSAL_TYPE, PROPOSAL_STATUS, PRIORITY_LEVEL
-            from src.growth.proposal.storage import get_proposal_storage
+            from src.growth.proposal.storage import (
+                get_proposal_storage,
+                find_proposal_same_source,
+            )
 
             affected_dimensions = {}
             for key in after_state:
@@ -2321,6 +2501,7 @@ class Orchestrator:
                 proposal_type=PROPOSAL_TYPE.get(proposal_type.upper(), PROPOSAL_TYPE["PERSONALITY"]),
                 status=PROPOSAL_STATUS["PENDING"],
                 source="orchestrator",
+                source_event_id=source_event_id,
                 user_id=user_id,
                 affected_dimensions=affected_dimensions,
                 before_state=before_state,
@@ -2332,6 +2513,14 @@ class Orchestrator:
             )
 
             storage = get_proposal_storage()
+            # R-1.5.0: 同源去重——同类型同 source_event_id 的非终态提案已存在
+            # 时复用, 防止双入口重复创建
+            if find_proposal_same_source(storage, proposal.proposal_type, source_event_id):
+                print(
+                    f"[Orchestrator] 同源提案已存在, 跳过创建: "
+                    f"type={proposal.proposal_type} source={source_event_id}"
+                )
+                return
             storage.save(proposal)
 
             from src.events.events import GrowthProposalEvent

@@ -267,7 +267,19 @@ def test_runtime_pipeline_duplicate_guard_unaffected(monkeypatch: pytest.MonkeyP
         def __init__(self) -> None:
             self.memory_store = None
 
-        def process(self, user_message: str) -> str:
+        def process(self, user_message: str, user_id: str = "") -> str:
+            # R-1.2 起 legacy 回退轮的记忆写入由 Orchestrator 负责
+            # （RuntimePipeline 跳过 Recorder 以免双写），fake 需忠实模拟。
+            if self.memory_store is None:
+                from src.memory.memory_provider import MemoryProvider
+
+                self.memory_store = MemoryProvider.get_store()
+            self.memory_store.add(
+                user_id=user_id or "default_user",
+                role="user",
+                content=user_message,
+                metadata={"source": "gate3_fake", "memory_type": "user_experience"},
+            )
             return "好的，我收到了"
 
     recorder = InteractionRecorder()

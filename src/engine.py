@@ -247,11 +247,20 @@ class ResponseEngine:
             emo = emotion_context.get("dominant", "") or emotion_context.get("primary_emotion", "")
             intensity = emotion_context.get("intensity", 0)
             if emo:
-                system_parts.append(
+                emotion_block = (
                     f"【当前情绪】\n"
                     f"- 主导情绪: {emo}\n"
                     f"- 强度: {intensity:.1f}"
                 )
+                # Emotion System 2.0（E-Emotion-5）：可选表达策略行（描述性倾向，
+                # 不覆盖人格；仅在调用方提供了策略文本时追加）
+                strategy = (
+                    emotion_context.get("response_strategy")
+                    or emotion_context.get("strategy")
+                )
+                if isinstance(strategy, str) and strategy.strip():
+                    emotion_block += f"\n- 表达策略: {strategy.strip()}"
+                system_parts.append(emotion_block)
 
         # === 记忆 ===
         if chat_memories:

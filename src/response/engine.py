@@ -6,8 +6,24 @@ from src.response.prompt_builder import PromptBuilder
 
 class ResponseEngine:
     def __init__(self):
-        self.llm = LLMClient()
+        # 部署加固: LLM 客户端懒加载——缺少 API Key / openai SDK 时不再阻断
+        # 服务启动（Orchestrator 构造链可完成），首次 generate 时才抛出与旧版
+        # 一致的清晰 ValueError。Key 存在时行为与旧版完全相同（init 即构造）。
         self.prompt_builder = PromptBuilder()
+        self._llm = None
+        self._llm_init_error = None
+        try:
+            self._llm = LLMClient()
+        except Exception as exc:  # noqa: BLE001
+            self._llm_init_error = exc
+
+    @property
+    def llm(self):
+        if self._llm is None:
+            if self._llm_init_error is not None:
+                raise self._llm_init_error
+            self._llm = LLMClient()
+        return self._llm
 
     def generate(
         self,
@@ -27,6 +43,7 @@ class ResponseEngine:
         context_prompt_blocks: Optional[List[Any]] = None,  # P4.4-D5：透传至 PromptBuilder（此前为死参数）
         user_meta: Optional[Dict[str, Any]] = None,  # Phase 4.0.4-Pre：对方是谁/怎么称呼
         communication_profile: Optional[Any] = None,  # Phase 4.1.2-B：CommunicationStyle 表达倾向
+        goal_context: Optional[str] = None,  # v1.3 Phase 2：GoalContext（只读关注方向，默认 None）
     ) -> str:
         messages = self.prompt_builder.build_messages(
             user_message=user_message,
@@ -45,5 +62,6 @@ class ResponseEngine:
             context_prompt_blocks=context_prompt_blocks,
             user_meta=user_meta,
             communication_profile=communication_profile,
+            goal_context=goal_context,
         )
         return self.llm.generate(messages)

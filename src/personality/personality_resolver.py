@@ -18,12 +18,37 @@ v1.9 更新:
 Phase 6.2: 增加可选 self_model_adapter 参数；注入时通过 Adapter 写入（Authority Closure）。
 """
 
+import logging
 from typing import Any, Dict, Optional, List, TYPE_CHECKING
 from src.growth.growth_state import GrowthState, resolve_authority_growth_state
 from src.personality.mutation_adapter import (
     PersonalityMutationAdapter,
     is_personality_mutation_gateway_enabled,
 )
+from src.governance.write_path_registry import warn_deprecated_once
+
+logger = logging.getLogger(__name__)
+
+# ============================================================
+# G-1.1: resolver 漂移治理（本地开关，默认关闭 → legacy 行为不变；
+# 不翻转任何全局治理 flag）
+# ============================================================
+DRIFT_SOURCE = "resolver_drift"
+DRIFT_SOURCE_EVENT_ID = "resolver_drift:accumulation"
+DRIFT_CONFIDENCE = 0.5
+
+_PERSONALITY_DRIFT_GOVERNANCE_ENABLED = False
+
+
+def is_personality_drift_governance_enabled() -> bool:
+    """G-1.1: 漂移治理模式是否开启（默认 False = legacy 直写路径）。"""
+    return _PERSONALITY_DRIFT_GOVERNANCE_ENABLED
+
+
+def set_personality_drift_governance_enabled(enabled: bool) -> None:
+    """G-1.1: 显式开启/关闭漂移治理（测试/装配方调用；生产默认关闭）。"""
+    global _PERSONALITY_DRIFT_GOVERNANCE_ENABLED
+    _PERSONALITY_DRIFT_GOVERNANCE_ENABLED = bool(enabled)
 from src.personality.personality_profile import PersonalityProfile
 from src.personality.behavior_resolver import BehaviorResolver
 from src.personality.relationship_state import RelationshipState
@@ -51,6 +76,7 @@ class PersonalityResolver:
         self_model_adapter: Optional[Any] = None,
         *,
         snapshot: Optional["RelationshipSnapshot"] = None,
+        governance_storage: Optional[Any] = None,
     ):
         # V1.0-1C: fallback 走 bridge-first（运行时权威单例优先）
         self.state = state or resolve_authority_growth_state()
@@ -88,6 +114,10 @@ class PersonalityResolver:
         self._mutation_adapter = PersonalityMutationAdapter()
         # 迁移模式下发出的 MutationRequest（旧模式恒为空；供可观测/测试）
         self.mutation_requests: List[Any] = []
+        # G-1.1: 漂移治理提案存储注入（默认 None → 惰性获取治理存储单例）；
+        # 治理模式下生成的漂移提案（可观测，legacy 模式恒为空）
+        self._governance_storage = governance_storage
+        self.drift_proposals: List[Any] = []
 
     def set_self_model_adapter(self, adapter: Any) -> None:
         """Phase 6.2: 运行时注入 Adapter"""
@@ -172,6 +202,14 @@ class PersonalityResolver:
             old_value = trait_state["current_value"]
             new_value = updated_state["current_value"]
 
+            if is_personality_drift_governance_enabled():
+                # G-1.1 治理模式：计算 + 提案 —— 漂移不写 _trait_states / history，
+                # 转 GrowthProposal(pending) → admin review → drain → apply。
+                if abs(new_value - old_value) > 0.005:
+                    self._propose_drift_to_governance(dim, old_value, new_value, growth_delta)
+                evolved[dim] = old_value
+                continue
+
             if is_personality_mutation_gateway_enabled():
                 # P2.3-B.4 迁移模式：计算 + 提议 —— 漂移不直接提交，
                 # 经 MutationGateway 治理（ACCEPT 才可能进入 apply 链）
@@ -181,6 +219,12 @@ class PersonalityResolver:
                 continue
 
             if abs(new_value - old_value) > 0.005:
+                warn_deprecated_once(
+                    "personality_resolver.direct_trait_drift",
+                    "[G-0 deprecated] 人格漂移直接写入 _trait_states, "
+                    "未经过 Proposal/Governance/Apply/Audit 闭环 "
+                    "(personality_resolver.resolve)。迁移计划: G-1 默认走 _propose_trait_mutation 提案链。",
+                )
                 self.personality_history.record_change(
                     before={dim: old_value},
                     after={dim: new_value},
@@ -513,6 +557,132 @@ class PersonalityResolver:
     def get_trait_states(self) -> Dict[str, TraitState]:
         """返回当前所有维度的 TraitState（供 Orchestrator 等外部模块调用）"""
         return self._trait_states
+
+    # ============================================================
+    # G-1.1: 漂移治理路径（默认关闭；开启后漂移只提案、绝不直写）
+    # ============================================================
+    def _get_governance_storage(self):
+        """惰性获取治理提案存储（注入优先，否则治理存储单例）。"""
+        if self._governance_storage is not None:
+            return self._governance_storage
+        from src.growth.proposal.storage import get_proposal_storage
+
+        self._governance_storage = get_proposal_storage()
+        return self._governance_storage
+
+    def _governance_pending_exists(
+        self,
+        storage,
+        trait: str,
+        old_value: float,
+        new_value: float,
+    ) -> bool:
+        """去重：同一 trait + 相同方向的 pending 漂移提案已存在 → 不再重复生成。
+
+        复用治理存储 pending 账本（跨实例可见）；提案一旦被审批/拒绝/应用
+        即离开 pending 集，后续同方向漂移可重新提案（数量受控）。
+        """
+        try:
+            pending = storage.list_by_status("pending", limit=500)
+        except Exception:  # noqa: BLE001
+            return False
+        direction = 1 if float(new_value) > float(old_value) else -1
+        for p in pending:
+            try:
+                if str(getattr(p, "source", "") or "") != DRIFT_SOURCE:
+                    continue
+                before = float((getattr(p, "before_state", None) or {}).get(trait, 0.0))
+                after = float((getattr(p, "after_state", None) or {}).get(trait, 0.0))
+            except Exception:  # noqa: BLE001
+                continue
+            p_direction = 1 if after > before else -1
+            if p_direction == direction:
+                return True
+        return False
+
+    def _propose_drift_to_governance(
+        self,
+        dim: str,
+        old_value: float,
+        new_value: float,
+        growth_delta: float,
+    ) -> Optional[Any]:
+        """trait 漂移 → GrowthProposal（治理存储 pending，source=resolver_drift）。
+
+        不写 _trait_states / personality_history；不触发 MutationGateway
+        （B.4 路径独立保留）。提案经 admin review → drain →
+        PersonalityEvolutionPipeline.apply_approved_to_state 才生效。
+        """
+        try:
+            storage = self._get_governance_storage()
+            if self._governance_pending_exists(storage, dim, old_value, new_value):
+                return None
+            from src.growth.proposal.proposal import GrowthProposal as GovernanceProposal
+            from src.growth.proposal.constants import PROPOSAL_STATUS, PROPOSAL_TYPE
+
+            old_f = round(float(old_value), 6)
+            new_f = round(float(new_value), 6)
+            delta = round(new_f - old_f, 6)
+            payload = {
+                "trait_name": dim,
+                "old_value": old_f,
+                "proposed_value": new_f,
+                "delta": delta,
+                "confidence": DRIFT_CONFIDENCE,
+                "evidence": [{"ref": f"accumulation:{dim}", "type": "growth_accumulation"}],
+            }
+            proposal = GovernanceProposal(
+                proposal_type=PROPOSAL_TYPE["PERSONALITY"],
+                status=PROPOSAL_STATUS["PENDING"],
+                source=DRIFT_SOURCE,
+                source_event_id=DRIFT_SOURCE_EVENT_ID,
+                before_state={dim: old_f},
+                after_state={dim: new_f},
+                affected_dimensions={dim: delta},
+                confidence=DRIFT_CONFIDENCE,
+                reason=f"累积漂移 {dim}: {growth_delta:+.4f}（resolver 治理模式，待审批）",
+                evidence=[f"accumulation:{dim}"],
+                metadata={
+                    "payload": payload,
+                    "trait_name": dim,
+                    "growth_delta": round(float(growth_delta), 6),
+                    "_governance_origin": DRIFT_SOURCE,
+                },
+            )
+            storage.save(proposal)
+            self.drift_proposals.append(proposal)
+            self._audit_drift_proposal(proposal, dim, old_f, new_f)
+            return proposal
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[personality_resolver] 漂移提案生成失败（已隔离）: %s", exc)
+            return None
+
+    def _audit_drift_proposal(
+        self,
+        proposal: Any,
+        dim: str,
+        old_value: float,
+        new_value: float,
+    ) -> None:
+        """G-1.1: 创建期 mutation 审计 —— 记录"检测到漂移、已转待审批提案"。
+
+        apply 侧审计由 PersonalityEvolutionPipeline.apply_approved_to_state
+        在审批应用成功后写入（同一条 state_mutations.jsonl，approval_id 真实）。
+        """
+        try:
+            from src.governance.state_mutation_audit import record_state_mutation
+
+            record_state_mutation(
+                component="personality",
+                target=f"personality_trait.{dim}",
+                before={"value": old_value},
+                after={"value": new_value},
+                proposal_id=str(proposal.proposal_id),
+                approval_id="pending",
+                actor="personality_resolver.drift",
+            )
+        except Exception:  # noqa: BLE001
+            pass
 
     # ============================================================
     # P2.3-B.4: 迁移模式提议方法（开关默认关闭时永不调用）

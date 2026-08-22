@@ -606,7 +606,9 @@ def _init_runtime_bridge(config: dict) -> None:
 
             # === Phase 7.2 迁移：主动消息由 Runtime InitiativeBridge 单一路径接管 ===
             # 旧版独立进程（initiative_sender.py）已删除，不再有双路径互斥问题。
-            initiative_enabled = config.get("initiative", {}).get("enabled", True)
+            # v1.3 RC 0.5 (H1): 缺省值 false —— 未显式配置时绝不注册 bridge
+            # (主动行为只经 v1.3 治理链, 防旧路径隐式复活)。
+            initiative_enabled = config.get("initiative", {}).get("enabled", False)
             if not initiative_enabled:
                 logger.info(
                     "[Phase 7.2] initiative.enabled=false,跳过 InitiativeBridge 注册（完全不发送主动消息）"

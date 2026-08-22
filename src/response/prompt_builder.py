@@ -122,6 +122,7 @@ class PromptBuilder:
         user_meta: Optional[Dict] = None,  # Phase 4.0.4-Pre 新增：对方是谁/如何称呼/关系等级
         communication_profile: Optional[Any] = None,  # Phase 4.1.2-B 新增：CommunicationStyle 表达倾向
         context_prompt_blocks: Optional[List[str]] = None,  # P4.4-D5 新增：已生成提示块，每块独立成节
+        goal_context: Optional[str] = None,  # v1.3 Phase 2 新增：GoalContext（只读关注方向，默认 None）
     ) -> List[Dict]:
         # Phase 4.0.2-P1：核心身份不再硬编码，统一由 IDENTITY_CORE 驱动（章程阶段一）
         # Phase 4.4-D2：canonical 组装移至 src/response/prompt_sections.py
@@ -158,6 +159,9 @@ class PromptBuilder:
         emotion_text = emotion_context or ""
         agreement_text = agreement_context or ""
         experience_text = self._format_experience_context(experience_context)
+        # v1.3 Phase 2: GoalContext — 永远低于 Identity/SelfModel(SelfNarrative),
+        # 高于 Memory(life_events / chat_memories)。None/空串不注入(v1.2 行为)。
+        goal_text = goal_context or ""
 
         # Phase 4.4-D3：section 顺序与块头收敛。
         # - user_meta 块提到 identity_text 之后，保证身份声明之后尽早出现
@@ -187,6 +191,7 @@ class PromptBuilder:
             personality_text,
             behavior_text,
             self_model_text,
+            goal_text,  # v1.3 Phase 2: SelfModel(SelfNarrative) 之后、Memory 之前
             experience_text,
             relationship_text,
             emotion_text,

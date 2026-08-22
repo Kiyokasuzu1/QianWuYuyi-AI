@@ -309,6 +309,15 @@ class RuntimeIntegrationHost:
         narrative_assembly_enabled: bool = False,
         narrative_history_path: str = "data/narrative_history.json",
         narrative_data_provider: Optional[Callable[[], Dict[str, Any]]] = None,
+        goal_detection_mode: str = "off",
+        goal_memory_loader: Optional[Callable[[], List[Dict[str, Any]]]] = None,
+        goal_experience_loader: Optional[Callable[[], List[Dict[str, Any]]]] = None,
+        goal_candidate_store_path: str = "data/goal/goal_candidates.jsonl",
+        goal_metrics_path: str = "data/goal/goal_detection_metrics.jsonl",
+        initiative_pipeline_mode: str = "off",
+        initiative_dispatch_enabled: bool = False,
+        initiative_target_user: str = "",
+        initiative_observability_enabled: bool = False,
     ) -> None:
         self._name = str(name or "runtime_integration_host")
 
@@ -338,6 +347,32 @@ class RuntimeIntegrationHost:
         )
         self._narrative_data_provider = narrative_data_provider
         self._last_narrative_fingerprint: str = ""
+
+        # v1.3 Phase 4: Goal Pattern Detection 生产接线（默认 off = 零触碰）。
+        # off=零触碰; shadow=只产 Candidate; active=桥接 PENDING 提案(不自动审批)。
+        # 复用本宿主后台 tick, 不新建 scheduler/线程; 全部 fail-soft。
+        self._goal_detection_mode = str(goal_detection_mode or "off")
+        self._goal_memory_loader = goal_memory_loader
+        self._goal_experience_loader = goal_experience_loader
+        self._goal_candidate_store_path = str(
+            goal_candidate_store_path or "data/goal/goal_candidates.jsonl"
+        )
+        self._goal_metrics_path = str(
+            goal_metrics_path or "data/goal/goal_detection_metrics.jsonl"
+        )
+        self._goal_runner: Optional[Any] = None
+        self._last_goal_detection_metrics: Dict[str, Any] = {}
+
+        # v1.3 Phase 5.4: Initiative 受治理流水线（默认 off = 零触碰）。
+        # off/shadow/active 三态; dispatch 另有独立开关(默认 false) —
+        # 生产即使 mode=active 也不会真正 dispatch, 不开启主动行为。
+        self._initiative_pipeline_mode = str(initiative_pipeline_mode or "off")
+        self._initiative_dispatch_enabled = bool(initiative_dispatch_enabled)
+        self._initiative_target_user = str(initiative_target_user or "")
+        # v1.3 Phase 5.5: 可观察性开关(默认关 = 零审计写入)
+        self._initiative_observability_enabled = bool(initiative_observability_enabled)
+        self._initiative_pipeline: Optional[Any] = None
+        self._last_initiative_pipeline_metrics: Dict[str, Any] = {}
 
         # 状态机 / 锁
         self._state: str = HOST_STATE_CREATED
@@ -822,11 +857,103 @@ class RuntimeIntegrationHost:
         # v1.2 Self Understanding: 叙事组装（仅内容变化时 append; fail-soft）
         self._assemble_narrative()
 
+        # v1.3 Phase 4: Goal Pattern Detection（off=零触碰; shadow=只产 Candidate;
+        # active=桥接 PENDING 提案; 全部 fail-soft, 不新建调度器）
+        self._run_goal_detection()
+
+        # v1.3 Phase 5.4: Initiative 受治理流水线（默认 off; 复用本 tick, 不新建循环）
+        self._run_initiative_pipeline()
+
         logger.debug(
             "RuntimeIntegrationHost(%s) tick #%d ok, results=%d",
             self._name, current_tick, len(results),
         )
         return results
+
+    # ============================================================
+    # v1.3 Phase 5.4: Initiative 受治理流水线（默认 off; fail-soft）
+    # ============================================================
+    def _run_initiative_pipeline(self) -> None:
+        """后台 tick 内运行 Initiative 流水线(受治理, 双开关门控)。
+
+        - off: 直接返回, 零触碰;
+        - shadow: GoalState→Candidate→PENDING 提案(观察数据);
+        - active: + Drain→SafetyFilter→(dispatch_enabled 时)Dispatcher;
+        - 不接 Initiative 引擎骨架 / 不新建调度器 / 全部 fail-soft。
+        """
+        try:
+            if self._initiative_pipeline_mode == "off":
+                return
+            from src.goal.goal_state import GoalStateStore
+            from src.initiative.action_safety import ActionSafetyFilter
+            from src.initiative.initiative_pipeline import InitiativePipeline
+
+            if self._initiative_pipeline is None:
+                self._initiative_pipeline = InitiativePipeline(
+                    mode=self._initiative_pipeline_mode,
+                    goal_store=GoalStateStore(),
+                    safety_filter=ActionSafetyFilter(enabled=True),
+                    target_user=self._initiative_target_user,
+                    dispatch_enabled=self._initiative_dispatch_enabled,
+                    observability_enabled=self._initiative_observability_enabled,
+                )
+            _metrics = self._initiative_pipeline.run_once()
+            self._last_initiative_pipeline_metrics = dict(_metrics or {})
+            if _metrics.get("ran"):
+                logger.info(
+                    "RuntimeIntegrationHost(%s) initiative pipeline: %s",
+                    self._name, _metrics,
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "RuntimeIntegrationHost(%s) initiative pipeline 失败(已隔离): %s",
+                self._name, exc,
+            )
+
+    # ============================================================
+    # v1.3 Phase 4: Goal Pattern Detection（默认 off; fail-soft）
+    # ============================================================
+    def _run_goal_detection(self) -> None:
+        """后台 tick 内运行 Goal 模式检测(受控接线)。
+
+        - off: 直接返回, 零触碰;
+        - 复用 consolidation 注入的只读 memory_loader(不可用则 runner 默认加载);
+        - 结果写入指标 + Candidate/PENDING 提案(按 mode);
+        - 任何异常隔离, 绝不进入聊天主链。
+        """
+        try:
+            if self._goal_detection_mode == "off":
+                return
+            from src.goal.goal_pattern_detector import GoalCandidateStore
+            from src.goal.goal_production_runner import GoalProductionRunner
+            from src.growth.proposal.storage import get_proposal_storage
+
+            if self._goal_runner is None:
+                _mem_loader = self._goal_memory_loader
+                if _mem_loader is None and self._memory_consolidation_enabled:
+                    _mem_loader = self._memory_loader
+                self._goal_runner = GoalProductionRunner(
+                    mode=self._goal_detection_mode,
+                    candidate_store=GoalCandidateStore(
+                        self._goal_candidate_store_path
+                    ),
+                    proposal_storage=get_proposal_storage(),
+                    memory_loader=_mem_loader,
+                    experience_loader=self._goal_experience_loader,
+                    metrics_path=self._goal_metrics_path,
+                )
+            _metrics = self._goal_runner.run_once()
+            self._last_goal_detection_metrics = dict(_metrics or {})
+            if _metrics.get("ran"):
+                logger.info(
+                    "RuntimeIntegrationHost(%s) goal detection: %s",
+                    self._name, _metrics,
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "RuntimeIntegrationHost(%s) goal detection 失败(已隔离): %s",
+                self._name, exc,
+            )
 
     # ============================================================
     # v1.1 Phase 2.2: Reflection 循环（开关默认关; 全部 fail-soft）

@@ -59,6 +59,21 @@ class ProposalReviewer:
         if not self.should_create_proposal(proposal_type, affected_dimensions):
             return None
 
+        # R-1.5.0: 同源去重——同类型同 source_event_id 的非终态提案已存在时
+        # 复用（防与 orchestrator 直写路径双提案）
+        try:
+            from src.growth.proposal.storage import (
+                get_proposal_storage,
+                find_proposal_same_source,
+            )
+
+            if find_proposal_same_source(
+                get_proposal_storage(), proposal_type, source_event_id,
+            ):
+                return None
+        except Exception:  # noqa: BLE001
+            pass
+
         expires_at = (datetime.now() + timedelta(hours=PROPOSAL_EXPIRY_HOURS)).isoformat()
 
         priority = self.determine_priority(proposal_type, affected_dimensions)
@@ -236,6 +251,10 @@ def create_proposal_from_event(event):
             source_event_id=event.event_id,
             user_id=event.data.get("user_id", ""),
             reason=event.data.get("reason", ""),
+            # R-1.5.0: 字段一致性——与 orchestrator 直写路径对齐
+            # （confidence 0.7 + evidence 携带事件 id）
+            confidence=0.7,
+            evidence=[event.event_id],
         )
     return None
 

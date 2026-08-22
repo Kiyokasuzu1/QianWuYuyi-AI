@@ -25,8 +25,10 @@ Phase 6.0: Runtime Growth Integration
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
+import uuid
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -153,11 +155,27 @@ class ApprovalManager:
 
         after_status = updated.status
 
-        # Phase 6.0: 生命周期流转 pending → approved → applying → applied/failed
-        apply_result = self._run_lifecycle_after_approve(updated, actor=actor)
+        # G-1.3.2: 先构造真实审批凭证（record_id 预生成）——
+        # apply_hook 与最终 ApprovalRecord 复用同一 record_id，凭证同源绑定。
+        record_id = f"apr_{uuid.uuid4().hex[:10]}"
+        approval_evidence = {
+            "record_id": record_id,
+            "proposal_id": str(proposal_id),
+            "reviewer_id": actor,
+            "reviewed_at": now_iso(),
+            "decision": "approve",
+        }
 
-        # 生成审计记录
+        # Phase 6.0: 生命周期流转 pending → approved → applying → applied/failed
+        apply_result = self._run_lifecycle_after_approve(
+            updated,
+            actor=actor,
+            approval_evidence=approval_evidence,
+        )
+
+        # 生成审计记录（复用同一 record_id，与 apply 凭证绑定）
         record = ApprovalRecord(
+            record_id=record_id,
             proposal_id=proposal_id,
             proposal_snapshot=before_snapshot,
             action=ACTION_APPROVE,
@@ -378,10 +396,35 @@ class ApprovalManager:
                 return p
         return None
 
+    @staticmethod
+    def _call_apply_hook(
+        hook: Any,
+        proposal: GrowthProposal,
+        actor: str,
+        approval_evidence: Optional[Dict[str, Any]],
+    ) -> Any:
+        """G-1.3.2: 优先三参调用 hook(proposal, actor, approval_evidence)；
+        旧两参 hook 按签名兼容回退 hook(proposal, actor)。"""
+        try:
+            signature = inspect.signature(hook)
+            positional = [
+                p for p in signature.parameters.values()
+                if p.kind in (
+                    inspect.Parameter.POSITIONAL_ONLY,
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                )
+            ]
+            if len(positional) >= 3:
+                return hook(proposal, actor, approval_evidence)
+        except (TypeError, ValueError):
+            pass
+        return hook(proposal, actor)
+
     def _run_lifecycle_after_approve(
         self,
         proposal: GrowthProposal,
         actor: str = "human",
+        approval_evidence: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Phase 6.0: 审批通过后执行生命周期与 apply 钩子。
@@ -392,6 +435,9 @@ class ApprovalManager:
         3. apply_hook（若提供）→ envelope
         4. applying → applied（成功）/ failed（失败）
 
+        G-1.3.2: apply_hook 携带 approval_evidence（真实审批凭证），
+        旧两参 hook 自动兼容。
+
         Returns:
             apply envelope dict 或 None（无 hook 时）
         """
@@ -401,7 +447,9 @@ class ApprovalManager:
                 return None
             # 仅执行 apply
             try:
-                envelope = self._apply_hook(proposal, actor)
+                envelope = self._call_apply_hook(
+                    self._apply_hook, proposal, actor, approval_evidence,
+                )
                 return envelope if isinstance(envelope, dict) else {"raw": envelope}
             except Exception as e:  # pragma: no cover
                 logger.error(f"apply_hook 执行失败: {e}")
@@ -436,7 +484,9 @@ class ApprovalManager:
         apply_success = True
         if self._apply_hook is not None:
             try:
-                envelope = self._apply_hook(proposal, actor)
+                envelope = self._call_apply_hook(
+                    self._apply_hook, proposal, actor, approval_evidence,
+                )
                 if not isinstance(envelope, dict):
                     envelope = {"raw": envelope}
                 apply_success = bool(envelope.get("applied", False))

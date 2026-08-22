@@ -11,6 +11,9 @@ PROPOSAL_TYPE = {
     "RELATIONSHIP": "relationship",
     "IDENTITY": "identity",
     "SELF_MODEL": "self_model",
+    "EMOTION": "emotion",  # R-1.3.b: Emotion 治理提案类型
+    "GOAL": "goal",  # v1.3 Phase 1: Goal 关注方向治理提案类型
+    "INITIATIVE": "initiative",  # v1.3 Phase 5.1: 主动行为治理提案类型
 }
 
 AUTO_APPROVE_THRESHOLD = {

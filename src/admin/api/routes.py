@@ -2611,6 +2611,55 @@ def api_governance_growth():
         })
 
 
+@admin_bp.route("/api/admin/governance/goal")
+def api_governance_goal():
+    """
+    v1.3 Phase 1.5: Goal 提案治理快照（只读）
+
+    返回:
+      - Goal 提案列表(goal_id / description / source_refs / confidence /
+        priority / created_at / proposal_status)
+      - 按提案状态分布
+
+    红线: 只读展示; 不读不写 GoalState; 不触发任何消费动作。
+    """
+    try:
+        limit = int(request.args.get("limit", 20))
+        provider = _get_governance_provider()
+        snapshot = provider.get_goal_governance_snapshot(limit=limit)
+        return jsonify({"ok": True, **snapshot})
+    except Exception as e:
+        logger.warning(f"api_governance_goal 异常: {e}")
+        return jsonify({
+            "ok": False,
+            "section": "goal",
+            "available": False,
+            "error": str(e),
+        })
+
+
+@admin_bp.route("/api/admin/governance/initiative/actions")
+def api_initiative_actions():
+    """
+    v1.3 Phase 5.5: Initiative Action 只读查询。
+
+    返回:
+      - action_id / proposal_id / goal_reference / status /
+        safety_result / rejection_reason / created_at / executed_at
+
+    红线: 只读观察; 禁止自动执行; 禁止绕过 Proposal→Review 链。
+    """
+    try:
+        limit = int(request.args.get("limit", 50))
+        from src.initiative.initiative_observability import list_initiative_actions
+
+        items = list_initiative_actions(limit=limit)
+        return jsonify({"ok": True, "actions": items, "count": len(items)})
+    except Exception as e:
+        logger.warning(f"api_initiative_actions 异常: {e}")
+        return jsonify({"ok": False, "error": str(e), "actions": []})
+
+
 @admin_bp.route("/api/admin/governance/proposals")
 def api_governance_proposals_list():
     """

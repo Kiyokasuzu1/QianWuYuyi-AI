@@ -159,6 +159,7 @@ class RuntimeGrowthPipeline:
         self_model_adapter: Optional[Any] = None,
         history_path: Optional[str] = None,
         auto_record_lifecycle: bool = True,
+        approval_record_provider: Optional[Callable[[str], Optional[Dict[str, Any]]]] = None,
     ):
         """
         Args:
@@ -171,6 +172,8 @@ class RuntimeGrowthPipeline:
             self_model_adapter: Phase 6.1 — SelfModelAdapter（可选，缺省时跳过 SelfModel 子步骤）
             history_path: 持久化路径
             auto_record_lifecycle: 是否在 Pipeline 内自动记录 lifecycle（一般 False，由 approval_manager 负责）
+            approval_record_provider: G-1.3.3 — 按 proposal_id 查询真实审批凭证的回调
+                （可选；缺省时走 legacy fallback，enforcement 开启时拒绝）
         """
         self._memory = memory_adapter
         self._growth = growth_adapter
@@ -179,6 +182,7 @@ class RuntimeGrowthPipeline:
         self._lifecycle = lifecycle_manager
         self._reflection = reflection_engine
         self._self_model_adapter = self_model_adapter
+        self._approval_record_provider = approval_record_provider
 
         self._history_path = Path(history_path) if history_path else None
         if self._history_path:
@@ -417,11 +421,70 @@ class RuntimeGrowthPipeline:
                         stage.outputs["reason"] = f"lifecycle_state:{state}_not_ready"
                         stage.outputs["lifecycle_state"] = state
                     else:
-                        envelope = self._personality.apply_proposal(
-                            proposal,
-                            actor="runtime_pipeline",
-                            mark_approved=True,
-                        )
+                        # G-1.3.3: lifecycle_state 自设不得作为审批证明 ——
+                        # 优先经 provider 查询真实审批凭证; 无 provider 时
+                        # enforcement 开启 → 拒绝 / legacy fallback（告警 + 旧行为）。
+                        approval_record = None
+                        if self._approval_record_provider is not None:
+                            try:
+                                approval_record = self._approval_record_provider(
+                                    proposal.id,
+                                )
+                            except Exception as exc:  # noqa: BLE001
+                                logger.warning(
+                                    "approval_record_provider 查询失败（已隔离）: %s",
+                                    exc,
+                                )
+                                approval_record = None
+                        if approval_record is not None:
+                            envelope = self._personality.apply_proposal(
+                                proposal,
+                                actor="runtime_pipeline",
+                                approval_record=approval_record,
+                            )
+                        else:
+                            try:
+                                from src.personality.personality_adapter import (
+                                    is_approval_record_enforced,
+                                )
+
+                                if is_approval_record_enforced():
+                                    envelope = {
+                                        "applied": False,
+                                        "before": {},
+                                        "after": {},
+                                        "evolution_record_id": "",
+                                        "note": "approval_record_required",
+                                        "rate_limit": {
+                                            "skipped": True,
+                                            "reason": "approval_record_required",
+                                        },
+                                        "skipped_traits": [],
+                                        "denied_traits": [],
+                                    }
+                                else:
+                                    try:
+                                        from src.governance.write_path_registry import (
+                                            warn_deprecated_once,
+                                        )
+
+                                        warn_deprecated_once(
+                                            "runtime_growth_pipeline.lifecycle_self_attest",
+                                            "[G-0 deprecated] lifecycle_state 自设不得作为审批证明。"
+                                            "迁移计划: G-1.3.3 经 approval_record_provider 传真实凭证。",
+                                        )
+                                    except Exception:  # noqa: BLE001
+                                        pass
+                                    envelope = self._personality.apply_proposal(
+                                        proposal,
+                                        actor="runtime_pipeline",
+                                        mark_approved=True,  # legacy fallback
+                                    )
+                            except Exception:  # noqa: BLE001
+                                envelope = {
+                                    "applied": False,
+                                    "note": "approval_check_exception",
+                                }
                         stage.outputs["envelope"] = envelope
                         stage.status = (
                             StageStatus.OK.value

@@ -73,12 +73,16 @@ class MemoryAdapter(MemoryAdapterBase):
         # 经验到记录的映射：experience_id -> record_id
         self._id_map: Dict[str, str] = {}
 
-    def store_experience(self, experience: RuntimeExperience) -> bool:
+    def store_experience(self, experience: RuntimeExperience, user_id: Optional[str] = None) -> bool:
         """
         存储经验到 ExperienceJournal（Phase 4.1D：不写入 MemoryStore）
 
+        R-1.5.0: user_id override——调用方提供消息级真实用户时优先使用,
+        否则回退进程级 config 默认（旧行为, tick/background 无 ctx 场景）。
+
         Args:
             experience: 运行时经验
+            user_id: 可选的消息级用户覆盖
 
         Returns:
             是否记录成功（写盘失败时降级内存模式仍返回 True，fail-soft）
@@ -89,7 +93,7 @@ class MemoryAdapter(MemoryAdapterBase):
 
         try:
             # 转换为结构化记录
-            record = self._convert_to_memory(experience)
+            record = self._convert_to_memory(experience, user_id_override=user_id)
             record.setdefault("id", f"exp_{uuid.uuid4().hex[:12]}")
             # 顶层 timestamp（排序/读取契约，与 MemoryStore 过去的盖戳行为一致）
             record.setdefault("timestamp", experience.timestamp or "")
@@ -215,7 +219,11 @@ class MemoryAdapter(MemoryAdapterBase):
 
     # ==================== 内部方法 ====================
 
-    def _convert_to_memory(self, experience: RuntimeExperience) -> Dict[str, Any]:
+    def _convert_to_memory(
+        self,
+        experience: RuntimeExperience,
+        user_id_override: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         将 RuntimeExperience 转换为 Memory 条目
 
@@ -290,7 +298,7 @@ class MemoryAdapter(MemoryAdapterBase):
             pass
 
         return {
-            "user_id": self._user_id,
+            "user_id": (user_id_override or self._user_id),
             "content": content,
             "role": "system",
             "metadata": metadata,

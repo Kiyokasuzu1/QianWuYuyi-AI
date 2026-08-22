@@ -178,7 +178,7 @@ class TestHostTick(unittest.TestCase):
         h = RuntimeIntegrationHost()
         h.start()
         results = h.tick()
-        self.assertEqual(len(results), 5)
+        self.assertEqual(len(results), 7)
         self.assertEqual(h.tick_count, 1)
         # 应该发出 tick_complete
         self.assertEqual(h.event_bridge.published_count, 1)

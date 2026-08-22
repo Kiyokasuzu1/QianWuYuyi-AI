@@ -170,6 +170,23 @@ class SelfModelStore:
 
         return self._current_model
 
+    def build_model_dry_run(
+        self,
+        history: PersonalityGrowthHistory,
+        trait_states: Dict[str, TraitState],
+    ) -> Dict[str, Any]:
+        """G-1.2: 纯计算新模型（不写 _current_model、不落盘）。
+
+        供 growth_integration 治理模式做 old/new diff 使用；
+        legacy update() 路径不受影响。
+        """
+        return self._builder.build(
+            history=history,
+            trait_states=trait_states,
+            base_identity=self.base_identity,
+            capability_limitations=self.capability_limitations,
+        )
+
     # ---------- v1.3 新增：experience_context 接口 ----------
     def set_experience_context(
         self,

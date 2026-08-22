@@ -201,16 +201,22 @@ class HeartbeatReporter:
         self._message = ""
         self._custom_metrics: Dict[str, Any] = {}
         self._timer: Optional[threading.Timer] = None
+        # 部署加固: 定时器链运行标记——防止重复 start 产生第二条链，
+        # 以及 stop 与已触发的 tick 竞争导致链复活。
+        self._timer_chain_running = False
 
     def start(self, status: ModuleStatus = ModuleStatus.RUNNING, message: str = ""):
         """启动定时心跳上报"""
         self._status = status
         self._message = message
         self._do_beat()
-        self._schedule_next()
+        if not self._timer_chain_running:
+            self._timer_chain_running = True
+            self._schedule_next()
 
     def stop(self):
         """停止心跳上报"""
+        self._timer_chain_running = False
         if self._timer:
             self._timer.cancel()
             self._timer = None
@@ -264,4 +270,5 @@ class HeartbeatReporter:
     def _tick_and_reschedule(self):
         """tick 并重新调度"""
         self._do_beat()
-        self._schedule_next()
+        if self._timer_chain_running:
+            self._schedule_next()

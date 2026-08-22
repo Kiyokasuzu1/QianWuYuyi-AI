@@ -149,6 +149,21 @@ class OrchestratorRuntimeBridge:
     # --------------------------------------------------------
     # 主入口
     # --------------------------------------------------------
+    def has_round_marker(self, user_message: str) -> bool:
+        """R-1.5.0: 本轮是否已由 pipeline 5A 执行过同一条消息（防同轮重入）。
+
+        marker 是 RuntimeCore 实例上的消息文本（按请求生命周期设置/清理,
+        非永久布尔）; 命中时调用方应跳过嵌套 rt.process, 保留 legacy 回复。
+        """
+        rt = self._runtime
+        if rt is None:
+            return False
+        try:
+            marker = getattr(rt, "_round_processed_text", None)
+        except Exception:  # noqa: BLE001
+            return False
+        return bool(marker) and str(marker) == str(user_message)
+
     def handle_message(self, user_message: str) -> str:
         """处理一条用户消息,按 Runtime 可用性选择路径。
 

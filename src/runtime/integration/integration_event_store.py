@@ -37,6 +37,8 @@ logger = logging.getLogger(__name__)
 # 常量
 # ============================================================
 DEFAULT_STORE_PATH = "data/integration_event_store.jsonl"
+# 部署加固: 诊断事件文件单代轮转阈值（超过后整文件归档为 .old 并从空文件继续）。
+MAX_STORE_BYTES = 50 * 1024 * 1024  # 50 MB
 
 
 class IntegrationEventStoreError(Exception):
@@ -209,12 +211,21 @@ class IntegrationEventStore:
                     return False
                 raise
 
-            # 追加写
+            # 追加写（flush 降低崩溃丢尾概率; 超阈值先轮转再追加）
             try:
                 with self._lock:
+                    try:
+                        if os.path.exists(self._path) and os.path.getsize(self._path) > MAX_STORE_BYTES:
+                            os.replace(self._path, self._path + ".old")
+                    except OSError as _rot_exc:
+                        logger.warning(
+                            "IntegrationEventStore(%s) 轮转失败（继续追加）: %s",
+                            self._name, _rot_exc,
+                        )
                     with open(self._path, "a", encoding="utf-8") as f:
                         f.write(line)
                         f.write("\n")
+                        f.flush()
                     self._write_count += 1
                     self._last_event_id = event.event_id
                     self._last_event_type = event.event_type

@@ -21,7 +21,7 @@ Phase 6.0 Runtime Growth Integration:
 """
 from __future__ import annotations
 import logging
-from typing import Dict, Any, Optional, List, TypedDict
+from typing import Dict, Any, Optional, List, Tuple, TypedDict
 from datetime import datetime
 import uuid
 
@@ -132,6 +132,72 @@ PATTERN_TO_GROWTH_DIMENSIONS = {
         "delta": +0.004,  # 用户活跃 → 提升温暖度
     },
 }
+
+
+# ============================================================
+# G-1.3.1: 审批凭证治理（本地 enforcement 开关，默认 False = legacy）
+# ============================================================
+_APPROVAL_RECORD_ENFORCED = False
+
+
+def is_approval_record_enforced() -> bool:
+    """G-1.3.1: 审批凭证强制模式是否开启（默认 False = legacy 兼容）。"""
+    return _APPROVAL_RECORD_ENFORCED
+
+
+def set_approval_record_enforced(enabled: bool) -> None:
+    """G-1.3.1: 显式开启/关闭审批凭证强制（测试/装配方调用；不翻转全局 flag）。"""
+    global _APPROVAL_RECORD_ENFORCED
+    _APPROVAL_RECORD_ENFORCED = bool(enabled)
+
+
+def _validate_approval_record(approval_record: Any, proposal_id: str) -> Tuple[bool, str]:
+    """G-1.3.1: 校验审批凭证真实性。
+
+    检查:
+    - record_id 存在（兼容 approval_id 字段名）;
+    - record_id="preview" → 预览特例（不代表真实审批, 不进入 mutation audit）;
+    - record_id 不得命中伪造模式 "approved_by:*";
+    - proposal_id 必须与当前 proposal 一致;
+    - decision / action ∈ {approved, approve};
+    - reviewer_id / actor 存在。
+
+    Returns:
+        (valid, reason) —— valid=False 时 reason 为拒绝原因。
+    """
+    if not isinstance(approval_record, dict) or not approval_record:
+        return False, "approval_record_missing"
+    record_id = str(
+        approval_record.get("record_id", "")
+        or approval_record.get("approval_id", "")
+        or ""
+    )
+    if not record_id:
+        return False, "approval_record_id_missing"
+    if record_id == "preview":
+        return True, ""
+    if record_id.startswith("approved_by:"):
+        return False, "forged_approval_id_pattern"
+    record_proposal_id = str(approval_record.get("proposal_id", "") or "")
+    if not record_proposal_id:
+        return False, "proposal_id_missing"
+    if record_proposal_id != str(proposal_id or ""):
+        return False, "proposal_id_mismatch"
+    decision = str(
+        approval_record.get("decision", "")
+        or approval_record.get("action", "")
+        or ""
+    )
+    if decision not in ("approved", "approve"):
+        return False, f"decision_not_approved:{decision or 'empty'}"
+    reviewer = str(
+        approval_record.get("reviewer_id", "")
+        or approval_record.get("actor", "")
+        or ""
+    )
+    if not reviewer:
+        return False, "reviewer_missing"
+    return True, ""
 
 
 # ============================================================
@@ -468,6 +534,8 @@ class PersonalityAdapter:
         proposal: growth_schema.GrowthProposal,
         actor: str = "system",
         mark_approved: bool = False,
+        *,
+        approval_record: Optional[Dict] = None,
     ) -> Dict[str, Any]:
         """Attempt to apply proposal in-memory using TraitStateUpdater.
 
@@ -475,6 +543,10 @@ class PersonalityAdapter:
             proposal: GrowthProposal
             actor: 调用方标识
             mark_approved: 是否在生成 EvolutionRecord 时标记为 approved（默认 False，保留审批）
+            approval_record: G-1.3.1 真实审批凭证
+                {record_id, proposal_id, reviewer_id, reviewed_at, decision}。
+                mark_approved=True 时提供该凭证 → 校验通过才标记 approved；
+                不提供 → enforcement 开启时拒绝 / legacy 模式 DeprecationWarning 兼容。
 
         Returns envelope:
           - applied: bool
@@ -554,9 +626,63 @@ class PersonalityAdapter:
             }
 
         record = self.map_proposal_to_evolution_record(allowed_proposal)
-        if mark_approved:
-            record["approved"] = True
-            record["decision_reason"] = f"approved_by:{actor}_via_adapter"
+        if mark_approved or approval_record is not None:
+            if approval_record is not None:
+                # G-1.3.1: 真实凭证路径 —— 校验通过才标记 approved
+                valid, invalid_reason = _validate_approval_record(
+                    approval_record,
+                    str(getattr(proposal, "id", "") or ""),
+                )
+                if not valid:
+                    return {
+                        "applied": False,
+                        "before": {},
+                        "after": {},
+                        "evolution_record_id": "",
+                        "note": f"approval_record_invalid: {invalid_reason}",
+                        "rate_limit": {
+                            "skipped": True,
+                            "reason": f"approval_record_invalid:{invalid_reason}",
+                        },
+                        "skipped_traits": [],
+                        "denied_traits": [],
+                    }
+                record_id = str(approval_record.get("record_id", "") or "")
+                record["approved"] = True
+                record["approval_record_id"] = record_id
+                if record_id == "preview":
+                    # 预览特例：不代表真实审批，不进入 mutation audit
+                    record["decision_reason"] = "preview_credential_not_real_approval"
+                else:
+                    record["decision_reason"] = f"approval_record:{record_id}"
+            else:
+                if is_approval_record_enforced():
+                    # G-1.3.1: enforcement 开启时 mark_approved 自证直接拒绝
+                    return {
+                        "applied": False,
+                        "before": {},
+                        "after": {},
+                        "evolution_record_id": "",
+                        "note": "approval_record_required",
+                        "rate_limit": {
+                            "skipped": True,
+                            "reason": "approval_record_required",
+                        },
+                        "skipped_traits": [],
+                        "denied_traits": [],
+                    }
+                try:
+                    from src.governance.write_path_registry import warn_deprecated_once
+
+                    warn_deprecated_once(
+                        "personality_adapter.mark_approved_self_attest",
+                        "[G-0 deprecated] mark_approved=True 自证批准, 无外部审批凭证。"
+                        "迁移计划: G-1.3 改传真实 ApprovalRecord。",
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+                record["approved"] = True
+                record["decision_reason"] = f"approved_by:{actor}_via_adapter"
 
         # Build in-memory trait_states from record.trait_changes 'before' values
         trait_states: Dict[str, Any] = {}
@@ -626,6 +752,9 @@ class PersonalityAdapter:
                     logger.warning(f"limiter.record 失败（已隔离）: {e}")
 
         note = "applied_in_memory_no_persistence"
+        if record.get("approval_record_id") == "preview":
+            # G-1.3.1: 预览凭证标记（不代表真实审批，不进入 mutation audit）
+            note += "_preview_credential"
         if denied_traits:
             note += f"_partial({len(denied_traits)}_denied)"
 

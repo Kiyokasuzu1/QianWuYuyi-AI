@@ -43,6 +43,15 @@ def _empty_growth_proposals() -> List[Any]:
     return []
 
 
+def _empty_audit_context() -> Dict[str, Any]:
+    """R-1.0: 审计上下文安全默认（三个子槽位，后续阶段填充，本类无业务逻辑）。"""
+    return {
+        "mutation_entries": [],
+        "approval_context": {},
+        "proposal_refs": [],
+    }
+
+
 @dataclass
 class RuntimeContext:
     """Runtime 共享上下文（v1.0）
@@ -69,6 +78,23 @@ class RuntimeContext:
     # 仅用于审计/诊断；from_dict 时不可用，设为 None
     identity_snapshot_ref: Optional[Any] = None
 
+    # ============================================================
+    # R-1.0 Runtime Integration：生命周期契约冻结新增字段。
+    # 全部带默认值（追加在尾部，不破坏旧构造方式）；不引入新状态存储；
+    # 本类不写业务逻辑，这些槽位由 Runtime 各阶段/后续阶段填充。
+    # ============================================================
+    # 当前轮情绪上下文扩展数据（dominant / intensity / response_strategy 等）
+    emotion_context: Dict[str, Any] = field(default_factory=dict)
+    # 当前生命周期读取的 self model 快照（Stage 9 产出；正式声明此前
+    # 动态属性 ctx.self_model_snapshot，纳入序列化契约）
+    self_model_snapshot: Optional[Any] = None
+    # 当前周期产生的待治理提案引用列表（与 growth_proposals 语义区分：
+    # 后者为阶段产出的 canonical 提案对象；本字段为治理域引用，
+    # 如 {"proposal_id", "store", "status"}）
+    pending_proposals: List[Any] = field(default_factory=list)
+    # 当前周期审计上下文（mutation_entries / approval_context / proposal_refs）
+    audit_context: Dict[str, Any] = field(default_factory=_empty_audit_context)
+
     def to_dict(self) -> Dict[str, Any]:
         """序列化(业务对象保持引用,调用方负责转换)。"""
         return asdict(self)
@@ -94,6 +120,23 @@ class RuntimeContext:
             # identity_snapshot_ref: 序列化丢失引用很正常，反序列化时统一置 None
             # （不尝试从字典恢复业务对象引用）
             identity_snapshot_ref=None,
+            # R-1.0: 新字段安全默认（旧快照无此键时回退；类型不合法时回退默认）
+            emotion_context=(
+                dict(data.get("emotion_context"))
+                if isinstance(data.get("emotion_context"), dict)
+                else {}
+            ),
+            self_model_snapshot=data.get("self_model_snapshot"),
+            pending_proposals=(
+                list(data.get("pending_proposals"))
+                if isinstance(data.get("pending_proposals"), list)
+                else []
+            ),
+            audit_context=(
+                dict(data.get("audit_context") or _empty_audit_context())
+                if isinstance(data.get("audit_context"), dict)
+                else _empty_audit_context()
+            ),
         )
 
     def has_memory(self) -> bool:

@@ -300,7 +300,8 @@ class TestWithIntegrationHost(unittest.TestCase):
         self.assertTrue(host.start())
         self.assertEqual(host.state, HOST_STATE_RUNNING)
         results = host.tick()
-        self.assertEqual(len(results), 5)
+        # 5 个手动注册 + Phase F 自动注册的 emotion_reflection = 6
+        self.assertEqual(len(results), 7)
         # Host 发出了 tick_complete 事件
         self.assertGreaterEqual(host.event_bridge.published_count, 1)
         last_type = host.event_bridge.last_published_type

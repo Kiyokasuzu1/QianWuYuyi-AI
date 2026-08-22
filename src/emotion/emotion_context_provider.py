@@ -95,8 +95,15 @@ class EmotionContextProvider:
         summary = "，".join(summary_parts) + "。"
         unique_tendencies = list(dict.fromkeys(tendencies))
 
+        # Emotion System 2.0（E-Emotion-5）：派生响应策略（只读映射，不覆盖人格）
+        from src.emotion.emotion_response_strategy import EmotionResponseStrategyBuilder
+        strategy = EmotionResponseStrategyBuilder().build(state)
+
         return EmotionContext(
             summary=summary,
             mood=mood,
-            expression_tendencies=unique_tendencies
+            expression_tendencies=unique_tendencies,
+            expression_style=strategy.expression_style,
+            proactivity=strategy.proactivity,
+            tone_style=strategy.tone_style,
         )

@@ -71,29 +71,30 @@ class TestDefaultLifecycle(unittest.TestCase):
         self.assertIn("relationship_adapter", h.adapters)
 
     def test_start_creates_manager_and_registers_tasks(self):
-        """start 应自动创建 LifecycleManager 并注册 5 个 Task。"""
+        """start 应自动创建 LifecycleManager 并注册 6 个 Task（Phase F +emotion_reflection）。"""
         h = RuntimeIntegrationHost()
         self.assertTrue(h.start())
         self.assertEqual(h.state, HOST_STATE_RUNNING)
         # manager 已自动创建
         self.assertIsNotNone(h.lifecycle_manager)
-        # 5 个 task 已注册
-        self.assertEqual(len(h.registered_task_ids), 5)
+        # 6 个 task 已注册（D-2 的 5 个 + Phase F 情绪反思）
+        self.assertEqual(len(h.registered_task_ids), 7)
         for tid in (
             "memory_lifecycle_task",
             "emotion_lifecycle_task",
             "growth_lifecycle_task",
             "personality_lifecycle_task",
             "relationship_lifecycle_task",
+            "emotion.reflection",
         ):
             self.assertIn(tid, h.registered_task_ids)
 
     def test_first_tick_runs_all_five_tasks(self):
-        """首次 tick: 5 个 task 全部 SUCCESS,产生 5 个 IntegrationEvent + 1 tick_complete。"""
+        """首次 tick: 6 个 task 全部 SUCCESS,产生 6 个 IntegrationEvent + 1 tick_complete。"""
         h = RuntimeIntegrationHost()
         self.assertTrue(h.start())
         results = h.tick()
-        self.assertEqual(len(results), 5)
+        self.assertEqual(len(results), 7)
         for r in results:
             self.assertEqual(r.status, LifecycleStatus.SUCCESS)
         # 5 个 task 事件 + 1 tick_complete = 6 个 IntegrationEvent
@@ -281,10 +282,10 @@ class TestExternalLifecycleManager(unittest.TestCase):
         )
         self.assertTrue(h.start())
         # 不会重复注册(已存在)
-        # 但其余 4 个 task 会被加入
+        # 但其余 4 个 task + Phase F emotion_reflection 会被加入
         # 实际上 register_default_tasks 会跳过已注册的,然后注册未注册的
-        # 所以总数应为 5
-        self.assertEqual(manager.task_count(), 5)
+        # 所以总数应为 6
+        self.assertEqual(manager.task_count(), 7)
 
 
 # ============================================================
@@ -355,7 +356,7 @@ class TestStatusAndHealth(unittest.TestCase):
         self.assertEqual(s["state"], HOST_STATE_RUNNING)
         self.assertEqual(s["tick_count"], 2)
         self.assertTrue(s["has_lifecycle_manager"])
-        self.assertEqual(len(s["registered_task_ids"]), 5)
+        self.assertEqual(len(s["registered_task_ids"]), 7)
         self.assertIn("event_log", s)
         self.assertIn("event_store", s)
         self.assertIn("adapters", s)
@@ -490,7 +491,7 @@ class TestFactory(unittest.TestCase):
         self.assertTrue(h.start())
         self.assertEqual(h.state, HOST_STATE_RUNNING)
         results = h.tick()
-        self.assertEqual(len(results), 5)
+        self.assertEqual(len(results), 7)
         h.stop()
 
 

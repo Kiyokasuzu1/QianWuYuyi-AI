@@ -11,6 +11,8 @@ import sys
 import os
 from unittest.mock import MagicMock
 
+import pytest
+
 # Mock 外部依赖
 class _PackageMock(MagicMock):
     def __init__(self, *args, **kwargs):
@@ -24,12 +26,24 @@ def _install_mock(name):
         sys.modules[name] = _PackageMock()
 
 
-for _mod in (
+_MOCK_MODULES = (
     "openai", "yaml", "websockets", "PIL", "pytesseract",
     "chromadb", "chromadb.utils", "chromadb.utils.embedding_functions",
     "PIL.Image", "PIL.ImageDraw", "PIL.ImageFont",
-):
+)
+
+for _mod in _MOCK_MODULES:
     _install_mock(_mod)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _cleanup_mock_modules():
+    """本文件测试结束后移除注入的 mock 模块, 避免污染同进程其他测试
+    （否则后续测试 `import yaml` 会拿到 MagicMock, 造成静默假失败）。"""
+    yield
+    for _name in _MOCK_MODULES:
+        if isinstance(sys.modules.get(_name), _PackageMock):
+            sys.modules.pop(_name, None)
 
 
 def _mock_psutil():

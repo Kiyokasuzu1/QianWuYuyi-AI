@@ -104,6 +104,8 @@ class GrowthIntegrationService:
             },
         )
         self.self_model_store = self_model_store
+        # G-1.2: 治理模式下生成的 rebuild diff 提案（可观测；legacy 模式恒为空）
+        self._rebuild_diff_proposals: List[Any] = []
 
         # Phase B.1.5: 安全规则配置
         self.confidence_threshold: float = float(
@@ -446,9 +448,225 @@ class GrowthIntegrationService:
                         _ts = {}
                     if not _ts:
                         _ts = dict(self.config.get("trait_states", {}) or {})
+                    # G-1.2: 本地治理模式 —— old/new diff → 提案, 禁止整模型覆盖
+                    try:
+                        from src.personality.self_model_governance import (
+                            is_self_model_governance_enabled,
+                        )
+
+                        if is_self_model_governance_enabled():
+                            self._propose_self_model_diff_to_governance(_ts)
+                            return
+                    except Exception:  # noqa: BLE001
+                        pass
+                    try:
+                        from src.governance.write_path_registry import warn_deprecated_once
+
+                        warn_deprecated_once(
+                            "growth_integration.self_model_direct_update",
+                            "[G-0 deprecated] growth_history 变化直接重建 self_model 并落盘, "
+                            "未经过审批 (growth_integration._refresh_self_model)。"
+                            "迁移计划: G-1 默认走治理 diff → 提案路径。",
+                        )
+                    except Exception:  # noqa: BLE001
+                        pass
                     self.self_model_store.update(self.growth_history, _ts)
         except Exception as e:
             logger.warning("[self_model_updated_failed] %s", e)
+
+    # ============================================================
+    # G-1.2: self_model 重建 diff 治理路径
+    # ============================================================
+    def _propose_self_model_diff_to_governance(
+        self,
+        trait_states: Dict[str, Any],
+    ) -> None:
+        """old/new diff → 每条差异一个 SelfModelChangeProposal → 治理存储 pending。
+
+        不调用 store.update()（不整模型覆盖）；identity 级字段按政策 DENY 跳过。
+        """
+        try:
+            import uuid
+
+            from src.personality.self_model_governance import SelfModelGovernancePolicy
+            from src.personality.self_model_updater import SelfModelChangeProposal
+            from src.growth.proposal.proposal import GrowthProposal
+            from src.growth.proposal.constants import PROPOSAL_TYPE, PROPOSAL_STATUS
+            from src.growth.proposal.storage import get_proposal_storage
+
+            old_model = self.self_model_store.get() or {}
+            new_model = self.self_model_store.build_model_dry_run(
+                self.growth_history, trait_states,
+            )
+            diffs = self._diff_self_model_models(old_model, new_model)
+            if not diffs:
+                return
+            policy = SelfModelGovernancePolicy()
+            storage = get_proposal_storage()
+            for entry in diffs:
+                field = str(entry["field"])
+                level = "identity" if (
+                    field.startswith("identity_")
+                    or field in ("stable_traits", "current_traits")
+                ) else "trait"
+                decision = policy.evaluate({
+                    "growth_level": level,
+                    "confidence": 0.8,
+                })
+                if decision.action.value == "deny":
+                    continue
+                sm_proposal = SelfModelChangeProposal(
+                    change_type="narrative_append",
+                    target="growth_narratives",
+                    change={
+                        "dimension": field,
+                        "event": "self_model_field_update",
+                        "narrative": (
+                            f"自我认知更新: {field} {entry['before']} → {entry['after']}"
+                        ),
+                        "meaning": f"growth_rebuild_diff:{field}",
+                        "field": field,
+                        "before": entry["before"],
+                        "after": entry["after"],
+                    },
+                    source={
+                        "growth_id": f"rebuild:{field}:{uuid.uuid4().hex[:8]}",
+                        "source_event_id": "growth_integration:rebuild_diff",
+                        "source_type": "rebuild_diff",
+                        "evidence_ids": [],
+                        "confidence": 0.8,
+                    },
+                    requires_approval=True,
+                )
+                governance_proposal = GrowthProposal(
+                    proposal_type=PROPOSAL_TYPE["SELF_MODEL"],
+                    status=PROPOSAL_STATUS["PENDING"],
+                    source="growth_rebuild_diff",
+                    source_event_id="growth_integration:rebuild_diff",
+                    confidence=0.8,
+                    reason=f"self_model 重建 diff: {field}",
+                    metadata={
+                        "self_model_proposal": sm_proposal.to_dict(),
+                        "governance_decision": {
+                            "action": decision.action.value,
+                            "growth_level": decision.growth_level,
+                            "confidence": decision.confidence,
+                            "reason": decision.reason,
+                        },
+                        "source": "growth_integration_rebuild",
+                    },
+                )
+                storage.save(governance_proposal)
+                self._rebuild_diff_proposals.append(governance_proposal)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[growth_integration] self_model diff 提案失败（已隔离）: %s", exc)
+
+    @staticmethod
+    def _diff_self_model_models(
+        old_model: Any,
+        new_model: Any,
+    ) -> List[Dict[str, Any]]:
+        """逐字段 diff（跳过叙事/时间戳类字段；嵌套 dict 逐子键 diff 数值）。"""
+        diffs: List[Dict[str, Any]] = []
+        for key, new_value in (new_model or {}).items():
+            if key in ("last_updated", "growth_narratives", "experience_context"):
+                continue
+            old_value = (old_model or {}).get(key)
+            if old_value == new_value:
+                continue
+            if isinstance(new_value, dict) and isinstance(old_value, dict):
+                for sub_key, sub_new in new_value.items():
+                    sub_old = old_value.get(sub_key)
+                    if (
+                        isinstance(sub_new, (int, float))
+                        and isinstance(sub_old, (int, float))
+                        and sub_new != sub_old
+                    ):
+                        diffs.append({
+                            "field": f"{key}.{sub_key}",
+                            "before": sub_old,
+                            "after": sub_new,
+                        })
+                continue
+            if isinstance(new_value, (int, float)) and isinstance(old_value, (int, float)):
+                diffs.append({
+                    "field": str(key),
+                    "before": old_value,
+                    "after": new_value,
+                })
+        return diffs
+
+    def _mirror_proposal_to_governance_store(
+        self,
+        *,
+        proposal: Any,
+        source_event: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """v1.1 Phase 1: canonical GrowthProposal → B-store pending 镜像。
+
+        B-store 是治理事实来源（admin review + drain 唯一读点）;
+        镜像不改变 A-store（评估工作区）语义, 仅把待治理提案送入治理账本。
+        """
+        try:
+            from src.growth.proposal.proposal import GrowthProposal as GovernanceProposal
+            from src.growth.proposal.constants import PROPOSAL_TYPE, PROPOSAL_STATUS
+
+            if proposal is None:
+                return {"ok": False, "reason": "proposal_missing"}
+            before_state: Dict[str, float] = {}
+            after_state: Dict[str, float] = {}
+            for ci in (getattr(proposal, "proposed_changes", None) or []):
+                try:
+                    trait = str(getattr(ci, "path", "")).rsplit(".", 1)[-1]
+                    _b = float(ci.before) if getattr(ci, "before", None) is not None else None
+                    _a = float(ci.after) if getattr(ci, "after", None) is not None else None
+                    if _b is not None:
+                        before_state[trait] = _b
+                    if _a is not None:
+                        after_state[trait] = _a
+                except Exception:  # noqa: BLE001
+                    continue
+            if not after_state:
+                return {"ok": False, "reason": "empty_after_state"}
+
+            storage = None
+            if isinstance(self.config, dict):
+                storage = self.config.get("governance_storage")
+            if storage is None:
+                from src.growth.proposal.storage import get_proposal_storage
+
+                storage = get_proposal_storage()
+
+            governance_proposal = GovernanceProposal(
+                proposal_type=PROPOSAL_TYPE["PERSONALITY"],
+                status=PROPOSAL_STATUS["PENDING"],
+                source="growth_integration",
+                source_event_id=str(getattr(proposal, "source_event_id", "") or ""),
+                user_id=str((source_event or {}).get("user_id", "") or ""),
+                affected_dimensions={
+                    k: round(float(after_state[k]) - float(before_state.get(k, after_state[k])), 4)
+                    for k in after_state
+                },
+                before_state=before_state,
+                after_state=after_state,
+                confidence=float(getattr(proposal, "confidence", 0.0) or 0.0),
+                reason="growth_integration_governance_mirror",
+                evidence=list(getattr(proposal, "evidence_ids", []) or []),
+                metadata={
+                    "canonical_proposal_id": str(getattr(proposal, "id", "")),
+                    "content_fingerprint": str(
+                        (getattr(proposal, "evaluator_meta", None) or {}).get(
+                            "content_fingerprint", "",
+                        )
+                    ),
+                    "source": "growth_integration_mirror",
+                },
+            )
+            storage.save(governance_proposal)
+            return {"ok": True, "proposal_id": governance_proposal.proposal_id}
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[growth_integration] 提案镜像失败（已隔离）: %s", exc)
+            return {"ok": False, "reason": str(exc)}
 
     # ============================================================
     # P5.0-E #3: _record_applied_evolution
@@ -850,15 +1068,51 @@ class GrowthIntegrationService:
                     process_result["reasons"].append("transition_analysis_attached")
                 except Exception:  # noqa: BLE001
                     pass
+
+            # ============================================================
+            # v1.1 Phase 1: 治理模式（growth_governance_enabled, 默认 False =
+            # legacy 行为字节不变）。开启后:
+            #   - 提案镜像到 B-store（pending, 治理事实来源）;
+            #   - 跳过 Step8/9 政策自动审批/应用——治理闭环改为
+            #     admin review → drain → apply → audit。
+            # ============================================================
+            _governance_enabled = bool(
+                (self.config or {}).get("growth_governance_enabled", False)
+                if isinstance(self.config, dict) else False
+            )
+            if _governance_enabled and process_result.get("proposal_id"):
+                # process_event 结果只回传 proposal_id；镜像需要完整提案对象，
+                # 从 A-store 按 id 取回（评估工作区语义不变）。
+                _mirror_proposal = process_result.get("proposal")
+                if _mirror_proposal is None and self.proposal_manager is not None:
+                    try:
+                        _mirror_proposal = self.proposal_manager.get_proposal(
+                            process_result["proposal_id"]
+                        )
+                    except Exception:  # noqa: BLE001
+                        _mirror_proposal = None
+                _mirror = self._mirror_proposal_to_governance_store(
+                    proposal=_mirror_proposal,
+                    source_event=source_event,
+                )
+                if _mirror.get("ok"):
+                    process_result["reasons"].append("governance_mirrored")
+                    process_result["governance_proposal_id"] = _mirror["proposal_id"]
+                else:
+                    process_result["reasons"].append(
+                        f"governance_mirror_failed: {_mirror.get('reason', 'unknown')}"
+                    )
+
             # ============================================================
             # Step 8: Approval（Phase 4.0 R2.5.3: Evolution Governance Layer）
             # 红线：
             #   - 只产生 ApprovalDecision + 修改 proposal.status ∈ {approved/rejected/deferred/under_review}
             #   - 绝对不调 accept_proposal()/apply_proposal()/PersonalityAdapter
             #   - applied 永远保持 False（Apply 留给 R2.5.4 Personality Evolution Pipeline）
+            # v1.1 Phase 1: 治理模式开启时跳过（治理闭环见上）。
             # ============================================================
             pid = process_result.get("proposal_id")
-            if pid:
+            if pid and not _governance_enabled:
                 try:
                     from src.approval.approval_manager import ApprovalManager, ApprovalPolicy
                     _approval_raw_cfg = (self.config or {}).get("approval") if isinstance(self.config, dict) else None

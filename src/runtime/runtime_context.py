@@ -129,6 +129,18 @@ class RuntimeContext:
                     "dominant": getattr(state, "dominant", None) or "neutral",
                     "intensity": getattr(state, "intensity", 0.0) or 0.0,
                 }
+                # Emotion System 2.0（E-Emotion-5）：派生响应策略（只读映射，
+                # 描述性倾向，不覆盖人格）；engine.py 读取该键追加为表达策略行。
+                try:
+                    from src.emotion.emotion_response_strategy import (
+                        response_strategy_prompt_line,
+                    )
+                    strategy_line = response_strategy_prompt_line(state)
+                    if strategy_line:
+                        emotion_context["response_strategy"] = strategy_line
+                except Exception:
+                    # 策略派生失败不影响主链路（fail-soft，情绪块照常渲染）
+                    pass
                 trace.append(f"emotion_context built: dominant={emotion_context['dominant']}")
 
         # Build prioritized prompt context

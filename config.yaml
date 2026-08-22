@@ -34,7 +34,9 @@ llm:
 initiative:
   # 总开关：true = Runtime InitiativeBridge 发送主动消息
   #         false = 完全不发送
-  enabled: true
+  # v1.3 RC 0.5 (H1): 默认 false —— 旧 bridge 直发路径关闭,
+  # 主动行为只经 v1.3 治理链(Proposal→Review→Drain→SafetyFilter→Budget)。
+  enabled: false
   # AstrBot HTTP API 地址
   astrbot_url: "http://127.0.0.1:11451"
   # OneBot HTTP API 地址
@@ -149,6 +151,32 @@ runtime:
   # 默认关闭：开启前行为与 Phase B-1 完全一致
   self_model_drain_enabled: false
   self_model_drain_limit: 3
+  # v1.3 Phase 1: goal 关注方向提案消费器（approved → GoalState active 闭环）
+  # 默认关闭：开启前行为与 v1.2.1 完全一致
+  goal_drain_enabled: false
+  goal_drain_limit: 3
+  # v1.3 Phase 2: goal 关注方向只读注入聊天理解上下文（默认关闭；
+  # 开启时 GoalState 仅作理解参考，不是成长事实，不进入 Narrative）
+  goal_context_enabled: false
+  # v1.3 Phase 4: goal 模式检测生产接线（off=零触碰 | shadow=只产 Candidate |
+  # active=桥接 PENDING 提案）。默认 off; 开启前提 integration_host_enabled=true;
+  # 与 Initiative 无关, 不自动审批。
+  goal_detection_mode: "off"
+  # v1.3 Phase 5.2: initiative Action 执行前安全检查层（默认关闭;
+  # 开启时 Action 须通过 confidence/许可/去重/冷却检查方可执行, fail-closed）
+  initiative_safety_enabled: false
+  # v1.3 Phase 5.4: initiative 受治理流水线（off=零触碰 |
+  # shadow=GoalState→Candidate→PENDING 提案 | active=+Drain→SafetyFilter→Dispatcher）。
+  # 默认 off; dispatch 另有独立开关（双 off = 不开启主动行为）;
+  # 不接 Initiative 引擎骨架, 不自动批准。
+  initiative_pipeline_mode: "off"
+  initiative_dispatch_enabled: false
+  # v1.3 Phase 5.5: initiative 可观察性（默认关闭; 开启时流水线写
+  # data/initiative/initiative_actions.jsonl 审计账本, admin 只读查询）
+  initiative_observability_enabled: false
+  # v1.3 RC 0.5 (H2): 旧 DecisionEngine 决策路径 dispatch 门控（默认关闭;
+  # 关闭=只计算+记日志, 不 dispatch 不发送; true 仅调试/迁移用）
+  legacy_decision_dispatch_enabled: false
   # Memory 上下文限制：传入 prompt 的最大 memory 条数（完整 memory 仍保留在磁盘）
   max_context_memories: 50
   # 旧 data/memory.json 自动导入（仅在新用户首次对话时触发一次）

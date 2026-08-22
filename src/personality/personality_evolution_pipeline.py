@@ -216,6 +216,7 @@ class PersonalityEvolutionPipeline:
         proposal: GrowthProposal,
         actor: str = "runtime_drain",
         approval_id: str = "",
+        approval_record: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """P0-1: 把已批准的 proposal 应用到全局 PersonalityState 并落盘。
 
@@ -241,7 +242,23 @@ class PersonalityEvolutionPipeline:
         proposal_id = str(getattr(proposal, "id", "") or "")
         if not proposal_id:
             return {"applied": False, "reason": "proposal_id_missing"}
-        approval_key = approval_id or f"approved_by:{actor}"
+        # G-1.3.2: 真实审批凭证路径 —— 校验通过后 approval_id 取真实 record_id；
+        # 无凭证时保持旧兼容（approval_id 参数 / approved_by:{actor} 兜底）。
+        if approval_record is not None:
+            from src.personality.personality_adapter import _validate_approval_record
+
+            _valid, _invalid_reason = _validate_approval_record(
+                approval_record, proposal_id,
+            )
+            if not _valid:
+                return {
+                    "applied": False,
+                    "reason": f"approval_record_invalid: {_invalid_reason}",
+                    "proposal_id": proposal_id,
+                }
+            approval_key = str(approval_record.get("record_id", "") or "")
+        else:
+            approval_key = approval_id or f"approved_by:{actor}"
         try:
             ps = get_personality_state()
         except Exception as exc:  # noqa: BLE001
@@ -261,7 +278,11 @@ class PersonalityEvolutionPipeline:
                 proposal=proposal,
                 trait_states=trait_states,
                 actor=actor,
-                approval_record={"approval_id": approval_key},
+                approval_record=(
+                    approval_record
+                    if approval_record is not None
+                    else {"approval_id": approval_key}
+                ),
             )
         except Exception as exc:  # noqa: BLE001
             return {
@@ -345,6 +366,40 @@ class PersonalityEvolutionPipeline:
         except Exception as exc:  # noqa: BLE001
             logger.warning("[PersonalityEvolutionPipeline.apply_approved_to_state] save 失败: %s", exc)
             saved = False
+        # G-1.1: 统一 mutation 审计（G-0 state_mutation_audit；fail-soft，
+        # 审计不可用绝不阻断 apply 结果返回）。
+        # G-1.3.4: 携带完整审批上下文（reviewer_id / decision）。
+        try:
+            from src.governance.state_mutation_audit import record_state_mutation
+
+            _reviewer_id = ""
+            _decision = ""
+            if approval_record is not None:
+                _reviewer_id = str(
+                    approval_record.get("reviewer_id", "")
+                    or approval_record.get("actor", "")
+                    or ""
+                )
+                _decision = str(
+                    approval_record.get("decision", "")
+                    or approval_record.get("action", "")
+                    or ""
+                )
+            record_state_mutation(
+                component="personality",
+                target="personality_trait",
+                before=affected_before,
+                after=affected_after,
+                proposal_id=proposal_id,
+                approval_id=approval_key,
+                actor=actor,
+                extra={
+                    "reviewer_id": _reviewer_id,
+                    "decision": _decision,
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[PersonalityEvolutionPipeline] mutation 审计写入失败（已隔离）: %s", exc)
         return {
             "applied": True,
             "saved": saved,

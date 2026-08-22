@@ -323,6 +323,16 @@ def _state_file_lock(path) -> threading.RLock:
     return _lock
 
 
+def is_legacy_decision_dispatch_enabled(config: Optional[Dict[str, Any]] = None) -> bool:
+    """v1.3 RC 0.5: 旧决策路径 dispatch 门控(默认关闭 = 不 dispatch 不发送)。
+
+    H2 修复: 旧 DecisionEngine → ActionDispatcher 直发路径绕过 v1.3 治理链
+    (Proposal→Review→Drain→SafetyFilter→Budget), 必须默认关闭;
+    仅调试/迁移时显式开启保持旧行为兼容。
+    """
+    return bool((config or {}).get("legacy_decision_dispatch_enabled", False))
+
+
 class RuntimeCore(ModuleBase):
     """
     [DEPRECATED][Authority Registry v1.0] Runtime 超级类（Legacy）。
@@ -1184,6 +1194,30 @@ class RuntimeCore(ModuleBase):
                         if bool(self.config.get("narrative_context_injection", False))
                         else "data/narrative_history_shadow.json"
                     ),
+                    # v1.3 Phase 4: Goal 模式检测（默认 off = 零触碰;
+                    # shadow = 只产 Candidate; active = 桥接 PENDING 提案）。
+                    # 与 Initiative 无关; 不自动审批; 由后台 tick 驱动。
+                    goal_detection_mode=str(
+                        self.config.get("goal_detection_mode", "off") or "off"
+                    ),
+                    # v1.3 Phase 5.4: Initiative 受治理流水线(默认双 off;
+                    # active 仍需 initiative_dispatch_enabled 才真正 dispatch,
+                    # 生产默认不开启主动行为)。
+                    initiative_pipeline_mode=str(
+                        self.config.get("initiative_pipeline_mode", "off") or "off"
+                    ),
+                    initiative_dispatch_enabled=bool(
+                        self.config.get("initiative_dispatch_enabled", False)
+                    ),
+                    initiative_observability_enabled=bool(
+                        self.config.get("initiative_observability_enabled", False)
+                    ),
+                    initiative_target_user=str(
+                        (self.config.get("initiative") or {}).get(
+                            "target_user_qq", ""
+                        )
+                        or ""
+                    ),
                 )
                 self._integration_host.start()
             self._integration_host.tick()
@@ -1277,9 +1311,20 @@ class RuntimeCore(ModuleBase):
         dispatched_types: set = set()
         dispatched_actions: List[Action] = []
 
+        # v1.3 RC 0.5 (H2): 旧决策路径 dispatch 门控(默认关 = 防绕过治理链)。
+        # 关闭时: 继续计算 decision、记录日志、不 dispatch、不发送。
+        _dispatch_allowed = is_legacy_decision_dispatch_enabled(self.config)
+
         for decision in decisions:
             if decision.confidence >= self._decision_confidence_threshold:
                 action = Action.from_decision(decision)
+                if not _dispatch_allowed:
+                    logger.info(
+                        "[RuntimeCore._maybe_decide] 旧决策路径 dispatch 已关闭"
+                        " (legacy_decision_dispatch_enabled=false), action=%s 跳过",
+                        decision.action_type,
+                    )
+                    continue
                 self.action_dispatcher.dispatch(action)
                 dispatched_types.add(decision.action_type)
                 dispatched_actions.append(action)
@@ -1306,6 +1351,13 @@ class RuntimeCore(ModuleBase):
                             payload=decision_intent.payload,
                             reason=decision_intent.reason,
                         )
+                        if not _dispatch_allowed:
+                            logger.info(
+                                "[RuntimeCore._maybe_decide] 旧决策路径 dispatch 已关闭"
+                                " (legacy_decision_dispatch_enabled=false), action=%s 跳过",
+                                decision_intent.action_type,
+                            )
+                            continue
                         self.action_dispatcher.dispatch(action)
                         dispatched_types.add(decision_intent.action_type)
                         dispatched_actions.append(action)

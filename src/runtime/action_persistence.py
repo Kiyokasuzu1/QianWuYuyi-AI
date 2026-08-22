@@ -378,15 +378,26 @@ class ActionPersistenceManager:
         error: Optional[str] = None,
         source: str = "phase_b5_persistence",
         extra: Optional[Dict[str, Any]] = None,
+        proposal_id: Optional[str] = None,  # v1.3 Phase 5.1: 治理提案追溯
+        goal_reference: Optional[str] = None,  # v1.3 Phase 5.1: goal 引用追溯
     ) -> bool:
         """
         持久化一条 lifecycle 事件。
+
+        v1.3 Phase 5.1: 新增 proposal_id / goal_reference 可选审计字段
+        (仅合并进 extra, 不改 record schema, 向后兼容)。
 
         Returns:
             True 表示写盘成功(或不写因为 disabled);False 表示失败或降级。
         """
         if not action_id:
             return False
+
+        _extra = dict(extra or {})
+        if proposal_id:
+            _extra.setdefault("proposal_id", str(proposal_id))
+        if goal_reference:
+            _extra.setdefault("goal_reference", str(goal_reference))
 
         rec_ts = float(ts if ts is not None else time.time())
         rec = ActionPersistenceRecord(
@@ -399,7 +410,7 @@ class ActionPersistenceManager:
             source=source,
             result=result,
             error=error,
-            extra=extra or {},
+            extra=_extra,
         )
         return self._write_record(rec)
 
