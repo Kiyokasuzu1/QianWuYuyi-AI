@@ -3,10 +3,12 @@
 追踪自我叙事版本变化，支持差异计算和 JSON 持久化。
 增加 schema_version 以保证未来数据迁移兼容性。
 """
+from __future__ import annotations
+
 import json
 from pathlib import Path
 from dataclasses import dataclass, field
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 from src.memory.atomic_write import (
@@ -101,6 +103,44 @@ class SelfNarrativeHistory:
         if prev:
             return NarrativeDiff.compute(prev, snapshot)
         return NarrativeDiff(is_significant=True)
+
+    def append_snapshot(
+        self, snapshot: NarrativeSnapshot, filepath: Optional[str] = None
+    ) -> NarrativeDiff:
+        """v1.2: append-only 追加快照。
+
+        - 与最新版本无显著差异时不新增（幂等：重复组装不产生重复版本）;
+        - 保留旧版本（只裁剪超出 max_snapshots 的最旧快照）;
+        - filepath 提供时立即原子落盘（复用 save 的锁 + 原子写）;
+        - 任何异常 fail-soft：不抛出，仅放弃本次落盘。
+        """
+        try:
+            latest = self.snapshots[-1] if self.snapshots else None
+            if latest is not None:
+                diff = NarrativeDiff.compute(latest, snapshot)
+                if not diff.is_significant:
+                    return diff
+            diff = self.add_snapshot(snapshot)
+            if filepath:
+                try:
+                    self.save(filepath)
+                except Exception:
+                    pass
+            return diff
+        except Exception:
+            return NarrativeDiff()
+
+    def get_recent(self, limit: int = 5) -> List[NarrativeSnapshot]:
+        """v1.2: 返回最近 N 个快照（最新在前）。"""
+        try:
+            n = int(limit)
+        except (TypeError, ValueError):
+            n = 5
+        if n <= 0:
+            n = 5
+        items = list(self.snapshots)
+        items.reverse()
+        return items[:n]
 
     def get_latest(self) -> NarrativeSnapshot:
         """获取最新快照"""

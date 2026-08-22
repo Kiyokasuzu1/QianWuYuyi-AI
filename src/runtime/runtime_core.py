@@ -830,15 +830,7 @@ class RuntimeCore(ModuleBase):
                     self.reflection_growth_bridge = None
 
             # Phase 3.5.13: Growth Approval Layer（默认关闭）
-            if self._approval_manager_enabled and self.growth_adapter:
-                try:
-                    self.approval_manager = ApprovalManager(
-                        growth_adapter=self.growth_adapter,
-                        history_path=self.config.get("approval_history_path"),
-                    )
-                except Exception as _e:
-                    logger.warning(f"ApprovalManager 初始化失败（已隔离）: {_e}")
-                    self.approval_manager = None
+            self._init_approval_manager()
 
             # Phase 3.5.13: Runtime Lifecycle Integration（默认关闭）
             if self._lifecycle_manager_enabled:
@@ -1009,6 +1001,43 @@ class RuntimeCore(ModuleBase):
         # - 每天保存完整快照
         self.scheduler.start()
 
+    def _make_approval_apply_hook(self):
+        """G-1.3.2: ApprovalManager → 演化管线 的 apply_hook。
+
+        惰性解析 pipeline（approve 时 hook 触发才取值）；
+        携带 approval_evidence（真实审批凭证）进入 apply_approved_to_state，
+        禁止重新生成 approval_id。
+        """
+
+        def _hook(proposal, actor, approval_evidence=None):
+            pipeline = getattr(self, "personality_evolution_pipeline", None)
+            if pipeline is None:
+                return {"applied": False, "reason": "pipeline_not_available"}
+            try:
+                return pipeline.apply_approved_to_state(
+                    proposal=proposal,
+                    actor=actor,
+                    approval_record=approval_evidence,
+                )
+            except Exception as exc:  # noqa: BLE001
+                return {"applied": False, "reason": f"apply_exception:{exc}"}
+
+        return _hook
+
+    def _init_approval_manager(self) -> None:
+        """G-1.3.2: ApprovalManager 接线（原 __init__ 内联块抽出，行为不变；
+        便于测试在裸实例上验证 apply_hook 接线）。"""
+        if self._approval_manager_enabled and self.growth_adapter:
+            try:
+                self.approval_manager = ApprovalManager(
+                    growth_adapter=self.growth_adapter,
+                    history_path=self.config.get("approval_history_path"),
+                    apply_hook=self._make_approval_apply_hook(),
+                )
+            except Exception as _e:
+                logger.warning(f"ApprovalManager 初始化失败（已隔离）: {_e}")
+                self.approval_manager = None
+
     def _subscribe_events(self) -> None:
         """订阅全局事件"""
         self.event_bus.subscribe_all(self._on_event)
@@ -1108,9 +1137,126 @@ class RuntimeCore(ModuleBase):
             except Exception as e:
                 logger.warning(f"AutonomousScheduler tick 异常（已隔离）: {e}")
 
+        # v1.1 Phase 2.1: 后台集成宿主 tick（Reflection 等周期任务;
+        # config integration_host_enabled 默认 False → 行为不变; fail-soft）
+        self._tick_background_host()
+
+        # v1.1 Phase 3: 后台治理 drain（config background_drain_enabled 默认
+        # False → 行为不变; 账本幂等, 与 Stage 13 drain 重复执行不重复 mutation）
+        self._drain_background_proposals()
+
         # 定期保存状态（每5分钟）
         if int(now) % 300 == 0:
             self._save_state()
+
+    def _tick_background_host(self) -> None:
+        """v1.1 Phase 2.1: 惰性构造并 tick 后台集成宿主。
+
+        - 默认关闭（config integration_host_enabled=False）;
+        - 宿主任务只产生分析结果/事件, 不直接修改任何长期状态;
+        - 任何异常隔离, 不影响聊天主链。
+        """
+        try:
+            if not bool(self.config.get("integration_host_enabled", False)):
+                return
+            if getattr(self, "_integration_host", None) is None:
+                from src.runtime.integration.runtime_integration_host import (
+                    RuntimeIntegrationHost,
+                )
+
+                self._integration_host = RuntimeIntegrationHost(
+                    name="runtime_background_host",
+                    reflection_cycle_enabled=bool(
+                        self.config.get("reflection_cycle_enabled", False)
+                    ),
+                    memory_consolidation_enabled=bool(
+                        self.config.get("memory_consolidation_enabled", False)
+                    ),
+                    # v1.2 Self Understanding: 叙事组装开关（默认 False = 行为不变）。
+                    # narrative_context_injection=false 时叙事写入 shadow 路径,
+                    # 聊天侧 Provider 只读默认路径 → 上下文零变化（SHADOW 语义）;
+                    # =true 时写入默认路径, 聊天可见（ACTIVE 语义, 由后续阶段开启）。
+                    narrative_assembly_enabled=bool(
+                        self.config.get("narrative_assembly_enabled", False)
+                    ),
+                    narrative_history_path=(
+                        "data/narrative_history.json"
+                        if bool(self.config.get("narrative_context_injection", False))
+                        else "data/narrative_history_shadow.json"
+                    ),
+                )
+                self._integration_host.start()
+            self._integration_host.tick()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[RuntimeCore.tick] 后台宿主 tick 失败（已隔离）: %s", exc)
+
+    def _drain_background_proposals(self) -> None:
+        """v1.1 Phase 3: 后台治理 drain（无聊天事件时也能更新长期模型）。
+
+        - config background_drain_enabled 默认 False → 行为不变;
+        - 四个 drain（personality/self_model/emotion/relationship）与 Stage 13
+          共用同一套账本幂等（EP-2 / record_id / state_mutations），重复执行
+          不会产生重复 mutation;
+        - fail-soft: 任何异常隔离, 不影响 tick 主流程。
+        """
+        try:
+            if not bool(self.config.get("background_drain_enabled", False)):
+                return
+            try:
+                self.drain_approved_growth_proposals()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("[RuntimeCore.tick] 后台 growth drain 失败（已隔离）: %s", exc)
+            try:
+                from src.growth.self_model_approved_drain import (
+                    drain_approved_self_model_proposals,
+                )
+                from src.emotion.emotion_approved_drain import (
+                    drain_approved_emotion_proposals,
+                )
+                from src.relationship.relationship_approved_drain import (
+                    drain_approved_relationship_proposals,
+                )
+
+                _sm_store = getattr(
+                    getattr(self, "personality_resolver", None), "self_model_store", None,
+                )
+                _sm_updater = getattr(self, "self_model_updater", None)
+                if _sm_store is not None:
+                    drain_approved_self_model_proposals(
+                        updater=_sm_updater,
+                        store=_sm_store,
+                        config={
+                            "self_model_drain_enabled": bool(
+                                self.config.get("self_model_drain_enabled", False)
+                            ),
+                        },
+                    )
+                _em = getattr(self, "emotion_manager", None)
+                if _em is not None and getattr(_em, "repository", None) is not None:
+                    drain_approved_emotion_proposals(
+                        repository=_em.repository,
+                        config={
+                            "emotion_drain_enabled": bool(
+                                self.config.get("emotion_drain_enabled", False)
+                            ),
+                        },
+                    )
+                _rel_repo = getattr(self, "relationship_repository", None)
+                if _rel_repo is not None:
+                    drain_approved_relationship_proposals(
+                        repository=_rel_repo,
+                        config={
+                            "relationship_drain_enabled": bool(
+                                self.config.get("relationship_drain_enabled", False)
+                            ),
+                        },
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "[RuntimeCore.tick] 后台三域 drain 失败（已隔离）: %s", exc
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[RuntimeCore.tick] 后台 drain 调度失败（已隔离）: %s", exc)
 
     # ==================== 决策 ====================
 
@@ -1489,7 +1635,13 @@ class RuntimeCore(ModuleBase):
         items.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
         return items[:limit]
 
-    def handle_completed_experience(self, experience: Any, *, store_to_memory: bool = True) -> Dict[str, Any]:
+    def handle_completed_experience(
+        self,
+        experience: Any,
+        *,
+        store_to_memory: bool = True,
+        user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         统一处理已完成 experience：
         - 发出 `experience_created`
@@ -1497,6 +1649,9 @@ class RuntimeCore(ModuleBase):
 
         用于事件驱动路径与测试/外部集成路径统一接入，
         避免只有 `_on_action_completed()` 才能走标准事件链。
+
+        R-1.5.0: user_id override——有 ctx 的调用方传入消息级真实用户,
+        journal 归属不再依赖进程级 config 快照。
         """
         result = {
             "experience_emitted": False,
@@ -1519,7 +1674,7 @@ class RuntimeCore(ModuleBase):
 
         if store_to_memory and self.memory_adapter:
             try:
-                self.memory_adapter.store_experience(experience)
+                self.memory_adapter.store_experience(experience, user_id=user_id)
                 self._emit_domain_event(
                     EVENT_MEMORY_CREATED,
                     source="memory_adapter",
@@ -1996,10 +2151,17 @@ class RuntimeCore(ModuleBase):
                 proposed_changes=pcs,
                 confidence=float(change_request.get("confidence", 0.5) or 0.5),
             )
+            # G-1.3.3: preview 不是真审批 —— 传预览凭证
+            # （不生成 ApprovalRecord、不写 mutation audit、不进入正式 drain）
             env = self.personality_adapter.apply_proposal(
                 fake_proposal,
                 actor="runtime_core_preview",
-                mark_approved=True,
+                approval_record={
+                    "record_id": "preview",
+                    "proposal_id": str(fake_proposal.id),
+                    "decision": "preview",
+                    "reviewer_id": "runtime_preview",
+                },
             )
             result["evolution_applied"] = bool(env.get("applied"))
             result["evolution_before"] = env.get("before", {})
@@ -2069,7 +2231,17 @@ class RuntimeCore(ModuleBase):
                                     decision.confidence,
                                 )
                                 if self._self_model_updater_internal is not None:
-                                    self._self_model_updater_internal.apply_proposal(sug)
+                                    # P2.6 Phase C-1 hardening: 统一治理开启时禁止
+                                    # 该 dormant 链直接 apply（仅 flag 门控，不重构其余逻辑）
+                                    try:
+                                        from src.governance.governance_unification import (
+                                            is_governance_unification_enabled,
+                                        )
+                                        _unified_governed = is_governance_unification_enabled()
+                                    except Exception:
+                                        _unified_governed = False
+                                    if not _unified_governed:
+                                        self._self_model_updater_internal.apply_proposal(sug)
                             else:
                                 # APPROVAL_REQUIRED
                                 logger.info(
@@ -5083,6 +5255,9 @@ class RuntimeCore(ModuleBase):
         # Phase 4.1: 提取本轮用户标识（pipeline 在 event.payload / ctx.inputs 写入）
         uid = self._extract_event_user_id(event, ctx)
         # 优先 path: memory_adapter.retrieve(query, user_id=...)
+        # R-1.2 说明: 当前 MemoryAdapter 无 retrieve 方法（探测恒不命中），
+        # 此分支仅为未来 duck-typed adapter 兼容保留——生产实际检索路径
+        # 明确收敛到下方 collect_allowed_records（store 主路径）。
         # Phase 4.1 修正两处历史接线错误：
         #   1) 旧代码 ma.retrieve(ctx) 把 ctx 对象当 query —— 检索词变成对象 repr
         #   2) 旧代码丢弃返回值 —— ctx.retrieved_memories 从未被写入
@@ -5121,7 +5296,8 @@ class RuntimeCore(ModuleBase):
                 logger.warning(
                     "[RuntimeCore.process] memory_adapter.retrieve 失败: %s", exc,
                 )
-        # 降级 path: 直接读 memory_store（若有 memory_store 引用）
+        # 主路径（R-1.2: 生产实际执行处——store 直读 + scope 授权装配；
+        # 不改检索排序、不改 memory_scope 权限逻辑、不改返回结构）
         ms = None
         if ma is not None and callable(getattr(ma, "get_memory_store", None)):
             try:
@@ -5271,6 +5447,14 @@ class RuntimeCore(ModuleBase):
                 except Exception:
                     em = None
         if em is not None and gate_ok:
+            # R-1.3.a: 捕获变更前状态（显著变化判定用; fail-soft）
+            _emotion_before = None
+            try:
+                _before_state = getattr(em, "state", None)
+                if _before_state is not None and hasattr(_before_state, "to_dict"):
+                    _emotion_before = _before_state.to_dict()
+            except Exception:
+                _emotion_before = None
             try:
                 # 兼容旧接口（若未来存在）；EmotionManager 真实 API 为
                 # process_event(EmotionEvent) + state(EmotionState)。
@@ -5300,7 +5484,9 @@ class RuntimeCore(ModuleBase):
                     if text.strip():
                         ev = EmotionEventDetector().detect(text)
                         if ev is not None:
-                            em.process_event(ev)
+                            # R-1.5.0: 同轮防护（与 orchestrator Step7 同向,
+                            # 防嵌套重入/双引擎重复 mutation）
+                            em.process_event(ev, skip_if_recent_duplicate=True)
                 # 快照到 ctx（无事件时写当前状态，不再恒 None）
                 state = getattr(em, "state", None)
                 if state is not None:
@@ -5308,6 +5494,59 @@ class RuntimeCore(ModuleBase):
                         ctx.emotion_snapshot = state.to_dict()  # type: ignore[attr-defined]
                     else:
                         ctx.emotion_snapshot = state  # type: ignore[attr-defined]
+                # R-1.3.a: 填充 R-1.0 冻结的 emotion_context 契约槽位
+                # （dominant / intensity / response_strategy / dimensions_summary）;
+                # 旧 ctx.emotion_snapshot 兼容字段保留。
+                try:
+                    _state_dict = state.to_dict() if hasattr(state, "to_dict") else {}
+                    _dominant = str(_state_dict.get("dominant", "") or "")
+                    _intensity = float(_state_dict.get("intensity", 0.0) or 0.0)
+                    try:
+                        from src.emotion.emotion_response_strategy import (
+                            response_strategy_prompt_line,
+                        )
+                        _strategy = response_strategy_prompt_line(state)
+                    except Exception:
+                        _strategy = ""
+                    ctx.emotion_context = {
+                        "dominant": _dominant,
+                        "intensity": _intensity,
+                        "response_strategy": _strategy,
+                        "dimensions_summary": {
+                            k: _state_dict.get(k)
+                            for k in (
+                                "valence", "arousal", "happiness", "sadness",
+                                "curiosity", "anxiety", "energy", "confidence",
+                                "stability", "trust", "attachment",
+                            )
+                            if k in _state_dict
+                        },
+                    }
+                except Exception:
+                    pass
+                # R-1.3.a: 显著变化时恢复 Runtime → EventBus 通路
+                # （镜像 orchestrator 阈值: dominant 标签变化 或 |Δintensity|>0.05;
+                #   fail-soft; 只发事件, 不触发任何下游状态修改）
+                try:
+                    _after_dict = state.to_dict() if hasattr(state, "to_dict") else None
+                    if _after_dict is not None and _emotion_before is not None:
+                        _d_before = str(_emotion_before.get("dominant", "") or "")
+                        _d_after = str(_after_dict.get("dominant", "") or "")
+                        _i_before = float(_emotion_before.get("intensity", 0.0) or 0.0)
+                        _i_after = float(_after_dict.get("intensity", 0.0) or 0.0)
+                        if _d_before != _d_after or abs(_i_after - _i_before) > 0.05:
+                            from src.events.bus import publish_event
+                            from src.events.events import EmotionChangedEvent
+
+                            publish_event(EmotionChangedEvent(
+                                user_id=str(self._extract_event_user_id(event, ctx) or ""),
+                                data={
+                                    "dominant": _d_after,
+                                    "intensity": _i_after,
+                                },
+                            ))
+                except Exception:
+                    pass
             except Exception as exc:
                 logger.warning(
                     "[RuntimeCore.process] emotion_update 失败: %s", exc,
@@ -5925,6 +6164,20 @@ class RuntimeCore(ModuleBase):
                 user_text = str(md.get("user_response") or "").strip()
                 if not user_text:
                     continue  # 无真实用户内容的经历不参与成长判断
+                try:
+                    from src.governance.write_path_registry import warn_deprecated_once
+
+                    warn_deprecated_once(
+                        "runtime_core.experience_importance_hardcoded",
+                        "[G-0 deprecated] 经历投影 importance 硬编码 0.5。"
+                        "迁移计划: G-2 复核域归属并接入情绪权重。",
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+                # R-1.5.0 诚实修正: journal 链天然没有 memory id（4.1D 起经历
+                # 不写 MemoryStore; _id_map 键=experience_id 值=journal record id）,
+                # 跨链统一键不可经该映射达成——保持 journal id 稳定语义,
+                # 跨链去重机制在 R-1.5.1 决策后另行落地。
                 projected.append({
                     "id": str(jrec.get("id") or ""),
                     "content": user_text,
@@ -6361,6 +6614,72 @@ class RuntimeCore(ModuleBase):
             })
         except Exception as exc:  # noqa: BLE001
             logger.warning("[RuntimeCore.stage13] growth drain 失败（已隔离）: %s", exc)
+        # R-1.4: 三域统一 drain 调度（self_model + emotion; 各自 config 开关默认不变;
+        # fail-soft, drain 异常不阻断聊天; 缺少依赖组件时跳过）
+        try:
+            from src.growth.self_model_approved_drain import (
+                drain_approved_self_model_proposals,
+            )
+            from src.emotion.emotion_approved_drain import (
+                drain_approved_emotion_proposals,
+            )
+
+            _sm_store = getattr(
+                getattr(self, "personality_resolver", None), "self_model_store", None,
+            )
+            _sm_updater = getattr(self, "self_model_updater", None)
+            if _sm_store is not None:
+                _sm_result = drain_approved_self_model_proposals(
+                    updater=_sm_updater,
+                    store=_sm_store,
+                    config={
+                        "self_model_drain_enabled": bool(
+                            self.config.get("self_model_drain_enabled", False)
+                        ),
+                    },
+                )
+                self._sm_chain_mark(ctx, "self_model_drain", {
+                    "applied": _sm_result.get("applied", 0),
+                    "enabled": _sm_result.get("enabled", False),
+                })
+            _em = getattr(self, "emotion_manager", None)
+            if _em is not None and getattr(_em, "repository", None) is not None:
+                _em_result = drain_approved_emotion_proposals(
+                    repository=_em.repository,
+                    config={
+                        "emotion_drain_enabled": bool(
+                            self.config.get("emotion_drain_enabled", False)
+                        ),
+                    },
+                )
+                self._sm_chain_mark(ctx, "emotion_drain", {
+                    "applied": _em_result.get("applied", 0),
+                    "enabled": _em_result.get("enabled", False),
+                })
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[RuntimeCore.stage13] 统一 drain 调度失败（已隔离）: %s", exc)
+        # v1.1 Phase 1: relationship drain（运行时关系状态; config 默认关; fail-soft）
+        try:
+            from src.relationship.relationship_approved_drain import (
+                drain_approved_relationship_proposals,
+            )
+
+            _rel_repo = getattr(self, "relationship_repository", None)
+            if _rel_repo is not None:
+                _rel_result = drain_approved_relationship_proposals(
+                    repository=_rel_repo,
+                    config={
+                        "relationship_drain_enabled": bool(
+                            self.config.get("relationship_drain_enabled", False)
+                        ),
+                    },
+                )
+                self._sm_chain_mark(ctx, "relationship_drain", {
+                    "applied": _rel_result.get("applied", 0),
+                    "enabled": _rel_result.get("enabled", False),
+                })
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[RuntimeCore.stage13] relationship drain 失败（已隔离）: %s", exc)
         changed = bool(getattr(ctx, "_self_model_changed", False))
         adapter = getattr(self, "_self_model_adapter", None)
         if adapter is None or not callable(getattr(adapter, "save_state", None)):
@@ -6684,6 +7003,17 @@ class RuntimeCore(ModuleBase):
                             f"- 主导情绪: {dominant}\n"
                             f"- 强度: {intensity:.1f}"
                         )
+                        # Emotion System 2.0（E-Emotion-5）：从状态快照派生表达策略
+                        # （只读映射，描述性倾向，不覆盖人格；派生失败静默跳过）
+                        try:
+                            from src.emotion.emotion_response_strategy import (
+                                response_strategy_prompt_line,
+                            )
+                            strategy_line = response_strategy_prompt_line(emotion_snapshot)
+                            if strategy_line:
+                                emotion_context_str += f"\n- 表达策略: {strategy_line}"
+                        except Exception:
+                            pass
                 # P4.4-D5: Stage 14 已生成的 identity/strategy/behavior 三块
                 # 经 context_prompt_blocks 送进正式链（此前 adapter 路径静默丢弃）。
                 # 顺序与降级路径一致：identity → strategy → behavior；
@@ -6934,7 +7264,14 @@ class RuntimeCore(ModuleBase):
             self._building_experience_id = None
             if experience:
                 # 复用既有统一完成入口（发事件 + journal 落账）
-                self.handle_completed_experience(experience, store_to_memory=True)
+                # R-1.5.0: 透传本轮真实 user_id（Stage 14 已写入 ctx.user_id;
+                # 缺失时回退 config 默认）
+                _exp_uid = str(getattr(ctx, "user_id", "") or "")
+                self.handle_completed_experience(
+                    experience,
+                    store_to_memory=True,
+                    user_id=_exp_uid or None,
+                )
         except Exception as exc:  # noqa: BLE001 — fail-soft
             logger.warning(
                 "[RuntimeCore] 对话轮经历完成失败（已隔离）: %s", exc,

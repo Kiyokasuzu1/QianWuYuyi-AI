@@ -24,8 +24,18 @@ logger = logging.getLogger(__name__)
 
 
 class SelfModelContextProvider:
-    def __init__(self, store: SelfModelStore):
+    # v1.2: 成长叙事历史文件默认路径（只读；缺失/损坏时注入层静默跳过）
+    DEFAULT_NARRATIVE_HISTORY_PATH = "data/narrative_history.json"
+
+    def __init__(
+        self,
+        store: SelfModelStore,
+        narrative_history_path: Optional[str] = None,
+    ):
         self.store = store
+        self._narrative_history_path = (
+            narrative_history_path or self.DEFAULT_NARRATIVE_HISTORY_PATH
+        )
         # Phase 6.2 optional: 延迟注入
         self._phase_6_2_attached: bool = False
         self._phase_6_2_runtime: Optional[Any] = None  # SelfModelRuntimeContext
@@ -196,10 +206,69 @@ class SelfModelContextProvider:
             runtime = ""
 
         if not runtime:
-            return legacy
-        if not legacy:
-            return runtime
-        return legacy + "\n\n---\n\n" + runtime
+            base = legacy
+        elif not legacy:
+            base = runtime
+        else:
+            base = legacy + "\n\n---\n\n" + runtime
+
+        # v1.2 Self Understanding: 追加成长叙事区（只读 SelfNarrativeHistory,
+        # 不调用 assembler、不生成新叙事; 任何失败静默降级, 不影响聊天）
+        try:
+            narrative_section = self._render_narrative_sections(
+                self._load_narrative_text()
+            )
+        except Exception:
+            narrative_section = ""
+        if narrative_section:
+            block = "## Growth Narrative\n\n" + narrative_section
+            return base + "\n\n---\n\n" + block if base else block
+        return base
+
+    # ============================================================
+    # v1.2 Self Understanding: 成长叙事只读注入
+    # ============================================================
+
+    def _load_narrative_text(self) -> str:
+        """读取最新叙事快照的 narrative_text。缺失/损坏/空历史 → 空串。"""
+        try:
+            from src.personality.self_narrative_history import SelfNarrativeHistory
+
+            history = SelfNarrativeHistory.load(self._narrative_history_path)
+            recent = history.get_recent(1)
+            if not recent:
+                return ""
+            text = str(getattr(recent[0], "narrative_text", "") or "").strip()
+            if text == "正在积累中":
+                return ""
+            return text
+        except Exception:
+            return ""
+
+    def _render_narrative_sections(self, text: str) -> str:
+        """把带 [Recent]/[Growth]/[Identity] 标记的快照文本切分为三个小节。"""
+        if not text:
+            return ""
+        sections = (
+            ("[Recent]", "Recent Experience"),
+            ("[Growth]", "Growth History"),
+            ("[Identity]", "Self Understanding"),
+        )
+        blocks: List[str] = []
+        for i, (marker, title) in enumerate(sections):
+            start = text.find(marker)
+            if start < 0:
+                continue
+            body_start = start + len(marker)
+            end = len(text)
+            for m2, _ in sections:
+                j = text.find(m2, body_start)
+                if 0 <= j < end:
+                    end = j
+            body = text[body_start:end].strip()
+            if body:
+                blocks.append(f"### {title}\n\n{body}")
+        return "\n\n".join(blocks)
 
     # ============================================================
     # 内部

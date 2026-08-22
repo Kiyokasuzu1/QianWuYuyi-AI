@@ -1,1 +1,20 @@
-1.1.0
+QianWuYuyi-AI
+Version: v1.2.0
+Release Date: 2026-08-22
+Runtime Mode: Full v1.2 ACTIVE (Self Understanding lifecycle online)
+Base Commit: v1.1.0-production 99f66b2 (production branch)
+
+Enabled Modules:
+- RuntimeCore lifecycle integration (tick scheduler: AgentStatusWriter 60s throttle)
+- RuntimeIntegrationHost (background lifecycle tasks)
+- Memory Consolidation (read-only suggestions -> governance chain)
+- Reflection Cycle (analysis only)
+- Growth Proposal Governance (A-store + B-store mirror)
+- Background Drain (approved proposals, ledger idempotent)
+- Self Model Drain (record_id idempotent, full audit)
+- Audit and Mutation Tracking (state_mutations.jsonl)
+- Personality / Relationship runtime integration
+- Self Narrative (v1.2: assembler + versioned history + ACTIVE context injection)
+  - narrative_assembly_enabled: true
+  - narrative_context_injection: true
+  - Narrative 是理解层: 只读注入, 不修改任何状态, 不进治理链

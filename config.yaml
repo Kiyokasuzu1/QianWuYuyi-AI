@@ -4,9 +4,9 @@
 # ── 项目版本号（每次更新递增，方便宝塔面板查询当前版本状态）──
 # 格式: Phase.子阶段.补丁号 (YYYY-MM-DD)
 # 查看方式: cat config.yaml | head -5  或  grep "system_version" config.yaml
-system_version: "7.2.1-p2"
-system_version_date: "2026-08-11"
-system_version_name: "Phase 7.2.1 Patch 2 — Agent Server 默认由 api_server 启动，清理旧版 initiative_sender 注释，单进程架构就绪"
+system_version: "v1.2.0"
+system_version_date: "2026-08-22"
+system_version_name: "v1.2.0 Self Understanding — 真实经历到自我理解的认知闭环"
 system_version_commit: "WORKTREE_LOCAL-pending-commit"
 
 memory:
@@ -145,6 +145,10 @@ runtime:
   # P0-1: approved GrowthProposal 由 Runtime 主循环消费（stage 13 每轮 + 启动兜底）
   growth_apply_drain_enabled: true
   growth_apply_drain_limit: 5
+  # P2.6 Phase C-1: self_model approved 提案消费器（approved → applied 闭环）
+  # 默认关闭：开启前行为与 Phase B-1 完全一致
+  self_model_drain_enabled: false
+  self_model_drain_limit: 3
   # Memory 上下文限制：传入 prompt 的最大 memory 条数（完整 memory 仍保留在磁盘）
   max_context_memories: 50
   # 旧 data/memory.json 自动导入（仅在新用户首次对话时触发一次）
@@ -157,5 +161,22 @@ runtime:
     timeout_seconds: 30
     max_tokens: 2048
     token_budget_per_turn: 4096
+
+  # === v1.1 认知闭环（后台生命周期, 全部默认关闭 = 行为不变）===
+  # integration_host_enabled: 后台集成宿主（Reflection/Memory 整理等周期任务）
+  integration_host_enabled: false
+  # reflection_cycle_enabled: 反思结果 → 成长治理链（Reflection 只产分析结果）
+  reflection_cycle_enabled: false
+  # memory_consolidation_enabled: 记忆整理建议 → 成长治理链（整理只读, 不删不改）
+  memory_consolidation_enabled: false
+  # background_drain_enabled: 无聊天事件时后台消费已批准提案
+  # （与 stage 13 drain 共用账本幂等, 重复执行不重复 mutation）
+  background_drain_enabled: false
+  # === v1.2 Self Understanding（默认全关; SHADOW=assembly 开 + injection 关）===
+  # narrative_assembly_enabled: 后台组装自我叙事快照（派生视图, 不修改任何状态）
+  narrative_assembly_enabled: false
+  # narrative_context_injection: 聊天上下文注入叙事（false=写入 shadow 路径,
+  # 聊天不可见; true=写入默认路径, 聊天可见。ACTIVE 阶段才开）
+  narrative_context_injection: false
 
 # End of config.yaml

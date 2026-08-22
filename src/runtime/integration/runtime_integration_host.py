@@ -45,6 +45,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
 from src.runtime.integration.adapters.base import BaseAdapter
@@ -59,6 +60,8 @@ from src.runtime.integration.event_bridge import (
 )
 from src.runtime.integration.integration_event import (
     INTEGRATION_LIFECYCLE_TICK_COMPLETE,
+    INTEGRATION_MEMORY_SHOULD_CONSOLIDATE,
+    INTEGRATION_REFLECTION_COMPLETED,
     IntegrationEvent,
     make_integration_event,
 )
@@ -104,9 +107,122 @@ ALL_HOST_STATES = (
 # 默认 Task 注册表(Step 4 阶段)
 # ============================================================
 # 用于 build_default_tasks() 的闭包,延迟 import 避免循环
+# ============================================================
+# v1.1 Phase 2.2: Reflection → Growth 形状转换（只做转换, 不修改状态）
+# ============================================================
+_REFLECTION_FEED_SKIP_TYPES = (
+    INTEGRATION_LIFECYCLE_TICK_COMPLETE,
+    INTEGRATION_REFLECTION_COMPLETED,
+)
+
+
+def reflection_record_from_event(event: IntegrationEvent) -> Optional[Dict[str, Any]]:
+    """REFLLECTION_COMPLETED 事件 → growth 经历记录（accept_experience 输入形状）。
+
+    只做形状转换; 不直接修改任何长期状态——进入治理链后才可能产生提案。
+    """
+    payload = getattr(event, "payload", None) or {}
+    insights = payload.get("insights") or []
+    text = " | ".join(str(i) for i in insights if str(i).strip())
+    if not text.strip():
+        return None
+    rid = str(payload.get("reflection_id") or getattr(event, "event_id", ""))
+    return {
+        "id": f"ref_{rid}",
+        "content": text[:2000],
+        "user_id": "yuyi",
+        # 注: accept_experience 防御层要求 role=="user"（assistant 角色被拒）;
+        # 反思内容的真实来源由 metadata.source=="reflection" 承载。
+        "role": "user",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "importance": 0.7,
+        "metadata": {
+            "source": "reflection",
+            "reflection_id": rid,
+            "reflection_type": str(payload.get("reflection_type") or ""),
+            "confidence": float(payload.get("confidence", 0.5) or 0.5),
+            "suggested_changes": payload.get("suggested_changes") or [],
+        },
+    }
+
+
+# ============================================================
+# v1.1 Phase 2.3: Memory Consolidation → Growth 形状转换
+# （只做转换; 整理建议不直接修改记忆/人格, 仅进入治理链评估）
+# ============================================================
+def consolidation_suggestions_from_report(report: Any) -> List[str]:
+    """MemoryConsolidationReport → 整理建议文本（冲突/合并/权重调整, 各 ≤3 条）。
+
+    只生成建议, 不删除、不写回任何记忆。
+    """
+    suggestions: List[str] = []
+    if report is None:
+        return suggestions
+    for c in (getattr(report, "conflicts", None) or [])[:3]:
+        c = c if isinstance(c, dict) else {}
+        subject = str(c.get("subject", "")).strip()
+        if subject:
+            suggestions.append(
+                f"记忆冲突建议: 关于「{subject}」存在相反偏好记录, "
+                "保留全部原始记忆并以最近/高可信记录为解释基准"
+            )
+    for m in (getattr(report, "semantic_memories", None) or [])[:3]:
+        m = m if isinstance(m, dict) else {}
+        content = str(m.get("content", "")).strip()
+        n = int(m.get("reinforcement_count", 0) or 0)
+        if content and n >= 2:
+            suggestions.append(
+                f"合并建议: 「{content[:60]}」有 {n} 条重复记忆, 可合并为长期事实"
+            )
+    for m in (getattr(report, "episodic_memories", None) or [])[:3]:
+        m = m if isinstance(m, dict) else {}
+        content = str(m.get("content", "")).strip()
+        decay = float(m.get("decay_score", 1.0) or 1.0)
+        if content and decay < 0.3:
+            suggestions.append(
+                f"权重调整建议: 「{content[:60]}」衰减分数 {decay:.2f}, "
+                "可降低检索权重（不删除）"
+            )
+    return suggestions
+
+
+def consolidation_record_from_report(event: IntegrationEvent, report: Any) -> Optional[Dict[str, Any]]:
+    """SHOULD_CONSOLIDATE 事件 + 整理报告 → growth 经历记录。
+
+    无实质建议时返回 None（不进入治理链）; 记录只承载建议文本,
+    MemoryStore 保持只读。
+    """
+    suggestions = consolidation_suggestions_from_report(report)
+    if not suggestions:
+        return None
+    report_id = str(getattr(report, "report_id", "") or "")
+    rid = str(
+        (getattr(event, "payload", None) or {}).get("report_id")
+        or report_id
+        or getattr(event, "event_id", "")
+    )
+    return {
+        "id": f"mcons_{rid}",
+        "content": " | ".join(suggestions)[:2000],
+        "user_id": "yuyi",
+        # 注: accept_experience 防御层要求 role=="user";
+        # 真实来源由 metadata.source=="memory_consolidation" 承载。
+        "role": "user",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "importance": 0.6,
+        "metadata": {
+            "source": "memory_consolidation",
+            "report_id": report_id,
+            "suggestion_count": len(suggestions),
+            "conflict_count": len(getattr(report, "conflicts", None) or []),
+        },
+    }
+
+
 def _default_task_factory():
-    """延迟 import 5 个 Task 工厂。
-    返回的 factory(adapters) 接受 host 的 adapters 字典,构造 5 个使用 host adapter 的 Task。
+    """延迟 import 5 个 Task 工厂 + Phase F 情绪反思周期任务。
+    返回的 factory(adapters) 接受 host 的 adapters 字典,构造默认 Task。
+    Phase F: EmotionReflectionTask 只读派生(不依赖 adapter,惰性读情绪状态文件)。
     """
     from src.runtime.integration.tasks.emotion_lifecycle_task import (
         EmotionLifecycleTask,
@@ -123,9 +239,15 @@ def _default_task_factory():
     from src.runtime.integration.tasks.relationship_lifecycle_task import (
         RelationshipLifecycleTask,
     )
+    from src.runtime.integration.tasks.reflection_lifecycle_task import (
+        ReflectionLifecycleTask,
+    )
+    from src.runtime.lifecycle.tasks.emotion_reflection import (
+        EmotionReflectionTask,
+    )
 
     def factory(adapters: Dict[str, BaseAdapter]) -> List[BaseIntegrationTask]:
-        """使用 host 的 adapter 实例构造 5 个默认 Task(确保事件注入到同一 emitter)。"""
+        """使用 host 的 adapter 实例构造默认 Task(确保事件注入到同一 emitter)。"""
         mem = adapters.get("memory_adapter")
         emo = adapters.get("emotion_adapter")
         gro = adapters.get("growth_adapter")
@@ -137,6 +259,11 @@ def _default_task_factory():
             GrowthLifecycleTask(adapter=gro) if gro is not None else GrowthLifecycleTask(),
             PersonalityLifecycleTask(adapter=per) if per is not None else PersonalityLifecycleTask(),
             RelationshipLifecycleTask(adapter=rel) if rel is not None else RelationshipLifecycleTask(),
+            # Phase F: 情绪反思周期任务（只读，红线上方已注明）
+            EmotionReflectionTask(),
+            # v1.1 Phase 2.1: Reflection 周期任务（只产生分析结果, 不直接修改
+            # 长期状态; 无事件时 skip, 异常 fail-soft）
+            ReflectionLifecycleTask(),
         ]
 
     return factory
@@ -174,8 +301,43 @@ class RuntimeIntegrationHost:
         event_store_path: str = DEFAULT_STORE_PATH,
         event_log_capacity: int = DEFAULT_LOG_CAPACITY,
         clock: Optional[Any] = None,
+        reflection_cycle_enabled: bool = False,
+        memory_consolidation_enabled: bool = False,
+        memory_loader: Optional[Callable[[], List[Dict[str, Any]]]] = None,
+        consolidation_engine: Any = None,
+        memory_path: str = "data/memory.json",
+        narrative_assembly_enabled: bool = False,
+        narrative_history_path: str = "data/narrative_history.json",
+        narrative_data_provider: Optional[Callable[[], Dict[str, Any]]] = None,
     ) -> None:
         self._name = str(name or "runtime_integration_host")
+
+        # v1.1 Phase 2.2: Reflection 循环开关（默认 False = 行为不变）;
+        # 开启后 tick 会把 EventLog 业务事件喂入 ReflectionLifecycleTask,
+        # 并把 REFLECTION_COMPLETED 结果经 accept_experience 送入成长治理链。
+        self._reflection_cycle_enabled = bool(reflection_cycle_enabled)
+        self._last_fed_event_id: str = ""
+        self._consumed_reflection_ids: set = set()
+
+        # v1.1 Phase 2.3: Memory Consolidation 循环开关（默认 False = 行为不变）;
+        # 开启后 tick 消费 SHOULD_CONSOLIDATE 事件, 只读运行整理引擎,
+        # 整理建议经 accept_experience 进入成长治理链（不直接改记忆/人格）。
+        self._memory_consolidation_enabled = bool(memory_consolidation_enabled)
+        self._memory_loader = memory_loader
+        self._consolidation_engine = consolidation_engine
+        self._memory_path = str(memory_path or "data/memory.json")
+        self._last_consumed_consolidation_id: str = ""
+        self._consumed_consolidation_ids: set = set()
+
+        # v1.1 Phase 2 (v1.2): Self Narrative 组装开关（默认 False = 行为不变）。
+        # 开启后仅写 narrative_history_path（派生视图）, 不修改任何长期状态;
+        # 内容变化才 append（append_snapshot 差异守卫）, 不会每分钟强制生成。
+        self._narrative_assembly_enabled = bool(narrative_assembly_enabled)
+        self._narrative_history_path = str(
+            narrative_history_path or "data/narrative_history.json"
+        )
+        self._narrative_data_provider = narrative_data_provider
+        self._last_narrative_fingerprint: str = ""
 
         # 状态机 / 锁
         self._state: str = HOST_STATE_CREATED
@@ -619,6 +781,8 @@ class RuntimeIntegrationHost:
 
         results: List[Any] = []
         if self._lifecycle_manager is not None:
+            # v1.1 Phase 2.2: 先喂入业务事件（开关关闭时为空操作）
+            self._feed_reflection_events()
             try:
                 results = list(self._lifecycle_manager.tick() or [])
             except Exception as exc:  # noqa: BLE001
@@ -649,14 +813,354 @@ class RuntimeIntegrationHost:
         )
         self.publish_integration_event(tick_complete)
 
+        # v1.1 Phase 2.2: 反思结果 → growth 治理链（开关关闭时为空操作; fail-soft）
+        self._consume_reflection_results()
+
+        # v1.1 Phase 2.3: 记忆整理建议 → growth 治理链（开关关闭时为空操作; fail-soft）
+        self._consume_consolidation_events()
+
+        # v1.2 Self Understanding: 叙事组装（仅内容变化时 append; fail-soft）
+        self._assemble_narrative()
+
+        logger.debug(
+            "RuntimeIntegrationHost(%s) tick #%d ok, results=%d",
+            self._name, current_tick, len(results),
+        )
         return results
+
+    # ============================================================
+    # v1.1 Phase 2.2: Reflection 循环（开关默认关; 全部 fail-soft）
+    # ============================================================
+    def _find_reflection_task(self):
+        """从 LifecycleManager 定位 ReflectionLifecycleTask。"""
+        try:
+            manager = self._lifecycle_manager
+            if manager is None or not callable(getattr(manager, "list_tasks", None)):
+                return None
+            for task in manager.list_tasks() or []:
+                if getattr(task, "task_id", "") == "reflection_lifecycle_task":
+                    return task
+        except Exception:  # noqa: BLE001
+            return None
+        return None
+
+    def _feed_reflection_events(self) -> None:
+        """把 EventLog 业务事件（去重增量）喂入 ReflectionLifecycleTask。"""
+        if not self._reflection_cycle_enabled:
+            return
+        try:
+            task = self._find_reflection_task()
+            if task is None or self._event_log is None:
+                return
+            all_events = self._event_log.events()
+            feed: List[IntegrationEvent] = []
+            for e in all_events:
+                if self._last_fed_event_id and e.event_id == self._last_fed_event_id:
+                    feed = []
+                    continue
+                if e.event_type in _REFLECTION_FEED_SKIP_TYPES:
+                    continue
+                feed.append(e)
+            if feed:
+                self._last_fed_event_id = feed[-1].event_id
+                task.push_events(feed)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "RuntimeIntegrationHost(%s) 反思事件喂入失败（已隔离）: %s",
+                self._name, exc,
+            )
+
+    def _get_growth_service(self):
+        """经 RuntimeBridge 权威 core 获取 GrowthIntegrationService（失败返回 None）。"""
+        try:
+            from src.runtime.runtime_bridge import get_runtime_bridge
+
+            core = get_runtime_bridge().get_runtime_core()
+            factory = getattr(core, "_get_growth_integration_service", None)
+            if callable(factory):
+                return factory()
+        except Exception:  # noqa: BLE001
+            return None
+        return None
+
+    def _consume_reflection_results(self) -> None:
+        """REFLECTION_COMPLETED → growth 经历记录 → accept_experience 治理链。
+
+        Reflection 只产分析结果; 长期状态变化必须经 accept_experience →
+        Proposal → review → drain → apply → audit（决策 2）。
+        """
+        if not self._reflection_cycle_enabled:
+            return
+        consumed_any = False
+        try:
+            if self._event_log is None:
+                return
+            service = self._get_growth_service()
+            if service is None:
+                return
+            for e in self._event_log.events():
+                if e.event_type != INTEGRATION_REFLECTION_COMPLETED:
+                    continue
+                rid = str((getattr(e, "payload", None) or {}).get("reflection_id") or "")
+                if not rid or rid in self._consumed_reflection_ids:
+                    continue
+                record = reflection_record_from_event(e)
+                if record is None:
+                    self._consumed_reflection_ids.add(rid)
+                    continue
+                try:
+                    service.accept_experience(record)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "RuntimeIntegrationHost(%s) 反思结果进成长链失败（已隔离）: %s",
+                        self._name, exc,
+                    )
+                self._consumed_reflection_ids.add(rid)
+                consumed_any = True
+                if len(self._consumed_reflection_ids) > 200:
+                    self._consumed_reflection_ids = set(
+                        sorted(self._consumed_reflection_ids)[-200:]
+                    )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "RuntimeIntegrationHost(%s) 反思结果消费失败（已隔离）: %s",
+                self._name, exc,
+            )
+        # v1.2 触发点 1: 反思产生了新的理解材料 → 更新叙事快照（fail-soft）
+        if consumed_any:
+            self._assemble_narrative()
+
+    # ============================================================
+    # v1.1 Phase 2.3: Memory Consolidation 循环（开关默认关; 全部 fail-soft）
+    # ============================================================
+    def _run_consolidation(self) -> Any:
+        """只读执行 MemoryConsolidationEngine.consolidate(load())。
+
+        不调用 MemoryStore.add/save; 引擎缺省惰性构造; 任何异常返回 None。
+        """
+        engine = self._consolidation_engine
+        if engine is None:
+            try:
+                from src.memory.memory_consolidation_engine import (
+                    MemoryConsolidationEngine,
+                )
+
+                engine = MemoryConsolidationEngine()
+            except Exception:  # noqa: BLE001
+                return None
+        loader = self._memory_loader
+        if loader is None:
+            memory_path = self._memory_path
+
+            def _default_load() -> List[Dict[str, Any]]:
+                from src.memory.memory_store import MemoryStore
+
+                return list(MemoryStore(memory_path).load() or [])
+
+            loader = _default_load
+        try:
+            memories = list(loader() or [])
+            if not memories:
+                return None
+            return engine.consolidate(memories)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "RuntimeIntegrationHost(%s) 记忆整理执行失败（已隔离）: %s",
+                self._name, exc,
+            )
+            return None
+
+    def _consume_consolidation_events(self) -> None:
+        """SHOULD_CONSOLIDATE → 只读整理 → 整理建议 → accept_experience 治理链。
+
+        整理只产出建议（冲突/合并/权重调整）; 记忆删除、人格修改等长期状态
+        变化必须经 accept_experience → Proposal → review → drain → apply → audit。
+        """
+        if not self._memory_consolidation_enabled:
+            return
+        try:
+            if self._event_log is None:
+                return
+            pending: List[IntegrationEvent] = []
+            for e in self._event_log.events():
+                if e.event_type != INTEGRATION_MEMORY_SHOULD_CONSOLIDATE:
+                    continue
+                if e.event_id == self._last_consumed_consolidation_id:
+                    continue
+                if e.event_id in self._consumed_consolidation_ids:
+                    continue
+                pending.append(e)
+            if not pending:
+                return
+            service = self._get_growth_service()
+            for e in pending:
+                self._last_consumed_consolidation_id = e.event_id
+                try:
+                    report = self._run_consolidation()
+                    if report is None:
+                        self._consumed_consolidation_ids.add(e.event_id)
+                        continue
+                    record = consolidation_record_from_report(e, report)
+                    if record is None:
+                        self._consumed_consolidation_ids.add(e.event_id)
+                        continue
+                    if service is not None:
+                        service.accept_experience(record)
+                    else:
+                        logger.info(
+                            "RuntimeIntegrationHost(%s) 整理建议已生成但成长服务不可用, 跳过治理链: %d 条建议",
+                            self._name,
+                            int(record.get("metadata", {}).get("suggestion_count", 0)),
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "RuntimeIntegrationHost(%s) 记忆整理建议进治理链失败（已隔离）: %s",
+                        self._name, exc,
+                    )
+                self._consumed_consolidation_ids.add(e.event_id)
+                if len(self._consumed_consolidation_ids) > 200:
+                    self._consumed_consolidation_ids = set(
+                        sorted(self._consumed_consolidation_ids)[-200:]
+                    )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "RuntimeIntegrationHost(%s) 记忆整理消费失败（已隔离）: %s",
+                self._name, exc,
+            )
+
+    # ============================================================
+    # v1.2 Self Understanding: Self Narrative 组装（派生视图, 无状态写入）
+    # ============================================================
+    def _gather_narrative_data(self) -> Dict[str, Any]:
+        """惰性收集叙事输入（全部只读, 单项失败仅降级为空）。
+
+        Narrative 是派生视图：这里绝不修改 personality / self_model /
+        emotion / relationship, 绝不写 audit, 绝不回流治理链。
+        """
+        data: Dict[str, Any] = {
+            "memories": [],
+            "experiences": [],
+            "reflections": [],
+            "growth_records": [],
+            "audit_entries": [],
+            "growth_narratives": [],
+        }
+        try:
+            loader = self._memory_loader
+            if loader is not None:
+                data["memories"] = list(loader() or [])
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            from src.runtime.experience_journal import ExperienceJournal
+
+            data["experiences"] = list(ExperienceJournal().load() or [])
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            if self._event_log is not None:
+                for e in self._event_log.events():
+                    if e.event_type != INTEGRATION_REFLECTION_COMPLETED:
+                        continue
+                    payload = getattr(e, "payload", None) or {}
+                    insights = payload.get("insights") or []
+                    data["reflections"].append({
+                        "reflection_id": str(payload.get("reflection_id") or ""),
+                        "insights": [str(i) for i in insights if str(i).strip()],
+                        "confidence": float(payload.get("confidence", 0.5) or 0.5),
+                    })
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            service = self._get_growth_service()
+            history = getattr(service, "growth_history", None)
+            if history is not None and callable(getattr(history, "all", None)):
+                data["growth_records"] = list(history.all() or [])
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            from src.governance.state_mutation_audit import read_entries
+
+            data["audit_entries"] = list(read_entries(limit=50) or [])
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            from src.runtime.runtime_bridge import get_runtime_bridge
+
+            bridge = get_runtime_bridge()
+            core = bridge.get_runtime_core() if bridge is not None else None
+            store = core.get_self_model_store() if core is not None else None
+            if store is not None:
+                model = store.get() or {}
+                data["growth_narratives"] = list(
+                    model.get("growth_narratives") or []
+                )
+        except Exception:  # noqa: BLE001
+            pass
+        return data
+
+    def _assemble_narrative(self) -> None:
+        """组装三层叙事 → SelfNarrativeHistory.append_snapshot（派生视图）。
+
+        - 开关关闭时为空操作（v1.1 行为不变）;
+        - 指纹守卫: 输入材料未变化时跳过（禁止每分钟强制生成）;
+        - append_snapshot 差异守卫: 内容无显著变化不新增版本;
+        - 全程 fail-soft: 任何异常仅记日志, 绝不阻塞 tick/聊天。
+        """
+        if not self._narrative_assembly_enabled:
+            return
+        try:
+            try:
+                data = (
+                    self._narrative_data_provider()
+                    if self._narrative_data_provider is not None
+                    else self._gather_narrative_data()
+                )
+            except Exception:  # noqa: BLE001
+                return
+            data = data if isinstance(data, dict) else {}
+            import hashlib
+
+            signature = "|".join(
+                str(x)
+                for x in (
+                    len(data.get("memories") or []),
+                    len(data.get("experiences") or []),
+                    len(data.get("reflections") or []),
+                    len(data.get("growth_records") or []),
+                    len(data.get("audit_entries") or []),
+                    len(data.get("growth_narratives") or []),
+                )
+            )
+            fingerprint = hashlib.sha1(signature.encode("utf-8")).hexdigest()[:16]
+            if fingerprint == self._last_narrative_fingerprint:
+                return
+            from src.personality.self_narrative_assembler import (
+                SelfNarrativeAssembler,
+            )
+            from src.personality.self_narrative_history import (
+                SelfNarrativeHistory,
+            )
+
+            snapshot = SelfNarrativeAssembler().assemble_snapshot(
+                memories=data.get("memories") or [],
+                experiences=data.get("experiences") or [],
+                reflections=data.get("reflections") or [],
+                growth_records=data.get("growth_records") or [],
+                audit_entries=data.get("audit_entries") or [],
+                growth_narratives=data.get("growth_narratives") or [],
+            )
+            history = SelfNarrativeHistory.load(self._narrative_history_path)
+            history.append_snapshot(snapshot, filepath=self._narrative_history_path)
+            self._last_narrative_fingerprint = fingerprint
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "RuntimeIntegrationHost(%s) 叙事组装失败（已隔离）: %s",
+                self._name, exc,
+            )
 
     def _inject_log_to_adapters(self) -> None:
         """在 start() 时调用,把 EventLog(以及 EventStore)注入到每个 Adapter 的 event_emitter。
-
-        任务通过 adapter.emit() 触发 IntegrationEvent 时,
-        - 进入 EventLog(供查询/调试)
-        - 持久化到 EventStore(JSONL)
         """
         if self._event_log is None:
             return
