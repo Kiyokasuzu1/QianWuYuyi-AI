@@ -238,6 +238,20 @@ class GrowthState:
     def get_metric(self, key: str) -> float:
         return self._state["metrics"].get(key, 0.0)
 
+    def _is_personality_trait_key(self, key: str) -> bool:
+        """P0-1: 是否为合法 personality trait 目标（personality_state.traits 键）。
+
+        growth_state 是 legacy 行为统计轨（metrics 白名单 5 键）；personality trait
+        是 0-1 状态与 metrics 语义兼容。合法 trait 键不再被静默丢弃（此前 proposal
+        目标维度 creativity/self_expression/initiative 全被丢弃，产生幻影 delta）；
+        未知键仍拒绝（防污染）。
+        """
+        try:
+            from src.personality.personality_state import get_personality_state
+            return key in (get_personality_state().traits or {})
+        except Exception:  # noqa: BLE001
+            return False
+
     def update_metrics(self, deltas: Dict[str, float]):
         """更新 metrics，包含同日递减"""
         today = date.today().isoformat()
@@ -251,7 +265,10 @@ class GrowthState:
 
         for key, delta in deltas.items():
             if key not in self._state["metrics"]:
-                continue
+                if not self._is_personality_trait_key(key):
+                    continue
+                # P0-1: 合法 personality target 初始化后纳入（上限默认 1.0）
+                self._state["metrics"][key] = 0.0
 
             count = daily_count.get(key, 0)
             decay_factor = max(0.2, 1.0 - count * 0.2)

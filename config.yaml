@@ -166,6 +166,11 @@ runtime:
   # P0-1: approved GrowthProposal 由 Runtime 主循环消费（stage 13 每轮 + 启动兜底）
   growth_apply_drain_enabled: true
   growth_apply_drain_limit: 5
+  # P0-1: 成长治理模式（true=提案镜像到治理 B-store（pending）→ 人工审批 →
+  # drain 应用；false=legacy 政策自动审批/应用路径，绕过人工治理）。
+  # 开启后 Step8 政策审批与 Step9 自动应用均跳过——不绕过人工 approval。
+  growth_integration:
+    growth_governance_enabled: true
   # P2.6 Phase C-1: self_model approved 提案消费器（approved → applied 闭环）
   # 默认关闭：开启前行为与 Phase B-1 完全一致
   self_model_drain_enabled: false
