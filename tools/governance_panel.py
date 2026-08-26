@@ -11,6 +11,7 @@
 """
 from __future__ import annotations
 
+import os
 import sys
 
 import requests
@@ -60,8 +61,99 @@ class GovernancePanel(QMainWindow):
         self.current: dict | None = None
         self.patterns: list[dict] = []
         self.pat_current: dict | None = None
+        # Phase 2A：本机凭据（DPAPI）。save 后不再逐次输入。
+        self._cred = None  # CredentialStore 实例（懒创建，测试可注入）
+        self._stored_token = ""  # 已保存的 token（内存，仅 _api 使用，不打印）
         self._build_ui()
+        self._load_stored_credential()
         self.refresh_all()
+
+    # ---------- Phase 2A 凭据 ----------
+    def _get_cred(self):
+        if self._cred is None:
+            from tools.governance_credential_store import get_credential_store
+            self._cred = get_credential_store()
+        return self._cred
+
+    def _load_stored_credential(self):
+        """启动时读取本机凭据：不显示完整 token，仅占位提示（尾 4 位）。"""
+        try:
+            cred = self._get_cred()
+            if cred.exists():
+                tok = cred.load()
+                if tok:
+                    self._stored_token = tok
+                    tail = tok[-4:] if len(tok) >= 4 else "····"
+                    self.ed_token.setText("")
+                    self.ed_token.setPlaceholderText(
+                        f"已保存凭据 ·••••••••••{tail}（重新输入可覆盖）")
+                    self.statusBar().showMessage("已读取本机管理凭据")
+                    return
+        except Exception:  # noqa: BLE001
+            pass
+        self._stored_token = ""
+
+    def _effective_token(self) -> str:
+        """token 优先级：环境变量 > 用户输入 > 本机保存凭据。"""
+        env = os.environ.get("YUYI_ADMIN_TOKEN", "").strip() if "os" in globals() else ""
+        if env:
+            return env
+        manual = self.ed_token.text().strip()
+        if manual:
+            return manual
+        return self._stored_token
+
+    def _prompt_save_credential(self, token: str) -> bool:
+        """验证成功后询问保存（默认保存；不做任何降级明文）。"""
+        try:
+            cred = self._get_cred()
+            if not cred.exists():
+                from PySide6.QtWidgets import QMessageBox as _QMB
+                ret = _QMB.question(
+                    self, "保存凭据",
+                    "连接成功。是否将管理 Token 安全保存到本机凭据（Windows DPAPI）？\n"
+                    "保存后下次启动无需重新输入。",
+                    _QMB.Yes | _QMB.No, _QMB.Yes)
+                if ret != _QMB.Yes:
+                    return False
+            ok = cred.save(token)
+            if ok:
+                self._stored_token = token
+                tail = token[-4:] if len(token) >= 4 else "····"
+                self.ed_token.setText("")
+                self.ed_token.setPlaceholderText(
+                    f"已保存凭据 ·••••••••••{tail}（重新输入可覆盖）")
+                self.statusBar().showMessage("✅ 管理凭据已安全保存（DPAPI）")
+            else:
+                self.statusBar().showMessage(
+                    "⚠️ 无法保存凭据（DPAPI 不可用）——仅本次会话有效，不保存明文")
+            return ok
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _clear_credential(self):
+        """清除本机凭据（二次确认；仅用户显式操作删除）。"""
+        try:
+            cred = self._get_cred()
+            if not cred.exists():
+                self.statusBar().showMessage("没有已保存的本机凭据")
+                return
+            from PySide6.QtWidgets import QMessageBox as _QMB
+            ret = _QMB.question(
+                self, "清除凭据",
+                "确定删除本机保存的管理凭据（governance_cred.bin）？",
+                _QMB.Yes | _QMB.No, _QMB.No)
+            if ret != _QMB.Yes:
+                return
+            if cred.clear():
+                self._stored_token = ""
+                self.ed_token.setText("")
+                self.ed_token.setPlaceholderText("治理管理 Token（Phase A 后必须填写）")
+                self.statusBar().showMessage("本机凭据已清除")
+            else:
+                self.statusBar().showMessage("⚠️ 凭据删除失败")
+        except Exception:  # noqa: BLE001
+            self.statusBar().showMessage("⚠️ 凭据清除失败")
 
     # ---------- UI ----------
     def _build_ui(self):
@@ -87,6 +179,9 @@ class GovernancePanel(QMainWindow):
         self.btn_refresh.clicked.connect(self.refresh_all)
         top.addWidget(self.btn_refresh)
         self.chk_auto = QCheckBox("自动刷新(30s)")
+        self.btn_clear_cred = QPushButton("清除凭据")
+        self.btn_clear_cred.clicked.connect(self._clear_credential)
+        top.addWidget(self.btn_clear_cred)
         self.chk_auto.toggled.connect(self._toggle_auto)
         top.addWidget(self.chk_auto)
         top.addStretch(1)
@@ -265,7 +360,7 @@ class GovernancePanel(QMainWindow):
     def _api(self, path: str, method: str = "GET", body: dict | None = None) -> dict:
         url = self.ed_base.text().strip().rstrip("/") + API_PREFIX + path
         headers = {"Accept": "application/json"}
-        tok = self.ed_token.text().strip()
+        tok = self._effective_token()
         if not tok:
             # Phase A 后治理端点必须携带 token（CGNAT 不再放行）。
             # 空 token 直接明确失败，而不是让服务器 401 后用户困惑。
@@ -282,6 +377,11 @@ class GovernancePanel(QMainWindow):
             data = resp.json()
         except ValueError:
             data = {}
+        if resp.status_code == 401:
+            # 401：不自动删凭据；提示重新输入（短暂网络/服务端问题不破坏本地配置）
+            raise RuntimeError(
+                f"HTTP 401: 未授权（{'已保存的管理凭据可能已失效，可重新输入后覆盖' if self._stored_token else '缺失或无效的管理 token'}）"
+            )
         if resp.status_code >= 400:
             raise RuntimeError(f"HTTP {resp.status_code}: {data.get('error') or resp.text[:120]}")
         return data
@@ -290,6 +390,10 @@ class GovernancePanel(QMainWindow):
         try:
             data = self._api("/candidates")
             self.statusBar().showMessage(f"✅ 已连接，共 {data.get('count', 0)} 条候选")
+            # 验证成功后询问保存（仅当 token 来自用户输入或 env，且本机尚无凭据）
+            manual = self.ed_token.text().strip()
+            if manual and manual != self._stored_token:
+                self._prompt_save_credential(manual)
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "连接失败", str(exc))
 
