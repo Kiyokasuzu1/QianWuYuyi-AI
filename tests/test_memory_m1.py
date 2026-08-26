@@ -187,11 +187,12 @@ def test_prompt_builder_empty_memory_guard():
     from src.response.prompt_builder import PromptBuilder
     pb = PromptBuilder()
     out = pb._format_chat_memories([])
-    assert "没有检索到相关历史记忆" in out
-    assert "不要编造具体历史" in out
+    # P0-A：新语义——可访问性 ≠ 存在性
+    assert "过去是连续的" in out
+    assert "不要编造" in out
     # 有记忆时不受影响
     out2 = pb._format_chat_memories([mk(1, 0, content="有记忆")])
-    assert "没有检索到相关历史记忆" not in out2
+    assert "过去是连续的" not in out2
     assert "有记忆" in out2
 
 
@@ -210,8 +211,8 @@ def test_engine_empty_memory_guard():
         life_events=[],
     )
     sys_text = str(msgs[0]["content"])
-    assert "没有检索到相关历史记忆" in sys_text
-    assert "不要编造具体历史" in sys_text
+    assert "过去是连续的" in sys_text
+    assert "不要编造" in sys_text
 
 
 # ============ YUI_CORE 门控（M1-5） ============
