@@ -172,8 +172,17 @@ class GovernancePanel(QMainWindow):
         self.tabs.addTab(self.tab_rc, "关系核心")
         self.btn_rc_supersede.setEnabled(False)
 
-        # 自我模型（只读 + 诚实标注 downstream/effective）
-        self.tab_sm = QTextBrowser()
+        # 自我模型（family 列表 + 详情 + 诚实标注 downstream/effective）
+        self.tab_sm = QWidget()
+        sm_v = QVBoxLayout(self.tab_sm)
+        sm_row = QSplitter(Qt.Horizontal)
+        self.sm_list = QListWidget()
+        self.sm_list.currentItemChanged.connect(self._on_sm_select)
+        self.sm_detail = QTextBrowser()
+        sm_row.addWidget(self.sm_list)
+        sm_row.addWidget(self.sm_detail)
+        sm_row.setSizes([360, 560])
+        sm_v.addWidget(sm_row, 1)
         self.tabs.addTab(self.tab_sm, "自我模型")
 
         # Phase 2 Shared-Life：生活模式治理 tab（列表 + 详情 + 人工审核操作）
@@ -466,17 +475,68 @@ class GovernancePanel(QMainWindow):
             sm = self._api("/self-model-statements").get("statements", [])
         except Exception:  # noqa: BLE001
             sm = []
-        rows = []
-        for s in sm:
-            st = s.get("status") or "candidate"
-            rows.append(
-                f"<div><b>{status_meta(st)[0]}</b> <code>{_esc(str(s.get('statement_id') or ''))}</code></div>"
-                f"<div style='margin-left:14px'>{_esc(str(s.get('fact') or ''))}</div>"
-                f"<div style='color:#666;margin-left:14px'>"
-                f"downstream = {'NONE' if st == 'confirmed' else '—'} · "
-                f"effective = {'NO' if st == 'confirmed' else '—'}（确认 ≠ 生效；当前无消费者）</div>"
-            )
-        self.tab_sm.setHtml("<hr>".join(rows) or "<i>（空）</i>")
+        # family projection：一个 SM family = 一行（原始行 + 后代行折叠）
+        self.sm_families = project_sm_families(sm)
+        self.sm_list.blockSignals(True)
+        self.sm_list.clear()
+        for f in self.sm_families:
+            st = f["status"]
+            label, _ = status_meta(st)
+            fact = str(f["fact"] or "")[:50]
+            item = QListWidgetItem(f"{label}  {f['family_id']}  {fact}")
+            tooltip = str(f["fact"] or "")[:120]
+            if len(f["history"]) > 1:
+                tooltip += f"（{len(f['history'])} 条 lineage 记录，折叠显示）"
+            item.setToolTip(tooltip)
+            item.setData(Qt.UserRole, f)
+            self.sm_list.addItem(item)
+        self.sm_list.blockSignals(False)
+        if self.sm_list.count():
+            self.sm_list.setCurrentRow(0)
+        else:
+            self.sm_detail.setHtml("<i>（无自我陈述）</i>")
+
+    def _on_sm_select(self, item: QListWidgetItem | None, _prev=None):
+        if item is None:
+            return
+        f = item.data(Qt.UserRole)
+        st = f["status"]
+        label, _ = status_meta(st)
+        eff = "NO" if st == "confirmed" else "—"
+        html = [
+            f"<h3>{label} <code>{_esc(str(f['family_id']))}</code></h3>",
+            f"<p style='font-size:15px'>{_esc(str(f['fact'] or ''))}</p>",
+            "<hr>",
+            f"<div>当前状态: <b>{_esc(st.upper())}</b></div>",
+            f"<div>downstream = {'NONE' if st == 'confirmed' else '—'} · "
+            f"effective = <b>{eff}</b>（确认 ≠ 生效；当前无消费者）</div>",
+            f"<div>来源: {_esc(str((f['origin'].get('evidence_summary') if isinstance(f.get('origin'), dict) else '') or ''))}</div>",
+        ]
+        if isinstance(f.get("origin"), dict) and f["origin"].get("confirmed_by"):
+            o = f["origin"]
+            html.append(f"<div>确认: {_esc(str(o.get('confirmed_by')))} {_esc(str(o.get('confirmed_at') or ''))}</div>")
+        hist = f.get("history") or []
+        if len(hist) > 1:
+            html.append("<hr><b>History / Lineage（append-only 保留）</b>")
+            for h in hist:
+                st_ = h.get("status") or "candidate"
+                html.append(
+                    f"<div style='color:#666;margin-left:14px'>"
+                    f"{_esc(str(h.get('created_at') or h.get('reviewed_at') or ''))} · "
+                    f"{_esc(st_)} · <code>{_esc(str(h.get('statement_id') or ''))}</code> · "
+                    f"{_esc(str(h.get('reviewed_by') or '—'))}</div>")
+        self.sm_detail.setHtml("".join(html))
+        # 联动：SM family 在顶部候选区定位（同 family root）
+        try:
+            root = str(f["family_id"] or "")
+            for i in range(self.list.count()):
+                it = self.list.item(i)
+                cid = str((it.data(Qt.UserRole) or {}).get("candidate_id") or "")
+                if cid.split("#")[0] == root:
+                    self.list.setCurrentRow(i)
+                    break
+        except Exception:  # noqa: BLE001
+            pass
 
     # ---------- Growth（PENDING → APPROVED → APPLIED 三阶段语义） ----------
     def _render_growth(self):
@@ -740,15 +800,27 @@ class GovernancePanel(QMainWindow):
 
     # ---------- Shared-Life Patterns 审核 ----------
     def _render_patterns(self):
+        # family projection：一个 pattern family = 一行（原始行 + 后代行折叠）
+        self.pat_families = project_pattern_families(self.patterns)
+        # 默认 CURRENT / ACTIONABLE（candidate/confirmed 等），历史态靠后
+        actionable = [f for f in self.pat_families if f["status"] in
+                      ("candidate", "pending", "confirmed", "active")]
+        hist = [f for f in self.pat_families if f["status"] in
+                ("rejected", "superseded", "archived")]
+        ordered = actionable + hist
         self.pat_list.blockSignals(True)
         self.pat_list.clear()
-        for p in self.patterns:
-            st = p.get("status") or "candidate"
+        for f in ordered:
+            st = f["status"]
             label = PAT_STATUS_META.get(st, st)
-            title = str(p.get("title") or p.get("pattern_id") or "")
-            item = QListWidgetItem(f"{label}  {title}")
-            item.setToolTip(str(p.get("summary") or "")[:120])
-            item.setData(Qt.UserRole, p)
+            title = str(f["origin"].get("title") or f["family_id"] or "")
+            suff = " · 当前生效" if st == "confirmed" else ""
+            item = QListWidgetItem(f"{label}  {title}{suff}")
+            tooltip = str(f["origin"].get("summary") or "")[:120]
+            if len(f["history"]) > 1:
+                tooltip += f"（{len(f['history'])} 条 lineage 记录，折叠显示）"
+            item.setToolTip(tooltip)
+            item.setData(Qt.UserRole, f)
             self.pat_list.addItem(item)
         self.pat_list.blockSignals(False)
         if self.pat_list.count():
@@ -765,31 +837,44 @@ class GovernancePanel(QMainWindow):
         self._set_pat_actions_enabled(True)
 
     def _render_pat_detail(self):
-        p = self.pat_current or {}
-        st = p.get("status") or "candidate"
+        f = self.pat_current or {}
+        st = f.get("status") or "candidate"
         label = PAT_STATUS_META.get(st, st)
+        origin = f.get("origin") or {}
+        latest = f.get("latest") or {}
         html = [
-            f"<h3>{label} <code>{_esc(str(p.get('pattern_id') or ''))}</code></h3>",
-            f"<p style='font-size:15px'>{_esc(str(p.get('summary') or ''))}</p>",
+            f"<h3>{label} <code>{_esc(str(f.get('family_id') or ''))}</code></h3>",
+            f"<p style='font-size:15px'>{_esc(str(origin.get('summary') or latest.get('summary') or ''))}</p>",
             "<hr>",
-            f"<div>类别: {_esc(str(p.get('category') or ''))}</div>",
-            f"<div>发生次数: {p.get('occurrence_count')} | 时间跨度: "
-            f"{_esc(str(p.get('first_seen') or '')[:10])} ~ {_esc(str(p.get('last_seen') or '')[:10])}</div>",
-            f"<div>置信度: {int(float(p.get('confidence') or 0) * 100)}%</div>",
-            f"<div>证据 memory: {len(p.get('source_memory_ids') or [])} 条</div>",
-            f"<div>证据摘要: {_esc(str(p.get('evidence_summary') or ''))}</div>",
+            f"<div>当前状态: <b>{_esc(st.upper())}</b>"
+            f"{'（已确认 · 当前生效：进入【我们共同的生活】prompt）' if st == 'confirmed' else ''}</div>",
+            f"<div>类别: {_esc(str(origin.get('category') or ''))}</div>",
+            f"<div>发生次数: {origin.get('occurrence_count')} | 时间跨度: "
+            f"{_esc(str(origin.get('first_seen') or '')[:10])} ~ {_esc(str(origin.get('last_seen') or '')[:10])}</div>",
+            f"<div>置信度: {int(float(origin.get('confidence') or 0) * 100)}%</div>",
+            f"<div>证据 memory: {len(origin.get('source_memory_ids') or [])} 条</div>",
+            f"<div>证据摘要: {_esc(str(origin.get('evidence_summary') or ''))}</div>",
             "<hr><b>如果确认（Impact Preview，真实语义）</b>",
             "<div style='margin-left:14px'>✅ 将影响: 【我们共同的生活】Prompt 块（常驻，query-independent）</div>",
             "<div style='margin-left:14px'>❌ 不影响: PersonalityState / Memory / Emotion / RelationshipCore</div>",
             "<div style='color:#666;margin-left:14px'>确认 = 状态 confirmed → 下轮 prompt 可见（≠ 立即生效于当前回复）</div>",
         ]
-        if p.get("reviewed_by"):
+        if latest.get("reviewed_by"):
             html.append("<hr>")
-            html.append(f"<div>审核: {_esc(str(p.get('reviewed_by')))} "
-                        f"{_esc(str(p.get('reviewed_at') or ''))}</div>")
-            html.append(f"<div>备注: {_esc(str(p.get('review_note') or ''))}</div>")
-        if p.get("lineage"):
-            html.append(f"<div>lineage: {_esc(str(p.get('lineage')))}</div>")
+            html.append(f"<div>审核: {_esc(str(latest.get('reviewed_by')))} "
+                        f"{_esc(str(latest.get('reviewed_at') or ''))}</div>")
+            html.append(f"<div>备注: {_esc(str(latest.get('review_note') or ''))}</div>")
+        # History / Lineage（折叠 ≠ 删除历史）
+        hist = f.get("history") or []
+        if len(hist) > 1:
+            html.append("<hr><b>History / Lineage（append-only 保留）</b>")
+            for h in hist:
+                st_ = h.get("status") or "candidate"
+                html.append(
+                    f"<div style='color:#666;margin-left:14px'>"
+                    f"{_esc(str(h.get('created_at') or h.get('reviewed_at') or ''))} · "
+                    f"{_esc(st_)} · <code>{_esc(str(h.get('pattern_id') or ''))}</code> · "
+                    f"{_esc(str(h.get('reviewed_by') or '—'))}</div>")
         self.pat_detail.setHtml("".join(html))
 
     def _set_pat_actions_enabled(self, enabled: bool):
@@ -802,10 +887,12 @@ class GovernancePanel(QMainWindow):
         p = self.pat_current
         if not p:
             return
+        # 操作 target = family root id（store.review 按 family 幂等，root id 命中原始行）
+        fid = str(p.get("family_id") or "")
         note = self.ed_pat_note.text().strip()
         self._set_pat_actions_enabled(False)  # 请求期间禁用，防重复点击
         try:
-            data = self._api(f"/patterns/{p['pattern_id']}/review", "POST", {
+            data = self._api(f"/patterns/{fid}/review", "POST", {
                 "decision": decision, "reviewer": "admin", "note": note,
             })
         except Exception as exc:  # noqa: BLE001
@@ -815,7 +902,7 @@ class GovernancePanel(QMainWindow):
         if data.get("status", "").startswith("already_"):
             QMessageBox.information(self, "提示", "该模式已审核过（幂等命中），无需重复操作。")
         else:
-            self.statusBar().showMessage(f"已执行 {decision} → {p['pattern_id']}")
+            self.statusBar().showMessage(f"已执行 {decision} → {fid}")
         self.ed_pat_note.clear()
         self.refresh_all()
 
@@ -823,13 +910,14 @@ class GovernancePanel(QMainWindow):
         p = self.pat_current
         if not p:
             return
+        fid = str(p.get("family_id") or "")
         text, ok = QInputDialog.getMultiLineText(
             self, "修改模式描述", "新描述（修改后仍为候选，需再确认）",
-            str(p.get("summary") or ""))
+            str((p.get("origin") or {}).get("summary") or ""))
         if not ok or not text.strip():
             return
         try:
-            data = self._api(f"/patterns/{p['pattern_id']}/review", "POST", {
+            data = self._api(f"/patterns/{fid}/review", "POST", {
                 "decision": "modify", "reviewer": "admin",
                 "note": self.ed_pat_note.text().strip(), "modified_summary": text.strip(),
             })
@@ -844,7 +932,8 @@ class GovernancePanel(QMainWindow):
         p = self.pat_current
         if not p:
             return
-        ids = self._clean_evidence_ids(p.get("source_memory_ids") or [])
+        # 证据来自 family origin 行（折叠后不丢 source/evidence）
+        ids = self._clean_evidence_ids((p.get("origin") or {}).get("source_memory_ids") or [])
         if not ids:
             QMessageBox.information(self, "看证据", "该模式没有关联 memory_id。")
             return
@@ -906,6 +995,85 @@ def _esc(text: str) -> str:
     return (str(text)
             .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             .replace('"', "&quot;"))
+
+
+# ============================================================
+# Family Projection（UI 层，2026-08-27 状态一致性修复）
+#   后端 append-only 保留全部原始行；UI 显示"一个事实 = 一个当前对象"。
+#   纯函数：不修改数据，只投影。family 根 = id 去掉 # 后缀链。
+# ============================================================
+def _family_root(record_id: str) -> str:
+    return str(record_id or "").split("#")[0]
+
+
+def project_pattern_families(rows: list) -> list:
+    """patterns raw rows → family 投影（每 family 一行）。
+
+    返回 list[dict]：
+        {family_id, origin(原始行), latest(最新状态行), history(全部行),
+         status(latest.status), reviewed_by, reviewed_at, active(runtime 生效)}
+    按文件顺序取每 family 最后一条记录为当前状态（append-only 语义）。
+    """
+    fams: dict = {}
+    order: list = []
+    for r in rows or []:
+        rid = str(r.get("pattern_id") or "")
+        root = _family_root(rid)
+        if not root:
+            continue
+        if root not in fams:
+            fams[root] = {"history": []}
+            order.append(root)
+        fams[root]["history"].append(r)
+    out = []
+    for root in order:
+        hist = fams[root]["history"]
+        origin = next((h for h in hist if str(h.get("pattern_id") or "") == root), hist[0])
+        latest = hist[-1]
+        # active 是消费语义：confirmed 家族且出现在 /patterns/active（API 侧
+        # list_active 视 confirmed for active）→ effective=True
+        out.append({
+            "family_id": root,
+            "origin": origin,
+            "latest": latest,
+            "history": hist,
+            "status": str(latest.get("status") or "candidate"),
+            "reviewed_by": latest.get("reviewed_by") or "",
+            "reviewed_at": latest.get("reviewed_at") or "",
+            "review_note": latest.get("review_note") or "",
+        })
+    return out
+
+
+def project_sm_families(rows: list) -> list:
+    """self-model-statements raw rows → family 投影（每 family 一行）。"""
+    fams: dict = {}
+    order: list = []
+    for r in rows or []:
+        sid = str(r.get("statement_id") or "")
+        root = _family_root(sid)
+        if not root:
+            continue
+        if root not in fams:
+            fams[root] = {"history": []}
+            order.append(root)
+        fams[root]["history"].append(r)
+    out = []
+    for root in order:
+        hist = fams[root]["history"]
+        origin = next((h for h in hist if str(h.get("statement_id") or "") == root), hist[0])
+        latest = hist[-1]
+        out.append({
+            "family_id": root,
+            "origin": origin,
+            "latest": latest,
+            "history": hist,
+            "status": str(latest.get("status") or "candidate"),
+            "reviewed_by": latest.get("reviewed_by") or "",
+            "reviewed_at": latest.get("reviewed_at") or "",
+            "fact": origin.get("fact") or latest.get("fact") or "",
+        })
+    return out
 
 
 def main():
