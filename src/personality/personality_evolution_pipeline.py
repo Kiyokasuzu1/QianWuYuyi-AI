@@ -340,6 +340,15 @@ class PersonalityEvolutionPipeline:
                 reasons=[f"approved_by:{actor}"],
                 confidence=float(getattr(proposal, "confidence", 0.0) or 0.0),
             )
+            # Self History：把真实经历证据随 record 传递（apply_evolution 内
+            # 写入版本时间线；EvolutionRecord 允许额外键，不影响既有消费方）。
+            _ev = list(
+                getattr(proposal, "evidence", None)
+                or getattr(proposal, "evidence_ids", None)
+                or []
+            )
+            if _ev:
+                record["evidence_ids"] = _ev
         except Exception as exc:  # noqa: BLE001
             return {
                 "applied": False,

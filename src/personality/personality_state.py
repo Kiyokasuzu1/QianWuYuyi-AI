@@ -117,6 +117,9 @@ class PersonalityState:
         before_snap = record.get("before") or {}
         after_snap = record.get("after") or {}
 
+        # Self History：变化前的完整人格快照（用于版本时间线；不可变）
+        sh_before_full = dict(self.traits)
+
         # 如果 before/after 为空，尝试从 trait_changes 提取（兼容旧格式）
         if not after_snap and record.get("trait_changes"):
             for trait_name, change in record["trait_changes"].items():
@@ -194,6 +197,25 @@ class PersonalityState:
                 "[personality_state_evolved] version=%d proposal=%s affected=%s",
                 self.version, proposal_id, list(result["affected_traits"].keys()),
             )
+            # Self History（Minimal Layer）：人格版本化不可变时间线。
+            # 只记录"真实已应用"的变化（apply 成功 + version 递增后）；
+            # 幂等由 EP-2（上方已拦重复 proposal）+ store 内 proposal_id 去重双保证；
+            # fail-soft：任何异常只 warning，绝不阻断人格应用。
+            try:
+                from src.personality.self_history_timeline import (
+                    get_self_history_timeline_store,
+                )
+                get_self_history_timeline_store().record_evolution(
+                    version=self.version,
+                    before=sh_before_full,
+                    after=dict(self.traits),
+                    proposal_id=proposal_id,
+                    approval_id=str(record.get("approval_id") or ""),
+                    evidence_ids=list(record.get("evidence_ids") or []),
+                    reason="; ".join(str(r) for r in (record.get("reasons") or [])),
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("[SelfHistory] 时间线写入失败（已隔离）: %s", exc)
         else:
             result["error"] = result["error"] or "no trait was actually changed"
 
