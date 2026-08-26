@@ -16,6 +16,16 @@ Phase G-0 Governance Freeze: 合法写入口注册表 + 废弃写路径清单。
 - 本模块是纯数据/工具模块, 不 import 任何域模块(避免循环依赖);
 - 只声明, 不执行任何状态修改;
 - 注册表条目必须与源码真实写入口一一对应(Phase G 前置审查取证)。
+
+Proposal Store 职责（P0-2 权威收敛, 2026-08-26）:
+- B-store (data/growth/proposals/proposals.json, src/growth/proposal/storage.py)
+  = GOVERNANCE_AUTHORITY —— 唯一生产审批事实源
+  (pending/approved/rejected/applied; drain 与审批端点均消费它);
+- A-store (data/proposals/proposals.jsonl, src/growth/proposal_store.py)
+  = EVALUATION_WORKSPACE —— Growth 评估工作区 / candidate / intermediate,
+  不是最终审批权威, 不得直接进入 PersonalityState;
+- growth_proposals.json (data/proposals/, legacy 旧引擎产物)
+  = LEGACY —— 仅兼容读取, 不得作为新的人格变更来源。
 """
 
 from __future__ import annotations

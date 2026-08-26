@@ -47,10 +47,19 @@ def mk(i, days_ago=0, hours_ago=0, importance=0.5, content="", frontend=None, me
 
 # ============ Test A：直接命中（时间窗口） ============
 def test_recall_by_time_yesterday_morning():
+    # 用绝对时间构造（时间无关）：昨天凌晨02点 = day_start(now)-1d+2h
+    from src.memory.memory_selection import _day_start
+    base = _day_start(NOW)
+    y_0200 = (base - timedelta(days=1) + timedelta(hours=2)).isoformat()
+    y_2200 = (base - timedelta(hours=2)).isoformat()
+    y_2100 = (base - timedelta(hours=3)).isoformat()
     recs = [
-        mk(0, 1, hours_ago=16, content="昨天凌晨02点：我爱你，什么是爱（主体对话）"),
-        mk(1, 0, hours_ago=20, content="昨天22点：晚安"),
-        mk(2, 0, hours_ago=21, content="昨天21点：闲聊"),
+        {"id": "m0", "content": "昨天凌晨02点：我爱你，什么是爱（主体对话）", "timestamp": y_0200,
+         "user_id": "366648462", "role": "user", "importance": 0.5, "metadata": {}},
+        {"id": "m1", "content": "昨天22点：晚安", "timestamp": y_2200,
+         "user_id": "366648462", "role": "user", "importance": 0.5, "metadata": {}},
+        {"id": "m2", "content": "昨天21点：闲聊", "timestamp": y_2100,
+         "user_id": "366648462", "role": "user", "importance": 0.5, "metadata": {}},
     ]
     hits = recall_by_time(recs, "昨天凌晨我们聊了什么", limit=4)
     assert len(hits) >= 1
@@ -85,10 +94,18 @@ def test_weak_intent_first_vs_last():
 # ============ Test C：时间查询覆盖主体而非尾巴 ============
 def test_time_query_not_tail_only():
     """昨天凌晨主体（02点）比昨天白天/晚上更早，时间窗口应覆盖主体。"""
+    from src.memory.memory_selection import _day_start
+    base = _day_start(NOW)
     recs = [
-        mk(0, 1, hours_ago=16, content="昨天凌晨02点：讨论什么是爱（主体）"),
-        mk(1, 1, hours_ago=8, content="昨天10点：MC 造房子"),
-        mk(2, 1, hours_ago=0, content="昨天18点：聊晚饭"),
+        {"id": "m0", "content": "昨天凌晨02点：讨论什么是爱（主体）",
+         "timestamp": (base - timedelta(days=1) + timedelta(hours=2)).isoformat(),
+         "user_id": "366648462", "role": "user", "importance": 0.5, "metadata": {}},
+        {"id": "m1", "content": "昨天10点：MC 造房子",
+         "timestamp": (base - timedelta(hours=14)).isoformat(),
+         "user_id": "366648462", "role": "user", "importance": 0.5, "metadata": {}},
+        {"id": "m2", "content": "昨天18点：聊晚饭",
+         "timestamp": (base - timedelta(hours=6)).isoformat(),
+         "user_id": "366648462", "role": "user", "importance": 0.5, "metadata": {}},
     ]
     hits = recall_by_time(recs, "昨天凌晨我们聊了什么", limit=6)
     contents = [str(h["record"]["content"]) for h in hits]
