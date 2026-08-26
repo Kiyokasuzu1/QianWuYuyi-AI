@@ -108,7 +108,12 @@ def _get_extra_tokens() -> List[str]:
 
 
 def _resolve_token() -> List[str]:
-    """解析当前所有合法 token(环境变量 / dev token / 注入)。"""
+    """解析当前所有合法 token(环境变量 / dev token(显式开启) / 注入)。
+
+    P0 止血：DEFAULT_DEV_TOKEN 不再是隐式常驻凭据——
+    只有显式设置 YUYI_DASHBOARD_ALLOW_DEV_TOKEN=1 时才加入合法集合
+    （仅限本地开发联调；生产必须使用 YUYI_DASHBOARD_TOKEN）。
+    """
     tokens: List[str] = []
     try:
         env = os.environ.get("YUYI_DASHBOARD_TOKEN", "")
@@ -116,7 +121,8 @@ def _resolve_token() -> List[str]:
             tokens.append(env)
     except Exception:  # noqa: BLE001
         pass
-    tokens.append(DEFAULT_DEV_TOKEN)
+    if os.environ.get("YUYI_DASHBOARD_ALLOW_DEV_TOKEN", "").strip() == "1":
+        tokens.append(DEFAULT_DEV_TOKEN)
     # 注入 resolver
     resolver = _get_token_resolver()
     if resolver is not None:

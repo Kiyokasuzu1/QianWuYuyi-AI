@@ -7,6 +7,7 @@ Admin API 蓝图
 
 from __future__ import annotations
 
+import hmac
 import logging
 import os
 import sys
@@ -21,6 +22,44 @@ from flask import Blueprint, Response, jsonify, request, send_from_directory
 logger = logging.getLogger(__name__)
 
 admin_bp = Blueprint("admin", __name__)
+
+
+@admin_bp.before_request
+def _protect_admin_write_requests():
+    """P0 止血：admin_bp 全部写操作（POST/PUT/PATCH/DELETE）必须认证。
+
+    与 api_server._require_admin_auth 同语义（fail-closed）：
+    - 已配置 token（YUYI_ADMIN_TOKEN / config.yaml admin.token）→ 必须携带匹配 token；
+    - 未配置 token → 仅本机回环放行，其余来源拒绝。
+    注意：CGNAT/Tailscale 网段不再视为管理员身份（能访问网络 ≠ 管理员）。
+    GET/HEAD/OPTIONS（静态页面、只读查询）不受影响。
+    """
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return None
+    try:
+        from api_server import _get_admin_token, _is_loopback_client
+        token = _get_admin_token()
+    except Exception:  # noqa: BLE001
+        token = ""
+    if not token:
+        try:
+            if _is_loopback_client():
+                return None
+        except Exception:  # noqa: BLE001
+            pass
+        return jsonify({
+            "error": "管理写端点未配置访问 token，仅允许本机访问",
+            "hint": "设置环境变量 YUYI_ADMIN_TOKEN（或 config.yaml admin.token）后，"
+                    "携带 X-Admin-Token 请求头访问",
+        }), 403
+    provided = (request.headers.get("X-Admin-Token") or "").strip()
+    if not provided:
+        auth = (request.headers.get("Authorization") or "").strip()
+        if auth.startswith("Bearer "):
+            provided = auth[len("Bearer "):].strip()
+    if not provided or not hmac.compare_digest(provided, token):
+        return jsonify({"error": "未授权：缺失或无效的管理 token"}), 401
+    return None
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 STATIC_DIR = PROJECT_ROOT / "static" / "admin"
@@ -210,6 +249,15 @@ def l2d_model_file(filename: str):
         except Exception:
             pass
         raise
+
+
+@admin_bp.route("/governance", strict_slashes=False)
+@admin_bp.route("/governance/")
+def admin_governance():
+    """v1.5.5 Governance G1: 治理控制台页面（复用 admin 静态资源模式）。"""
+    resp = send_from_directory(str(STATIC_DIR / "governance"), "index.html")
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @admin_bp.route("/<path:path>")
@@ -2027,6 +2075,17 @@ def api_cognitive_relationship_timeline():
 
 @admin_bp.route("/api/cognitive/proposal/<int:proposal_id>/preview")
 def api_cognitive_proposal_preview(proposal_id: int):
+    """P0 止血：旧成长影响预览已废弃（引擎不存在，此前返回 mock 假数据）。
+
+    统一改走真实治理链：GET /admin/api/admin/governance/proposal/<id>。
+    禁止再返回伪造 before/after。
+    """
+    return jsonify({
+        "ok": False,
+        "error": "该端点已废弃（此前返回模拟数据，不可作为审核依据）",
+        "hint": "请使用 /admin/api/admin/governance/proposal/<id> 查看真实提案详情",
+        "deprecated": True,
+    }), 410
     """
     成长影响预览 — Growth Impact Preview
     
@@ -2103,8 +2162,17 @@ def api_cognitive_proposal_preview(proposal_id: int):
 
 @admin_bp.route("/api/cognitive/proposal/<proposal_id>/approve", methods=["POST"])
 def api_proposal_approve(proposal_id: str):
-    """批准成长方案"""
-    from src.admin.core.audit import AuditLogger, AuditEventType, AuditOperatorType
+    """P0 止血：旧认知批准已废弃（曾对不存在的 growth_engine 返回假成功）。
+
+    真实审批链：POST /admin/api/admin/governance/growth/review（action=approve）。
+    禁止继续返回 success=True。
+    """
+    return jsonify({
+        "ok": False,
+        "error": "该端点已废弃（旧认知批准链，此前返回假成功，未连接真实引擎）",
+        "hint": "请使用 /admin/api/admin/governance/growth/review（action=approve）",
+        "deprecated": True,
+    }), 410
 
     data = request.get_json(silent=True) or {}
     user_id = data.get("user_id", "admin")
@@ -2154,11 +2222,16 @@ def api_proposal_approve(proposal_id: str):
 
 @admin_bp.route("/api/cognitive/proposal/<proposal_id>/reject", methods=["POST"])
 def api_proposal_reject(proposal_id: str):
-    """拒绝成长方案"""
-    from src.admin.core.audit import AuditLogger, AuditEventType, AuditOperatorType
+    """P0 止血：旧认知拒绝已废弃（同 approve，旧链未连接真实引擎）。
 
-    data = request.get_json(silent=True) or {}
-    reason = data.get("reason", "")
+    真实审批链：POST /admin/api/admin/governance/growth/review（action=reject）。
+    """
+    return jsonify({
+        "ok": False,
+        "error": "该端点已废弃（旧认知拒绝链，未连接真实引擎）",
+        "hint": "请使用 /admin/api/admin/governance/growth/review（action=reject）",
+        "deprecated": True,
+    }), 410
 
     success = False
     message = ""

@@ -34,49 +34,41 @@ gov_bp = Blueprint("governance", __name__)  # prefix 在注册时给定 /admin/a
 def _admin_token_required(view_func):
     """治理端点鉴权（fail-closed，与 api_server 的 admin 鉴权同语义）。
 
-    可信来源（放行）：
-      1. 已配置 admin.token/YUYI_ADMIN_TOKEN 且请求携带匹配 X-Admin-Token / Bearer
-      2. 本机回环（未配置 token 时）
-      3. Tailscale 网段（100.64.0.0/10）——8000 端口防火墙仅对该网段开放，
-         等同于治理端点只对清夏铃的私有网络可达（浏览器面板当前访问方式）
+    P0 止血（v2.0）：移除 Tailscale/CGNAT 网段兜底放行——
+      "能访问 Tailscale" 不再等价于 "管理员身份"。
+
+    可信来源：
+      1. 已配置 token（YUYI_ADMIN_TOKEN / config.yaml admin.token）且请求携带匹配
+         X-Admin-Token / Authorization: Bearer
+      2. 未配置 token 时，仅本机回环放行（其余来源 403，含 CGNAT）
     其余来源一律 401/403。
     """
+
     @functools.wraps(view_func)
     def _wrapped(*args, **kwargs):
         try:
-            from src.config import get as _cfg_get
-            token = str(_cfg_get("admin.token", "") or os.environ.get("YUYI_ADMIN_TOKEN", "") or "").strip()
+            from api_server import _get_admin_token, _is_loopback_client
+            token = _get_admin_token()
         except Exception:  # noqa: BLE001
-            token = os.environ.get("YUYI_ADMIN_TOKEN", "") or ""
-
-        def _is_trusted_client():
-            try:
-                from api_server import _client_ip, _is_loopback_client
-                if _is_loopback_client():
-                    return True
-                ip = _client_ip() or ""
-                # Tailscale CGNAT 段（与 api_server._detect_frontend 同规则）
-                if ip.startswith("100."):
-                    parts = ip.split(".")
-                    if len(parts) == 4 and 64 <= int(parts[1]) <= 127:
-                        return True
-            except Exception:  # noqa: BLE001
-                pass
-            return False
+            token = ""
 
         if not token:
-            if _is_trusted_client():
-                return view_func(*args, **kwargs)
-            return jsonify({"error": "管理端点未配置访问 token"}), 403
+            try:
+                if _is_loopback_client():
+                    return view_func(*args, **kwargs)
+            except Exception:  # noqa: BLE001
+                pass
+            return jsonify({
+                "error": "治理端点未配置访问 token，仅允许本机访问",
+                "hint": "设置环境变量 YUYI_ADMIN_TOKEN（或 config.yaml admin.token）后，"
+                        "携带 X-Admin-Token 请求头访问",
+            }), 403
         provided = (request.headers.get("X-Admin-Token") or "").strip()
         if not provided:
             auth = (request.headers.get("Authorization") or "").strip()
             if auth.startswith("Bearer "):
                 provided = auth[len("Bearer "):].strip()
-        # 已配置 token：优先校验 token；Tailscale 网段作为管理通道兜底放行
         if not provided or not hmac.compare_digest(provided, token):
-            if _is_trusted_client():
-                return view_func(*args, **kwargs)
             return jsonify({"error": "未授权：缺失或无效的管理 token"}), 401
         return view_func(*args, **kwargs)
     return _wrapped
