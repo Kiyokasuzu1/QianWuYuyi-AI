@@ -257,6 +257,129 @@ def _config_ints() -> Dict[str, Any]:
         }
 
 
+# ============ M2-2: MemoryRelevanceEvaluator 融合评分（候选级精排） ============
+def _get_relevance_evaluator():
+    """lazy 创建 MemoryRelevanceEvaluator（纯内存，不落审计历史文件）。
+
+    Evaluator 是 candidate scoring/ranking 层，不是 selection policy——
+    selection 的槽位/保底/时间桶结构由本模块决策，Evaluator 只提供
+    可解释的融合分（query_match/importance/semantic/time_decay/
+    relationship/identity/emotional → final_score）。
+    失败返回 None（fail-soft：调用方回落 M1 排序）。
+    """
+    try:
+        from src.memory.memory_relevance_evaluator import MemoryRelevanceEvaluator
+        return MemoryRelevanceEvaluator()  # 不传 history_path → 不持久化
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _selection_scorer_enabled() -> bool:
+    """memory.selection_scorer 开关（默认 true；false=完整回退 M1 selection）。"""
+    try:
+        from src.config import get as _cfg_get
+        return bool(_cfg_get("memory.selection_scorer", True))
+    except Exception:  # noqa: BLE001
+        return True
+
+
+def _score_with_evaluator(evaluator, record: Any, query: str) -> float:
+    """单条记录融合分（fail-soft：失败回落 importance，绝不影响 selection）。"""
+    try:
+        return float(
+            evaluator.evaluate(record, query or "").breakdown.final_score
+        )
+    except Exception:  # noqa: BLE001
+        try:
+            v = record.get("importance") if isinstance(record, dict) else getattr(record, "importance", None)
+            return float(v or 0.0)
+        except Exception:  # noqa: BLE001
+            return 0.0
+
+
+# ============ M2-3: Semantic Diversity（semantic 候选去重） ============
+# 只作用于 semantic candidates（评分/排序之后、取槽之前）。
+# 不触碰：history fallback / recent time buckets / importance scorer /
+# intake / schema / MemoryRelevanceEvaluator 本体。
+# 复用 Evaluator._tokens 的切词（英文词 + 中文 bigram），不引入新 embedding。
+_DIVERSITY_DEFAULT_THRESHOLD = 0.85
+
+
+def _text_tokens(text: str) -> set:
+    """切词：复用 MemoryRelevanceEvaluator._tokens（英文词 ≥2 + 中文 bigram）。
+
+    独立 fallback（Evaluator import 失败时同算法复制），保证 fail-soft。
+    """
+    try:
+        from src.memory.memory_relevance_evaluator import MemoryRelevanceEvaluator
+        return MemoryRelevanceEvaluator._tokens(text or "")
+    except Exception:  # noqa: BLE001
+        t = str(text or "").lower().strip()
+        toks = set(re.findall(r"[a-z0-9_]{2,}", t))
+        compact = re.sub(r"\s+", "", t)
+        if len(compact) >= 2:
+            toks.update(compact[i:i + 2] for i in range(len(compact) - 1))
+        return {x for x in toks if x}
+
+
+def _jaccard_similarity(a: str, b: str) -> float:
+    """token Jaccard（保守文本相似度；中文 bigram 粒度）。"""
+    ta, tb = _text_tokens(a), _text_tokens(b)
+    if not ta or not tb:
+        return 0.0
+    union = len(ta | tb)
+    return (len(ta & tb) / union) if union else 0.0
+
+
+def _candidate_text(record: Any) -> str:
+    """候选文本字段（按项目 schema 优先级：content / summary / text）。"""
+    if isinstance(record, dict):
+        return str(record.get("content") or record.get("summary") or record.get("text") or "")
+    return str(getattr(record, "content", "") or "")
+
+
+def _diversity_threshold() -> float:
+    """semantic_diversity_threshold 配置（默认 0.85；缺失/异常 fail-soft）。"""
+    try:
+        from src.config import get as _cfg_get
+        v = float(_cfg_get("memory.semantic_diversity_threshold", _DIVERSITY_DEFAULT_THRESHOLD) or _DIVERSITY_DEFAULT_THRESHOLD)
+    except Exception:  # noqa: BLE001
+        v = _DIVERSITY_DEFAULT_THRESHOLD
+    if v != v or not (0.0 <= v <= 1.0):  # NaN/越界保护
+        return _DIVERSITY_DEFAULT_THRESHOLD
+    return v
+
+
+def _apply_semantic_diversity(candidates: List[Dict], threshold: Optional[float] = None) -> List[Dict]:
+    """greedy 去重：候选须已按分数（final_score 或 relevance）降序。
+
+    - 与 selected 中任一条 Jaccard ≥ threshold → 跳过（低分重复）；
+    - 否则保留（高分优先，不随机删）；
+    - 空文本候选不参与比较（fail-soft）；
+    - 复杂度 O(k²)，k ≤ 20（semantic 候选上限）。
+    """
+    if not candidates:
+        return candidates
+    threshold = _diversity_threshold() if threshold is None else threshold
+    selected: List[Dict] = []
+    for c in candidates:
+        rec = c.get("record") if isinstance(c, dict) else c
+        text = _candidate_text(rec)
+        if not text.strip():
+            selected.append(c)
+            continue
+        redundant = False
+        for s in selected:
+            s_rec = s.get("record") if isinstance(s, dict) else s
+            s_text = _candidate_text(s_rec)
+            if s_text.strip() and _jaccard_similarity(text, s_text) >= threshold:
+                redundant = True
+                break
+        if not redundant:
+            selected.append(c)
+    return selected
+
+
 def select_injection_memories(
     recent_candidates: List[Any],
     semantic_candidates: List[Dict],
@@ -326,13 +449,39 @@ def select_injection_memories(
     # 1) semantic 优先（relevance 降序），达标才占槽；不达标即终止（降序后续更小）
     #    M1-1：弱时间意图命中时，在 relevance 达标后按意图重排（早/晚倾向），
     #    使"当时/第一次"类查询能优先拿到更早的相关记录。
+    #    M2-2：无弱意图且 selection_scorer=true 时，改用 Evaluator 融合分精排
+    #    （relevance 门槛先行过滤，保持 M1 语义；final_score 可审计分解）。
+    scorer_enabled = _selection_scorer_enabled()
+    evaluator = _get_relevance_evaluator() if scorer_enabled else None
     if weak_intent:
         semantic.sort(key=lambda c: _weak_intent_key(c["record"], weak_intent))
+    elif evaluator is not None:
+        eligible = [c for c in semantic if c["relevance"] >= min_relevance]
+        scored_cands = []
+        for c in eligible:
+            scored_cands.append(
+                (c, _score_with_evaluator(evaluator, c["record"], query or ""))
+            )
+        scored_cands.sort(key=lambda x: x[1], reverse=True)
+        semantic = [c for c, _ in scored_cands]
+    # M2-3: semantic diversity（评分/排序后、取槽前；greedy 高分优先）。
+    # 与 selection_scorer 正交：scorer=false 时按 relevance 排序后同样去重。
+    # 弱时间意图优先于 diversity：先按意图排序，再在同意图序内去重。
+    try:
+        from src.config import get as _cfg_get
+        _diversity_enabled = bool(_cfg_get("memory.semantic_diversity", True))
+    except Exception:  # noqa: BLE001
+        _diversity_enabled = True
+    if _diversity_enabled:
+        semantic = _apply_semantic_diversity(semantic)
     for cand in semantic:
         if len(final) >= max_total or semantic_added >= max_semantic:
             break
         if cand["relevance"] < min_relevance:
-            break
+            # M2-2: scorer 分支已先行过滤；此处兜底（relevance 排序分支保持 break 语义）
+            if evaluator is None and not weak_intent:
+                break
+            continue
         # 深拷贝 + 内存标记：不污染 orchestrator 传入的原始候选记录
         marked = copy.deepcopy(cand["record"])
         if isinstance(marked, dict):
@@ -345,7 +494,10 @@ def select_injection_memories(
     #    分层保证窗口内同时有"现在"与"更早的我们"。
     #    M1-2：桶内改按（importance + 时间）融合排序，替代纯时间倒序——
     #    同一天凌晨真正重要的对话不再被晚上普通闲聊挤出（S4b 实证）。
-    for record in _recent_time_buckets(recent):
+    #    M2-2：selection_scorer=true 时桶内再经 Evaluator 融合分精排
+    #    （importance/time_decay/类保底参与；query 不参与 recent 补位——
+    #    相关性已由 semantic 阶段覆盖，保持情境连续性语义）。
+    for record in _recent_time_buckets(recent, evaluator=evaluator):
         if len(final) >= max_total:
             break
         _add(record)
@@ -354,10 +506,32 @@ def select_injection_memories(
 
 
 def _is_mc_frontend(record: Any) -> bool:
-    """判断记录是否 MC 前端来源（metadata.frontend == 'mc'）。"""
+    """判断记录是否 MC 来源（M2-4：可信结构化字段判定，不做内容猜测）。
+
+    任一命中即视为 MC（fail-safe：宁可少注入，不污染普通记忆池）：
+      1. metadata.frontend == "mc"    —— MC 前端聊天（runtime_pipeline 写入）
+      2. metadata.source == "mc_events" —— MC 游戏事件（mc_event_normalizer 归一化）
+      3. id.startswith("mc_")         —— MC 事件 id 前缀（api_server 生成 mc_<ts>_<suffix>）
+
+    普通 runtime_pipeline / QQ / API 记录（id=mem_*、source=runtime_pipeline、
+    frontend=None/qq）不会命中；字段缺失/异常 → 不排除（不误排普通记录）。
+    生产数据实证：688 条中普通记录命中新判定的为 0 条。
+    """
     if isinstance(record, dict):
-        return (record.get("metadata") or {}).get("frontend") == "mc"
-    return (getattr(record, "metadata", None) or {}).get("frontend") == "mc"
+        md = record.get("metadata") or {}
+        md = md if isinstance(md, dict) else {}
+        if str(md.get("frontend") or "") == "mc":
+            return True
+        if str(md.get("source") or "") == "mc_events":
+            return True
+        return str(record.get("id") or "").startswith("mc_")
+    md = getattr(record, "metadata", None) or {}
+    md = md if isinstance(md, dict) else {}
+    if str(md.get("frontend") or "") == "mc":
+        return True
+    if str(md.get("source") or "") == "mc_events":
+        return True
+    return str(getattr(record, "id", "") or "").startswith("mc_")
 
 
 def _history_by_importance(recent: List[Any], now_ts: Optional[float] = None) -> List[Any]:
@@ -413,10 +587,17 @@ def _history_by_importance(recent: List[Any], now_ts: Optional[float] = None) ->
     return core + old[:max(0, floor)]
 
 
-def _recent_time_buckets(recent: List[Any], now_ts: Optional[float] = None) -> List[Any]:
+def _recent_time_buckets(
+    recent: List[Any],
+    now_ts: Optional[float] = None,
+    evaluator: Any = None,
+) -> List[Any]:
     """近期分层：core 在前，其余按 [24h: 2, 7天: 2, 其余: 兜底] 抽满。
 
     （历史保底已在 _history_by_importance 单独处理，本函数只服务"近期补位"。）
+    M1-2：每桶取用前按（importance 降序，其次时间倒序）排序。
+    M2-2：evaluator 非 None 时，桶内先按 importance+时间粗筛短名单（count×3），
+    再经 Evaluator 融合分精排取 count——评分量 = 短名单级，非全库。
     """
     core = []
     rest = []
@@ -480,23 +661,19 @@ def _recent_time_buckets(recent: List[Any], now_ts: Optional[float] = None) -> L
         except Exception:  # noqa: BLE001
             return 0.0
 
+    def _fusion_key(r: Any) -> Tuple[float, float]:
+        return (-_importance(r), -(_ts_seconds(r) or 0.0))
+
     bucket_pool = list(rest)
     prev_upper = 0
     for days, count in buckets:
         if count <= 0:
             continue
         upper_sec = None if days is None else days * 86400
-        picked = 0
+        # 收集本桶候选（age 窗口判定），其余保留给后续桶
+        bucket_cands = []
         remaining = []
-        # M1-2：每桶取用前按（importance 降序，其次时间倒序）排序——
-        # 让"同一天凌晨的重要对话"先于同日稍晚的普通闲聊被选中（S4b 修复）。
-        # 排序只作用于桶内选取顺序，不改变分层结构（每桶仍取 count 条）。
-        if fusion_enabled:
-            bucket_pool.sort(key=lambda r: (-_importance(r), -(_ts_seconds(r) or 0.0)))
         for r in bucket_pool:
-            if picked >= count:
-                remaining.append(r)
-                continue
             ts = _ts_seconds(r)
             if ts is None:
                 remaining.append(r)
@@ -506,18 +683,40 @@ def _recent_time_buckets(recent: List[Any], now_ts: Optional[float] = None) -> L
                 remaining.append(r)
                 continue
             if upper_sec is None or age <= upper_sec:
-                result.append(r)
-                picked += 1
+                bucket_cands.append(r)
             else:
                 remaining.append(r)
-        bucket_pool = remaining
+        if not bucket_cands:
+            bucket_pool = remaining
+            continue
+        # 桶内选取：M2-2 精排（短名单粗筛 → Evaluator 融合分）或 M1-2 融合键
+        if fusion_enabled:
+            bucket_cands.sort(key=_fusion_key)
+            if evaluator is not None and len(bucket_cands) > count:
+                shortlist = bucket_cands[: max(count * 3, count + 2)]
+                scored = [
+                    (r, _score_with_evaluator(evaluator, r, ""))
+                    for r in shortlist
+                ]
+                scored.sort(key=lambda x: x[1], reverse=True)
+                picked = [r for r, _ in scored[:count]]
+            else:
+                picked = bucket_cands[:count]
+            leftover = bucket_cands[len(picked):]
+        else:
+            # fusion 关闭：纯时间倒序（v1.5.5 行为）
+            bucket_cands.sort(key=lambda r: -(_ts_seconds(r) or 0.0))
+            picked = bucket_cands[:count]
+            leftover = bucket_cands[len(picked):]
+        result.extend(picked)
+        bucket_pool = remaining + leftover
         prev_upper = upper_sec if upper_sec is not None else prev_upper
 
     # M1-2：最终列表按（importance 降序，其次时间倒序）稳定排序——
     # 保持渲染顺序稳定（历史保底/语义仍在前，此处只对 recent 部分生效）。
     # importance 恒 0.5 时等价于纯时间倒序，完全向后兼容。
     if fusion_enabled:
-        result.sort(key=lambda r: (-_importance(r), -(_ts_seconds(r) or 0.0)))
+        result.sort(key=_fusion_key)
 
     result.extend(bucket_pool)
     return result

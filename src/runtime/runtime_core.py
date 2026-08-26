@@ -5382,17 +5382,32 @@ class RuntimeCore(ModuleBase):
                                 str(getattr(ctx, "user_message", "") or ""),
                                 getattr(ctx, "history", None),
                             )
-                            results = vm.search(query, top_k=5, user_id=uid)
+                            # M2-1: 宽召回——top_k 由 memory.retrieval_broad_k 控制（默认 20）。
+                            # 扩大的只是 candidate pool；最终注入仍受 selection 层约束。
+                            try:
+                                from src.config import get as _cfg_get
+                                _broad_k = int(_cfg_get("memory.retrieval_broad_k", 20) or 20)
+                            except Exception:  # noqa: BLE001
+                                _broad_k = 20
+                            results = vm.search(query, top_k=_broad_k, user_id=uid)
                             for res in results or []:
                                 full = None
                                 try:
                                     full = ms.get_by_id(res.get("mem_id"))
                                 except Exception:  # noqa: BLE001
                                     full = None
-                                semantic_candidates.append({
-                                    "record": full if full else res,
-                                    "relevance": float(res.get("relevance") or 0.0),
-                                })
+                                rec = full if full else res
+                                if isinstance(rec, dict):
+                                    # M2-1: 浅拷贝 + 临时挂载 vector relevance（不写回存储）
+                                    rec = dict(rec)
+                                    rec["_vector_relevance"] = float(res.get("relevance") or 0.0)
+                                # M2-3 修复：不再排除已见 id（与 orchestrator 链一致）——
+                                # 去重由 select 层负责（_add 按 id，semantic 优先）。
+                                if isinstance(rec, dict) and rec.get("id") is not None:
+                                    semantic_candidates.append({
+                                        "record": rec,
+                                        "relevance": float(res.get("relevance") or 0.0),
+                                    })
                     except Exception as exc:  # noqa: BLE001
                         logger.warning("[RuntimeCore] semantic 检索失败（已隔离）: %s", exc)
                         semantic_candidates = []

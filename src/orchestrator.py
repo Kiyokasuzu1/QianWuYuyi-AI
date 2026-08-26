@@ -1071,11 +1071,15 @@ class Orchestrator:
                 memories = []
         try:
             if self.vector_memory and query:
-                results = self.vector_memory.search(query, top_k=5, user_id=uid)
-                seen_ids = {
-                    m.get("id") for m in memories
-                    if isinstance(m, dict) and m.get("id")
-                }
+                # M2-1: 宽召回——top_k 由 memory.retrieval_broad_k 控制（默认 20）。
+                # 扩大的只是 candidate pool；最终注入仍受 injection_max_total/
+                # injection_max_semantic 约束（selection 层裁剪）。
+                try:
+                    from src.config import get as _cfg_get
+                    _broad_k = int(_cfg_get("memory.retrieval_broad_k", 20) or 20)
+                except Exception:  # noqa: BLE001
+                    _broad_k = 20
+                results = self.vector_memory.search(query, top_k=_broad_k, user_id=uid)
                 for res in results:
                     full = None
                     try:
@@ -1083,8 +1087,17 @@ class Orchestrator:
                     except Exception:
                         full = None
                     rec = full if full else res
+                    if isinstance(rec, dict):
+                        # M2-1: 浅拷贝 + 临时挂载 vector relevance（仅运行时对象；
+                        # 不写回 memory.json，供 selection/后续 scoring 消费）。
+                        rec = dict(rec)
+                        rec["_vector_relevance"] = float(res.get("relevance") or 0.0)
                     rid = rec.get("id") if isinstance(rec, dict) else None
-                    if rid is None or rid not in seen_ids:
+                    # M2-3 修复：不再用 seen_ids 排除 vector 命中——recent 池是
+                    # 全量 allowed 记录，旧过滤使 semantic_candidates 在生产链
+                    # 恒空（semantic 阶段死代码）。去重交给 select 层
+                    # （_add 按 id 去重，semantic 优先）。
+                    if rid is not None:
                         # v1.5.5 Memory Recall Fix: 保留 relevance 作为 semantic 候选
                         # （relevance 是"本次检索得分"，不写回存储；由 selection 消费）
                         semantic_candidates.append({

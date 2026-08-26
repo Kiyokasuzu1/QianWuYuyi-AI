@@ -23,6 +23,18 @@ memory:
   selection_fusion: true
   # v1.6.0 M1: 弱时间意图（第一次/上次/当时/最近 → semantic 候选重排）
   weak_time_intent: true
+  # v1.6.0 M2-1: 宽召回候选池大小（扩大 candidate pool；最终注入仍受
+  # injection_max_total / injection_max_semantic 约束，不进 prompt 的 20 条）
+  retrieval_broad_k: 20
+  # v1.6.0 M2-2: 候选级融合评分（MemoryRelevanceEvaluator 精排 semantic/
+  # recent 短名单；false=完整回退 M1 selection 排序）。与 selection_fusion/
+  # weak_time_intent/retrieval_broad_k 正交。
+  selection_scorer: true
+  # v1.6.0 M2-3: semantic 候选去重（greedy 高分优先；只作用于 semantic
+  # 阶段，不影响 history fallback / recent buckets）。与 selection_scorer 正交。
+  semantic_diversity: true
+  # M2-3: 相似度阈值（token Jaccard，0.85 保守——宁可漏过滤不误删）
+  semantic_diversity_threshold: 0.85
 
 llm:
   api_key: "${DEEPSEEK_API_KEY}"
