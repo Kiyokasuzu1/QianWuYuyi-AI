@@ -71,7 +71,10 @@ class GovernancePanel(QMainWindow):
     # ---------- Phase 2A 凭据 ----------
     def _get_cred(self):
         if self._cred is None:
-            from tools.governance_credential_store import get_credential_store
+            try:
+                from tools.governance_credential_store import get_credential_store
+            except ImportError:  # 直接运行 python tools/governance_panel.py 时 tools 顶层包不可导入
+                from governance_credential_store import get_credential_store
             self._cred = get_credential_store()
         return self._cred
 
@@ -358,7 +361,12 @@ class GovernancePanel(QMainWindow):
 
     # ---------- API ----------
     def _api(self, path: str, method: str = "GET", body: dict | None = None) -> dict:
-        url = self.ed_base.text().strip().rstrip("/") + API_PREFIX + path
+        base = self.ed_base.text().strip().rstrip("/")
+        # admin_bp 完整路径（/admin/api/admin/governance/*）直接使用；其余叠加 gov_bp 前缀
+        if path.startswith(("/admin/api/", "/api/")):
+            url = base + path
+        else:
+            url = base + API_PREFIX + path
         headers = {"Accept": "application/json"}
         tok = self._effective_token()
         if not tok:
