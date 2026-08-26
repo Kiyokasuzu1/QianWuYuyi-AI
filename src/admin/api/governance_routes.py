@@ -30,6 +30,10 @@ logger = logging.getLogger(__name__)
 
 gov_bp = Blueprint("governance", __name__)  # prefix 在注册时给定 /admin/api/governance
 
+#: memory-search 元数据投影键（2026-08-27 修复：加入 reply——
+#: 此前投影仅 3 键导致 assistant 回复在观测 API 中"看似丢失"，造成误判）
+_MEMORY_META_KEYS = ("frontend", "source", "memory_type", "reply")
+
 
 def _admin_token_required(view_func):
     """治理端点鉴权（fail-closed，与 api_server 的 admin 鉴权同语义）。
@@ -385,7 +389,7 @@ def memory_search():
                     # 精确 id 命中：直接返回，不截断内容
                     out.append({"id": r.get("id"), "ts": r.get("timestamp"),
                                 "content": str(r.get("content", "")),
-                                "metadata": {k: md.get(k) for k in ("frontend", "source", "memory_type")}})
+                                "metadata": {k: md.get(k) for k in _MEMORY_META_KEYS}})
                     if len(out) >= limit:
                         break
                     continue
@@ -394,7 +398,7 @@ def memory_search():
                     continue
             out.append({"id": r.get("id"), "ts": r.get("timestamp"),
                         "content": str(r.get("content", ""))[:200],
-                        "metadata": {k: md.get(k) for k in ("frontend", "source", "memory_type")}})
+                        "metadata": {k: md.get(k) for k in _MEMORY_META_KEYS}})
             if len(out) >= limit:
                 break
         return jsonify({"ok": True, "results": out, "count": len(out)})
