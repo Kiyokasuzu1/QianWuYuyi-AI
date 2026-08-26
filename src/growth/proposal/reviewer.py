@@ -240,22 +240,12 @@ def create_proposal_from_event(event):
             reason=event.data.get("reason", ""),
         )
     elif event.event_type == EventType.RELATIONSHIP_CHANGED:
-        dimension = event.data.get("dimension", "")
-        delta = event.data.get("new_value", 0.0) - event.data.get("old_value", 0.0)
-        return reviewer.create_proposal(
-            proposal_type=PROPOSAL_TYPE["RELATIONSHIP"],
-            affected_dimensions={dimension: delta},
-            before_state={dimension: event.data.get("old_value", 0.0)},
-            after_state={dimension: event.data.get("new_value", 0.0)},
-            source=event.source,
-            source_event_id=event.event_id,
-            user_id=event.data.get("user_id", ""),
-            reason=event.data.get("reason", ""),
-            # R-1.5.0: 字段一致性——与 orchestrator 直写路径对齐
-            # （confidence 0.7 + evidence 携带事件 id）
-            confidence=0.7,
-            evidence=[event.event_id],
-        )
+        # B_STORE_RELATIONSHIP_MIRROR = DISABLED（2026-08-27 P0 冻结）：
+        #   每次 RELATIONSHIP_CHANGED 都生成 proposal（无 delta 阈值/无聚合/无 dedup），
+        #   生产已积累 178 条关系噪音提案；System C 提案层已冻结、无人消费。
+        #   关系状态是 derived 层，不应进入人格治理提案流。
+        #   保留 PERSONALITY_CHANGED 等真实 Growth 类型完全不变。
+        return None
     return None
 
 

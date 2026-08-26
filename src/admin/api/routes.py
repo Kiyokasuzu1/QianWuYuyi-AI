@@ -3863,100 +3863,19 @@ def _get_activation_record_store():
     methods=["POST"],
 )
 def api_governance_relationship_proposals_activate(proposal_id: str):
+    """P0 冻结（2026-08-27）：System C 激活通道已禁用（410 Gone）。
+
+    SYSTEM_C_RELATIONSHIP_PROPOSALS = LEGACY_FROZEN
+    - canonical RelationshipCore 唯一合法写路径 = Governance Confirm（gov_bp）；
+    - proposal → activation → RelationshipCore 是第二套事实写入口，予以切断；
+    - RelationshipActivationService 类保留不删；重新启用需重新经过治理架构设计。
     """
-    Phase 2.5-D: 人工激活 —— accepted 提案 → 关系核心落库的独立治理步骤。
-
-    Body:
-      {
-        "reviewer": "366648462",           # 必填,审核人
-        "activation_reason": "...",        # 必填,激活理由
-        "approved_memory_ids": [...],      # 人工认可的锚点记忆(可只取提案子集)
-        "relationship_type": "creator",    # 可选,默认 other
-        "agreements": [...],               # 人工敲定的关系约定
-        "boundaries": [...],               # 行为边界
-        "visibility": "global"             # 可选,默认 relationship_only
-      }
-
-    安全:仅 accepted 提案可激活;事务日志式写入(可扫描/可 finalize 恢复);
-    重复 relationship_id 被 append-only 存储拒绝,旧核心永不被覆盖。
-    """
-    try:
-        data = request.get_json(silent=True) or {}
-        reviewer = str(data.get("reviewer") or "").strip()
-        reason = str(data.get("activation_reason") or "")
-
-        store = _get_relationship_proposal_store()
-        record = store.get(proposal_id)
-        if record is None:
-            return jsonify({"success": False, "error": f"proposal {proposal_id} 不存在"}), 404
-
-        from src.relationship.relationship_activation import ActivationDraft
-
-        approved = data.get("approved_memory_ids") or record.get("source_memory_ids") or []
-        approved = [str(m) for m in approved] if isinstance(approved, list) else []
-        agreements = data.get("agreements") or []
-        agreements = [str(a) for a in agreements] if isinstance(agreements, list) else []
-        boundaries = data.get("boundaries") or []
-        boundaries = [str(b) for b in boundaries] if isinstance(boundaries, list) else []
-
-        draft = ActivationDraft(
-            proposal_id=proposal_id,
-            approved_memory_ids=approved,
-            relationship_type=str(data.get("relationship_type") or "other"),
-            agreements=agreements,
-            boundaries=boundaries,
-            visibility=str(data.get("visibility") or "relationship_only"),
-            activated_by=reviewer,
-        )
-
-        service = _get_activation_service()
-        if service is None:
-            return jsonify({"success": False, "error": "激活服务不可用"}), 500
-        result = service.activate(draft, reviewer=reviewer, reason=reason)
-        if result.get("ok"):
-            try:
-                from src.admin.core.audit import AuditLogger, AuditEventType, AuditOperatorType
-                AuditLogger.get_instance().record(
-                    event_type=AuditEventType.MODULE_RELOAD,
-                    operator=reviewer,
-                    operator_type=AuditOperatorType.HUMAN,
-                    target=f"relationship_core:{result.get('relationship_id')}",
-                    detail={
-                        "action": "activate",
-                        "proposal_id": proposal_id,
-                        "reason": reason,
-                        "result": "success",
-                    },
-                )
-            except Exception:  # noqa: BLE001
-                pass
-            return jsonify({
-                "success": True,
-                "proposal_id": proposal_id,
-                "relationship_id": result.get("relationship_id"),
-                "record_id": result.get("record_id"),
-                "status": "activated",
-                "message": "关系核心已激活并落库(事务日志 COMPLETED)",
-            })
-        stage = result.get("stage")
-        code = (
-            500 if stage in (
-                "record_prepare_failed", "core_write_failed",
-                "record_finalize_failed", "proposal_activate_failed",
-                "proposal_save_failed",
-            ) else 400
-        )
-        return jsonify({
-            "success": False,
-            "error": result.get("error"),
-            "stage": stage,
-            "record_id": result.get("record_id"),
-        }), code
-    except Exception as e:
-        logger.warning(f"api_governance_relationship_proposals_activate 异常: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
+    return jsonify({
+        "ok": False,
+        "error": "该端点已冻结（System C relationship proposals 为 LEGACY_FROZEN）",
+        "hint": "canonical 关系事实唯一写路径：/admin/api/governance/candidates/<id>/review (confirm)",
+        "deprecated": True,
+    }), 410
 @admin_bp.route("/api/admin/governance/relationship-activations")
 def api_governance_relationship_activations_list():
     """

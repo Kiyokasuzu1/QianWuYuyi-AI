@@ -3,6 +3,14 @@
 
 补全 2.5-C 缺失的最后一环(accepted → activated → 长期存在):
 
+SYSTEM_C_RELATIONSHIP_PROPOSALS = LEGACY_FROZEN（2026-08-27 P0 冻结）
+  - 历史数据保留（111 条 append-only，不删除、不迁移、不清空）
+  - 不再新增（handlers.py 已停止候选桥订阅）
+  - 不自动激活（routes.py activate 端点 410；canonical 唯一写路径 = gov confirm）
+  - 不作为 canonical source（RelationshipCore 7 条 confirmed 为唯一真源）
+  - 重新启用需重新经过治理架构设计
+
+
     RelationshipProposal (accepted)
         ↓ 人工定义 ActivationDraft(可只认可提案中的部分记忆)
         ↓ 人工调用 activate(独立治理步骤,绝不自动执行)

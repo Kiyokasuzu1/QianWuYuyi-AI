@@ -64,10 +64,15 @@ def register_builtin_handlers():
     # Phase 2.5-D: MemoryCreatedEvent -> RelationshipCandidateBridge
     # 关系候选提取是事件消费者(与 GrowthPipeline 主动调用解耦):
     # 未来 QQ/网页/语音/游戏任何入口发布 MemoryCreatedEvent 都自动生效。
-    from src.relationship.relationship_candidate_bridge import (
-        relationship_candidate_handler,
-    )
-    subscribe_event(EventType.MEMORY_CREATED, relationship_candidate_handler)
+    # SYSTEM_C_RELATIONSHIP_PROPOSALS = LEGACY_FROZEN（2026-08-27 P0 冻结）：
+    #   - 历史 111 条保留（append-only，不删除）
+    #   - 停止产生新 proposal（消除治理噪音）
+    #   - 激活通道已在 routes.py 410 禁用（canonical 写入唯一路径 = gov confirm）
+    #   - 候选桥/存储代码保留不删；重新启用需重新经过治理架构设计
+    # from src.relationship.relationship_candidate_bridge import (
+    #     relationship_candidate_handler,
+    # )
+    # subscribe_event(EventType.MEMORY_CREATED, relationship_candidate_handler)
 
     # R-1.1: EmotionChangedEvent -> 下游观察接口（空消费者，不实现业务）
     subscribe_event(EventType.EMOTION_CHANGED, emotion_changed_observer_handler)

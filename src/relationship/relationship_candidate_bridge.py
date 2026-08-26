@@ -5,6 +5,15 @@
 
     MemoryCreatedEvent(记忆已落库)
         ↓  EventBus(MEMORY_CREATED)
+
+
+SYSTEM_C_RELATIONSHIP_PROPOSALS = LEGACY_FROZEN（2026-08-27 P0 冻结）
+  - 历史数据保留（111 条 append-only，不删除、不迁移、不清空）
+  - 不再新增（handlers.py 已停止候选桥订阅）
+  - 不自动激活（routes.py activate 端点 410；canonical 唯一写路径 = gov confirm）
+  - 不作为 canonical source（RelationshipCore 7 条 confirmed 为唯一真源）
+  - 重新启用需重新经过治理架构设计
+
     relationship_candidate_handler(事件消费者,fail-soft)
         ↓  构建评估记录(user_id/memory_id/content/timestamp —— 证据链完整)
         ↓  RelationshipCoreEvaluator(2.5-C 纯规则引擎,无 LLM)
