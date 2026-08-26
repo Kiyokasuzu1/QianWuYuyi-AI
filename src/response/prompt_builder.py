@@ -194,11 +194,28 @@ class PromptBuilder:
 
         # Phase 2.5-B: 羽依核心身份事实常驻块——任何会话(含陌生人会话)都可见,
         # 保证其他用户窗口不会让羽依忘记「自己是谁、清清是谁、核心约束」。
+        # v1.5.5 Governance C2-f: 同步注入 Relationship Core 常驻块（与 engine 链一致）。
         try:
-            from src.identity.yui_core_profile import build_yui_core_block
+            from src.config import get as _cfg_get
+            _rc_enabled = bool(_cfg_get("relationship_core.enabled", True))
+        except Exception:  # noqa: BLE001
+            _rc_enabled = True
+        try:
+            from src.identity.yui_core_profile import (
+                build_yui_core_block, build_relationship_core_block,
+                build_shared_life_block,
+            )
             yui_core_text = build_yui_core_block()
             if yui_core_text and yui_core_text.strip():
                 sections.append(yui_core_text.strip())
+            if _rc_enabled:
+                _rel_core = build_relationship_core_block()
+                if _rel_core and _rel_core.strip():
+                    sections.append(_rel_core.strip())
+            # Phase 2 Shared-Life：长期共同生活模式常驻背景
+            _shared_life = build_shared_life_block()
+            if _shared_life and _shared_life.strip():
+                sections.append(_shared_life.strip())
         except Exception:  # noqa: BLE001
             pass
 

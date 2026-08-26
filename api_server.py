@@ -118,6 +118,15 @@ def _get_event_sink(config: Optional[dict] = None):
         return None
 
 
+# v1.5.5 Governance C2-d: 治理端点——必须在 admin_bp 之前注册，
+# 避免 admin_bp 的 catch-all（/<path:path>）抢先匹配 /api/governance/*
+try:
+    from src.admin.api.governance_routes import gov_bp
+    app.register_blueprint(gov_bp, url_prefix="/admin/api/governance")
+    logger.info("Governance Blueprint registered at /admin/api/governance")
+except Exception as _gov_exc:  # noqa: BLE001
+    logger.warning("Governance Blueprint 注册失败（已隔离）: %s", _gov_exc)
+
 app.register_blueprint(admin_bp, url_prefix="/admin")
 
 # Phase 5.0 Dashboard Upgrade —— 注册 Dashboard V2 Blueprint

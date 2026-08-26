@@ -199,7 +199,10 @@ class ResponseEngine:
         except Exception:  # noqa: BLE001
             _rc_enabled = True
         try:
-            from src.identity.yui_core_profile import build_yui_core_block, build_relationship_core_block
+            from src.identity.yui_core_profile import (
+                build_yui_core_block, build_relationship_core_block,
+                build_shared_life_block,
+            )
             _yui = build_yui_core_block()
             if _yui and _yui.strip():
                 system_parts.append(_yui.strip())
@@ -207,6 +210,11 @@ class ResponseEngine:
                 _rel = build_relationship_core_block()
                 if _rel and _rel.strip():
                     system_parts.append(_rel.strip())
+            # Phase 2 Shared-Life：长期共同生活模式常驻背景
+            # （query-independent；数量 ≤3；空 store 安全降级）
+            _shared_life = build_shared_life_block()
+            if _shared_life and _shared_life.strip():
+                system_parts.append(_shared_life.strip())
         except Exception:  # noqa: BLE001
             pass
 

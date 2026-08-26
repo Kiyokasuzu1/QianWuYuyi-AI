@@ -84,6 +84,30 @@ def build_relationship_core_block(user_id: str = CREATOR_USER_ID) -> str:
         return ""
 
 
+def build_shared_life_block(max_patterns: int = 3) -> str:
+    """生成【我们共同的生活】Prompt 块（Phase 2 Shared-Life 常驻背景）。
+
+    - 只渲染 status ∈ (confirmed, active) 的 Shared-Life Pattern；
+    - query-independent：不依赖检索，与 YUI_CORE / RelCore 同级常驻；
+    - 数量严格受限（默认 ≤3）——Shared-Life 是生活背景，不是第二个 Memory Dump；
+    - store 为空/异常 → 返回 ""（安全降级，不注入）。
+    """
+    try:
+        from src.governance.shared_life_pattern import SharedLifePatternStore
+        store = SharedLifePatternStore()
+        actives = store.list_active()
+        if not actives:
+            return ""
+        lines = ["【我们共同的生活】"]
+        for p in actives[:max_patterns]:
+            summary = str(p.get("summary") or "").strip()
+            if summary:
+                lines.append(f"- {summary}")
+        return "\n".join(lines) if len(lines) > 1 else ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 __all__ = [
     "CREATOR_USER_ID",
     "CREATOR_DISPLAY_NAME",
@@ -92,4 +116,5 @@ __all__ = [
     "CORE_RELATIONSHIP_MEMORY_IDS",
     "build_yui_core_block",
     "build_relationship_core_block",
+    "build_shared_life_block",
 ]
