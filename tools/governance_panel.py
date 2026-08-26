@@ -74,10 +74,10 @@ class GovernancePanel(QMainWindow):
         self.ed_base = QLineEdit(API_BASE_DEFAULT)
         self.ed_base.setMinimumWidth(230)
         top.addWidget(self.ed_base)
-        top.addWidget(QLabel("Token(可选)"))
+        top.addWidget(QLabel("Token(必填)"))
         self.ed_token = QLineEdit()
         self.ed_token.setEchoMode(QLineEdit.Password)
-        self.ed_token.setPlaceholderText("Tailscale 网段内无需填")
+        self.ed_token.setPlaceholderText("治理管理 Token（Phase A 后必须填写）")
         self.ed_token.setFixedWidth(120)
         top.addWidget(self.ed_token)
         self.btn_connect = QPushButton("连接测试")
@@ -257,8 +257,14 @@ class GovernancePanel(QMainWindow):
         url = self.ed_base.text().strip().rstrip("/") + API_PREFIX + path
         headers = {"Accept": "application/json"}
         tok = self.ed_token.text().strip()
-        if tok:
-            headers["X-Admin-Token"] = tok
+        if not tok:
+            # Phase A 后治理端点必须携带 token（CGNAT 不再放行）。
+            # 空 token 直接明确失败，而不是让服务器 401 后用户困惑。
+            raise RuntimeError(
+                "未填写治理管理 Token：请在上方 Token 输入框填入治理 token "
+                "（生产 token 由部署方提供）"
+            )
+        headers["X-Admin-Token"] = tok
         if method == "GET":
             resp = requests.get(url, headers=headers, timeout=HTTP_TIMEOUT)
         else:
