@@ -1,6 +1,11 @@
 import os
+import logging
 
-#: 记忆注入硬预算（引擎层兜底；与 selection 的 injection_max_total 语义一致）
+logger = logging.getLogger(__name__)
+
+# v1.5.5 Memory Recall Fix: 记忆注入硬预算兜底（显式化，非隐式裁决）。
+# 最终条数由 orchestrator selection 层决定（memory.injection_max_total，默认 6）；
+# 此处仅防未来调用方传入超长列表导致 prompt 膨胀。
 MEMORY_INJECTION_HARD_CAP = 6
 
 # R2.7.6-DEPLOY: OpenAI SDK 延迟 import —— 环境没装 openai 包时不崩溃（mock 模式正常工作）
@@ -16,6 +21,58 @@ except Exception:  # ModuleNotFoundError / ImportError 都兜底
     _OPENAI_SDK_AVAILABLE = False
 
 
+def _record_injection_legacy(local_vars: dict) -> None:
+    """v1.5-T3b: 顶层链（legacy，生产实际主链）注入台账挂点。
+
+    生产实测：审计日志 100% 由本文件产出，说明生产走 orchestrator→顶层
+    engine 链（runtime 链静默降级），故台账必须在此挂点。fail-soft：任何
+    异常静默跳过。变量经 locals() 取，缺失记 0。
+    """
+    try:
+        from src.audit.injection_ledger import record_injection, is_ledger_enabled
+        if not is_ledger_enabled():
+            return
+
+        def _l(name):
+            v = local_vars.get(name)
+            return len(v) if isinstance(v, str) else 0
+
+        record_injection({
+            # 顶层链身份块(index0)合并了 yui_core，全部计入 identity
+            "yui_core": 0,
+            "identity": _l("identity_block_text") or (
+                len(local_vars.get("system_parts")[0])
+                if isinstance(local_vars.get("system_parts"), list) and local_vars["system_parts"]
+                else 0
+            ),
+            "user_meta": _l("user_meta_text"),
+            "agreement": 0,
+            "personality": _l("personality_context"),
+            "behavior": 0,  # 原则块并入 system（粗粒度不计）
+            "self_model": _l("self_model_text") or _l("text"),
+            "goal": _l("goal_context"),
+            "experience": _l("exp_text") or _l("experience_text"),
+            "relationship": _l("relationship_context"),
+            "emotion": _l("emotion_block") or _l("emotion_context"),
+            "temporal": _l("temporal_context"),
+            "context_blocks": sum(
+                len(b.get("content", "")) if isinstance(b, dict) else len(b)
+                for b in (local_vars.get("context_prompt_blocks") or [])
+                if isinstance(b, (str, dict))
+            ),
+            # v1.5.5 Memory Recall Fix: 记忆注入字符 = 实际渲染的记忆块字符数。
+            # original 路径渲染结果为 mem_parts（行列表，含【相关记忆】头未计入，
+            # 只计内容字符）；opt 路径为 memory_summary 字符串。
+            "chat_memories": (
+                sum(len(str(p)) for p in local_vars.get("mem_parts") or [])
+                if isinstance(local_vars.get("mem_parts"), list)
+                else _l("memory_summary")
+            ),
+        })
+    except Exception:  # noqa: BLE001
+        pass
+
+
 class ResponseEngine:
     def __init__(self):
         # Phase C.1 P0-1: 延后 OpenAI 客户端创建,允许无 API key 时进入 mock 模式
@@ -28,6 +85,14 @@ class ResponseEngine:
             or os.getenv("YUYI_LLM_MOCK", "").lower() in ("1", "true", "yes")
             or not _OPENAI_SDK_AVAILABLE  # R2.7.6-DEPLOY: SDK 没装也自动进 mock
         )
+        # v1.5-T1: 空回复有界重试次数（HTTP 200 但 content 为空时）。
+        # 与 src/response/llm.py 的重试语义对齐；<0 视为 0（等价旧行为）。
+        try:
+            from src.config import get as _cfg_get
+            _retry = int(_cfg_get("llm.empty_content_retry", 2) or 2)
+        except Exception:  # noqa: BLE001
+            _retry = 2
+        self._empty_retry_max = _retry if _retry >= 0 else 0
 
     @property
     def client(self):
@@ -51,6 +116,8 @@ class ResponseEngine:
         identity_context: dict = None,    # P4.0.1 Step 02-B R-4 兼容参数；P4.4-D5 起 str 形态经 context_prompt_blocks 注入
         user_meta: dict = None,           # Phase 4.0.4-Pre：对方是谁/怎么称呼/关系等级
         communication_profile = None,     # Phase 4.1.2-B：CommunicationStyle 表达倾向
+        goal_context: str = None,         # v1.3 Phase 2：GoalContext（legacy 链兼容参数；None/空=旧行为，不注入）
+        temporal_context: str = None,     # B1b：非空时替换"当前时间"裸行为 temporal_context 块（None=旧行为逐字节兼容）
     ) -> str:
         # P4.4-D5: legacy 链 identity_context 死参数恢复 —— 转为 system 块经
         # context_prompt_blocks 注入（original/opt 两链共用，位置在常规
@@ -64,6 +131,15 @@ class ResponseEngine:
                 "content": wrap_section("【身份状态】", identity_context),
             }
             context_prompt_blocks = [identity_block] + list(context_prompt_blocks or [])
+
+        # v1.3 Phase 2 补丁(B1f): legacy 链 goal_context 兼容 —— orchestrator legacy
+        # 路径会传入 goal_context(goal_context_enabled 开启时非空)。此前签名缺失该
+        # 参数导致 TypeError → 整链降级为兜底文案。resolve_goal_context_text 的
+        # 产出已自带块头,此处作为独立 system 块追加,不二次包装;None/空=旧行为。
+        if isinstance(goal_context, str) and goal_context.strip():
+            context_prompt_blocks = list(context_prompt_blocks or []) + [
+                {"role": "system", "content": goal_context.strip()}
+            ]
 
         token_opt_enabled = self._is_token_opt_enabled()
 
@@ -81,6 +157,7 @@ class ResponseEngine:
                 experience_context=experience_context,
                 user_meta=user_meta,
                 communication_profile=communication_profile,
+                temporal_context=temporal_context,
             )
         else:
             messages = self._build_messages_original(
@@ -96,6 +173,7 @@ class ResponseEngine:
                 experience_context=experience_context,
                 user_meta=user_meta,
                 communication_profile=communication_profile,
+                temporal_context=temporal_context,
             )
 
         # Phase C.1 P0-1: 无 API key 或显式 mock 模式时,使用 stub 回复保证链路畅通
@@ -103,15 +181,74 @@ class ResponseEngine:
             return self._mock_response(user_message=user_message, messages=messages)
 
         # 调用 DeepSeek
+        _t0 = None
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=0.8,
-                max_tokens=2048,
-            )
-            return response.choices[0].message.content
+            import time as _time
+            # B1f: max_tokens 由硬编码 2048 改为读配置 llm.max_tokens(与
+            # src/response/llm.py 同源)。2048 对推理型模型不够——推理先消耗补全
+            # 预算,曾导致 finish_reason=length 且 content_len=0(空回复→降级)。
+            try:
+                from src.config import get as _cfg_get
+                _max_tokens = int(_cfg_get("llm.max_tokens", 4096) or 4096)
+            except Exception:  # noqa: BLE001
+                _max_tokens = 4096
+            # v1.5-T1: 空回复有界重试——仅对 HTTP 200 但 content 为空的情况。
+            # 语义与 src/response/llm.py 对齐：重试耗尽返回空串（不抛异常，
+            # 由上层 orchestrator 兜底）；异常处理仍在最外层 try/except。
+            for attempt in range(self._empty_retry_max + 1):
+                _t0 = _time.monotonic()
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=0.8,
+                    max_tokens=_max_tokens,
+                )
+                # Phase B1e P0: 结构化响应日志（只增加可观测性；不改变返回值/异常处理/
+                # 不打印用户与回复全文、不泄露 token）
+                try:
+                    _latency = int((_time.monotonic() - _t0) * 1000)
+                    _choices = getattr(response, "choices", None) or []
+                    _choice0 = _choices[0] if _choices else None
+                    _msg = getattr(_choice0, "message", None) if _choice0 is not None else None
+                    _content = getattr(_msg, "content", None) if _msg is not None else None
+                    _finish = getattr(_choice0, "finish_reason", None) if _choice0 is not None else None
+                    _usage = getattr(response, "usage", None)
+                    logger.info(
+                        "[LLM_RESPONSE_AUDIT] status=200 endpoint=/v1/chat/completions model=%s "
+                        "latency_ms=%d finish_reason=%s content_len=%d choices=%d has_content=%s "
+                        "prompt_tokens=%s completion_tokens=%s total_tokens=%s",
+                        getattr(response, "model", "") or "",
+                        _latency,
+                        _finish,
+                        len(_content) if isinstance(_content, str) else 0,
+                        len(_choices),
+                        bool(_content),
+                        getattr(_usage, "prompt_tokens", "") if _usage is not None else "",
+                        getattr(_usage, "completion_tokens", "") if _usage is not None else "",
+                        getattr(_usage, "total_tokens", "") if _usage is not None else "",
+                    )
+                except Exception:  # noqa: BLE001
+                    pass  # 日志失败绝不影响主链路
+                if isinstance(_content, str) and _content.strip():
+                    return _content
+                # 空 content：有界退避重试（仅空内容场景，不吞异常）
+                if attempt < self._empty_retry_max:
+                    logger.warning(
+                        "[LLM_EMPTY_RETRY] attempt=%d/%d", attempt + 1, self._empty_retry_max + 1,
+                    )
+                    _time.sleep(min(2.0 ** attempt, 4.0))
+            # 重试耗尽仍空 → 返回空串（保持旧语义：上层 orchestrator 走兜底）
+            return ""
         except Exception as e:
+            try:
+                _latency = int((_time.monotonic() - _t0) * 1000) if _t0 is not None else -1
+                logger.warning(
+                    "[LLM_RESPONSE_AUDIT] status=exception endpoint=/v1/chat/completions "
+                    "latency_ms=%d exception=%s",
+                    _latency, type(e).__name__,
+                )
+            except Exception:  # noqa: BLE001
+                pass
             print(f"[DeepSeek] 调用失败: {e}")
             return f"抱歉，我遇到了一点问题：{str(e)}"
 
@@ -178,6 +315,7 @@ class ResponseEngine:
         experience_context: list = None,  # Phase A.2 新增
         user_meta: dict = None,           # Phase 4.0.4-Pre
         communication_profile = None,     # Phase 4.1.2-B
+        temporal_context: str = None,     # B1b：非空时替换"当前时间"裸行（None=旧行为）
     ) -> list:
         """
         构建完整系统提示 — 包含所有可用上下文。
@@ -350,7 +488,11 @@ class ResponseEngine:
         system_parts.append(build_principles_block())
 
         from datetime import datetime
-        system_parts.append(f"当前时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}")
+        # B1b：temporal_context 非空时注入标准块；None 保持旧裸时间行（逐字节兼容）
+        if temporal_context:
+            system_parts.append(temporal_context)
+        else:
+            system_parts.append(f"当前时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}")
 
         system_prompt = "\n\n".join(system_parts)
 
@@ -363,6 +505,7 @@ class ResponseEngine:
                 })
         messages.append({"role": "user", "content": user_message})
 
+        _record_injection_legacy(locals())  # v1.5-T3b: 生产主链台账挂点
         return messages
 
     def _build_messages_opt(
@@ -379,6 +522,7 @@ class ResponseEngine:
         user_meta: dict = None,           # Phase 4.0.4-Pre
         communication_profile = None,     # Phase 4.1.2-B
         life_events: list = None,         # P4.4-D4：opt 链补接入（带默认值，旧调用方零破坏）
+        temporal_context: str = None,     # B1b：非空时替换"当前时间"裸行（None=旧行为）
     ) -> list:
         """Token 优化模式：记忆合并摘要 + 历史压缩"""
         try:
@@ -390,6 +534,7 @@ class ResponseEngine:
                 emotion_context, relationship_context, context_prompt_blocks,
                 experience_context, user_meta=user_meta,
                 communication_profile=communication_profile,
+                temporal_context=temporal_context,
             )
 
         # 1. 记忆摘要
@@ -480,7 +625,11 @@ class ResponseEngine:
         system_parts.append(build_principles_block())
 
         from datetime import datetime
-        system_parts.append(f"当前时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}")
+        # B1b：temporal_context 非空时注入标准块；None 保持旧裸时间行（逐字节兼容）
+        if temporal_context:
+            system_parts.append(temporal_context)
+        else:
+            system_parts.append(f"当前时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}")
 
         system_prompt = "\n\n".join(system_parts)
 
@@ -494,4 +643,5 @@ class ResponseEngine:
         messages = [{"role": "system", "content": system_prompt}]
         messages.extend(compressed_history)
         messages.append({"role": "user", "content": user_message})
+        _record_injection_legacy(locals())  # v1.5-T3b: 生产主链台账挂点
         return messages
