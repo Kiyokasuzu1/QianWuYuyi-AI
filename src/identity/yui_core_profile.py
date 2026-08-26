@@ -46,6 +46,44 @@ def build_yui_core_block() -> str:
     return "\n".join(lines)
 
 
+def build_relationship_core_block(user_id: str = CREATOR_USER_ID) -> str:
+    """生成【你们的关系】Prompt 块——从 RelationshipCoreStore 读取 confirmed 事实。
+
+    v1.5.5 Governance C2-e: 与 YUI_CORE 同级的常驻层，不参与 episodic 窗口竞争。
+    - 只渲染 status=confirmed 且未 superseded 的关系事实；
+    - store 为空/异常 → 返回 ""（安全降级，不注入）；
+    - 不改变 YUI_CORE 语义，纯追加层。
+    """
+    try:
+        from src.relationship.relationship_core_store import RelationshipCoreStore
+        store = RelationshipCoreStore()
+        recs = store.list_all()
+        confirmed = []
+        superseded = {r.get("superseded_by") for r in recs if r.get("superseded_by")}
+        for r in recs:
+            if r.get("status") not in (None, "confirmed"):
+                continue
+            if r.get("fact_id") in superseded:
+                continue
+            fact = None
+            # 事实正文：优先 agreements[0]，其次 events 描述，其次 evidence_summary
+            ag = r.get("agreements") or []
+            if ag and str(ag[0]).strip():
+                fact = str(ag[0]).strip()
+            elif r.get("evidence_summary"):
+                fact = str(r["evidence_summary"]).strip()
+            if not fact:
+                continue
+            confirmed.append(fact)
+        if not confirmed:
+            return ""
+        lines = ["【你们的关系】"]
+        lines.extend(f"- {f}" for f in confirmed)
+        return "\n".join(lines)
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 __all__ = [
     "CREATOR_USER_ID",
     "CREATOR_DISPLAY_NAME",
@@ -53,4 +91,5 @@ __all__ = [
     "YUI_CORE_FACTS",
     "CORE_RELATIONSHIP_MEMORY_IDS",
     "build_yui_core_block",
+    "build_relationship_core_block",
 ]

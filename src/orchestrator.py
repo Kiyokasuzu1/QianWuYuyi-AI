@@ -1046,7 +1046,17 @@ class Orchestrator:
         - 向量结果用 store.get_by_id 还原完整记录,保证 Prompt 主体标注可用;
         - 全程 fail-soft,异常只降级不中断。
         """
+        # v1.5-T9: 消融测量专用开关——memory.disable_retrieval=true 时跳过
+        # 全部检索（no_memory 条件）。生产恒 false；仅 harness 使用。
+        try:
+            from src.config import get as _cfg_get
+            if bool(_cfg_get("memory.disable_retrieval", False)):
+                return []
+        except Exception:  # noqa: BLE001
+            pass
         memories = []
+        # v1.5.5 Memory Recall Fix: semantic 候选（带 relevance，selection 消费）
+        semantic_candidates = []
         if not user_id:
             return memories
         uid = str(user_id)
@@ -1075,9 +1085,31 @@ class Orchestrator:
                     rec = full if full else res
                     rid = rec.get("id") if isinstance(rec, dict) else None
                     if rid is None or rid not in seen_ids:
-                        memories.append(rec)
+                        # v1.5.5 Memory Recall Fix: 保留 relevance 作为 semantic 候选
+                        # （relevance 是"本次检索得分"，不写回存储；由 selection 消费）
+                        semantic_candidates.append({
+                            "record": rec,
+                            "relevance": float(res.get("relevance") or 0.0),
+                        })
         except Exception as e:
             print(f"[Orchestrator] 向量检索失败: {e}")
+        # v1.5.5 Recall Fix v5: 时间短语召回（"昨天凌晨"等）合并进 semantic 候选
+        try:
+            from src.memory.memory_selection import recall_by_time
+            time_hits = recall_by_time(memories, query or "")
+            if time_hits:
+                semantic_candidates = time_hits + semantic_candidates
+        except Exception as e:
+            print(f"[Orchestrator] 时间召回失败: {e}")
+        # v1.5.5 Memory Recall Fix: selection 层决定最终注入列表
+        # （semantic 优先 + recent 补足；≤6 条；engine 不再隐式重排/截断）
+        try:
+            from src.memory.memory_selection import select_injection_memories
+            memories = select_injection_memories(
+                memories, semantic_candidates, query=query or "",
+            )
+        except Exception as e:
+            print(f"[Orchestrator] memory selection 失败（保持原候选）: {e}")
         return memories
 
     def process(self, user_message: str, user_id: Optional[str] = None) -> str:
@@ -1233,8 +1265,8 @@ class Orchestrator:
                     correlation_id=conversation_id,
                 )
             elif self.target_user_id:
-                # Phase 1: 写入前清洗（移除 system_reminder 注入块）
-                cleaned_content = sanitize_content(user_message)
+                # Phase B0: 写入前清洗（经 Intake Layer：剥离完整宿主模板，含 RAG / system_reminder）
+                cleaned_content, stripped_flags = sanitize_memory_content(user_message)
                 if not cleaned_content:
                     record_audit_log(
                         operation_type="memory.rejected",
@@ -1246,18 +1278,23 @@ class Orchestrator:
                     )
                 else:
                     _normalized_content = self._normalize_memory_content(cleaned_content)
-                    warn_deprecated_once(
-                        "orchestrator.memory_importance_hardcoded",
-                        "[G-0 deprecated] 新记忆 importance 硬编码 0.5, 未接情绪权重。"
-                        "迁移计划: G-2 经 EmotionMemoryWeightBridge.compute_weight 动态化。",
-                    )
+                    # M1-3: importance 不再恒 0.5——纯规则 scorer（零 LLM、零 IO），
+                    # 按 content 类别信号给基本区分度；无信号回落 0.5（原行为兼容）。
+                    try:
+                        from src.memory.memory_intake import score_importance
+                        _importance = score_importance(
+                            _normalized_content, memory_type="user_shared",
+                            emotion_tag=emotion_ctx.get("dominant", ""),
+                        )
+                    except Exception:  # noqa: BLE001
+                        _importance = 0.5
                     memory_record = {
                         "id": f"mem_{datetime.now().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:12]}",
                         "content": _normalized_content,
                         "timestamp": datetime.now().isoformat(),
                         "user_id": self.target_user_id,
                         "role": "user",  # Phase 4.1：补充 role 字段，供 VectorMemory 索引
-                        "importance": 0.5,
+                        "importance": _importance,
                         "source_event_id": "",
                         "emotion_tag": emotion_ctx.get("dominant", ""),
                         "relationship_id": self.target_user_id,
@@ -1272,6 +1309,12 @@ class Orchestrator:
                             "provenance": "orchestrator",
                         },
                     }
+                    # Phase B0: 污染来源打标（无污染时零改动；经既有 metadata dict）
+                    memory_record = classify_source(
+                        memory_record,
+                        writer="orchestrator",
+                        stripped_flags=stripped_flags,
+                    )
                     saved = self.memory_store.add(memory_record)
                     if saved is None:
                         # Phase 1: 写入被拒——不发布事件、不记成功审计
@@ -2567,70 +2610,21 @@ class Orchestrator:
     def _normalize_memory_content(self, content: object) -> str:
         """规整记忆内容，保证输出长度不超过 MAX_MEMORY_CONTENT_LENGTH。
 
+        Phase B0: 算法委托 Memory Intake Layer（head + 省略标记 + tail +
+        [original_length=N]），常量保持 v1.3 原值 → 逐字节兼容。
+
         Args:
             content: 原始内容（可能是 str / None / 其他类型）
 
         Returns:
             规整后的字符串，长度 <= MAX_MEMORY_CONTENT_LENGTH
         """
-        # 1) 空 / None → 空字符串
-        if content is None:
-            return ""
-
-        # 2) 非字符串 → 安全转字符串
-        if not isinstance(content, str):
-            try:
-                content = str(content)
-            except Exception:
-                return ""
-
-        # 3) 去掉首尾空白（保留中间换行）
-        normalized = content.strip()
-        if not normalized:
-            return ""
-
-        original_len = len(normalized)
-
-        # 4) 长度达标 → 直接返回
-        if original_len <= self.MAX_MEMORY_CONTENT_LENGTH:
-            return normalized
-
-        # 5) 超长 → head + [中间内容省略] + tail + 原始长度标记
-        head_end = self.MEMORY_HEAD_KEEP
-        tail_start = max(head_end, original_len - self.MEMORY_TAIL_KEEP)
-
-        # 如果 head 和 tail 有重叠（极端情况：3500 < len < 3300 不可能，但防一手）
-        if tail_start <= head_end:
-            # 退化：直接截断 head
-            truncated = normalized[: self.MAX_MEMORY_CONTENT_LENGTH - 40]
-            return truncated + "\n\n[内容已截断]" + f"\n[original_length={original_len}]"
-
-        head = normalized[:head_end]
-        tail = normalized[tail_start:]
-
-        marker = (
-            "\n\n[中间内容省略]\n\n"
-            + tail
-            + f"\n[original_length={original_len}]"
+        return truncate_memory_content(
+            content,
+            max_len=self.MAX_MEMORY_CONTENT_LENGTH,
+            head_keep=self.MEMORY_HEAD_KEEP,
+            tail_keep=self.MEMORY_TAIL_KEEP,
         )
-
-        # 再次兜底：确保最终长度 <= MAX_MEMORY_CONTENT_LENGTH
-        result = head + marker
-        if len(result) > self.MAX_MEMORY_CONTENT_LENGTH:
-            # 再截一次 head 留足空间给 marker
-            overflow = len(result) - self.MAX_MEMORY_CONTENT_LENGTH
-            safe_head_len = max(50, head_end - overflow - 50)
-            result = (
-                normalized[:safe_head_len]
-                + "\n\n[中间内容省略]\n\n"
-                + tail
-                + f"\n[original_length={original_len}]"
-            )
-            # 最后保险：硬截断到 MAX
-            if len(result) > self.MAX_MEMORY_CONTENT_LENGTH:
-                result = result[: self.MAX_MEMORY_CONTENT_LENGTH]
-
-        return result
 
     def generate_initiative(self, user_id: str) -> str:
         """

@@ -18,15 +18,33 @@ class PromptBuilder:
 
     def _format_chat_memories(self, chat_memories: list) -> str:
         if not chat_memories:
-            return ""
+            # M1-4: 检索为空时的防历史幻觉约束（认知约束，非人格改写）。
+            # 若检索没有提供证据，不得凭模型先验补写具体历史细节。
+            return ("【最近相关聊天】\n"
+                    "  本次没有检索到相关历史记忆。若用户问起过去的具体细节"
+                    "（第一次见面、某次对话、过去说过的话、发生过的事），"
+                    "请只依据上方已有明确信息回答；不确定的部分请直接说明不确定，不要编造具体历史。")
         # Phase 2.5-B: 每条记忆必须带主体标注(清夏铃曾说/其他用户曾说/羽依自身/未知来源记录),
         # 禁止无主体的「用户: xxx」——防止 LLM 把所有 user 消息都当成清清说的。
         try:
             from src.memory.memory_scope import label_for_prompt
         except Exception:  # noqa: BLE001
             label_for_prompt = None
+        # Phase B1c.1: 记忆时间标签（开关 temporal.memory_time_labels，默认 off=旧输出逐字节兼容）。
+        # 标签只来自 record["timestamp"]，禁止分析 content。
+        _mem_label_fn = None
+        try:
+            from src.config import get as _ml_cfg_get
+            if str(_ml_cfg_get("temporal.memory_time_labels", "off") or "off").strip().lower() == "on":
+                from src.temporal.temporal_context import format_memory_time_label
+                _mem_label_fn = format_memory_time_label
+        except Exception:  # noqa: BLE001
+            _mem_label_fn = None
+        # v1.5.5 Memory Recall Fix: 不再隐式重排/截断——最终注入列表由
+        # orchestrator selection 层决定；此处仅保留硬预算兜底（防超长列表）。
+        _ordered_memories = chat_memories[:6]
         lines = []
-        for m in chat_memories[:5]:
+        for m in _ordered_memories:
             if not isinstance(m, dict):
                 continue
             if label_for_prompt is not None:
@@ -37,7 +55,8 @@ class PromptBuilder:
             else:
                 label = "用户" if m.get("role") == "user" else "羽依"
             content = truncate(m.get("content", ""), 120)
-            lines.append(f"  {label}: {content}")
+            _time_label = _mem_label_fn(m.get("timestamp")) if _mem_label_fn is not None else ""
+            lines.append(f"  {_time_label}{label}: {content}")
         return "【最近相关聊天】\n" + "\n".join(lines)
 
     def _format_personality(self, personality_context: dict) -> str:

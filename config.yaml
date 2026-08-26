@@ -16,6 +16,13 @@ memory:
   search_top_k: 8
   min_relevance: 0.3
   target_user_id: "366648462"
+  # v1.5.5 Memory Recall Fix: 注入选择策略（semantic 优先 + recent 补足）
+  injection_max_total: 6
+  injection_max_semantic: 3
+  # v1.6.0 M1: 时间桶内融合排序（importance 参与，防"最近闲聊挤掉重要对话"）
+  selection_fusion: true
+  # v1.6.0 M1: 弱时间意图（第一次/上次/当时/最近 → semantic 候选重排）
+  weak_time_intent: true
 
 llm:
   api_key: "${DEEPSEEK_API_KEY}"

@@ -184,6 +184,29 @@ class ResponseEngine:
         # === 核心身份（IDENTITY_CORE 驱动）===
         system_parts.append(self._build_identity_prompt())
 
+        # === v1.5.5 Governance C2-e: YUI_CORE + Relationship Core 常驻块 ===
+        # 修复：YUI_CORE 此前只在 runtime 链注入，生产链缺失。
+        # 两链共用同一构建函数；flag 保护（relationship_core.enabled）。
+        # 常驻层不参与 episodic 窗口竞争——检索失效/记忆洪峰不影响。
+        # M1-5: YUI_CORE 解除 relationship_core.enabled 连带门控——
+        # 身份核心事实必须无条件注入；开关只控制 Relationship Core 块。
+        try:
+            from src.config import get as _cfg_get
+            _rc_enabled = bool(_cfg_get("relationship_core.enabled", True))
+        except Exception:  # noqa: BLE001
+            _rc_enabled = True
+        try:
+            from src.identity.yui_core_profile import build_yui_core_block, build_relationship_core_block
+            _yui = build_yui_core_block()
+            if _yui and _yui.strip():
+                system_parts.append(_yui.strip())
+            if _rc_enabled:
+                _rel = build_relationship_core_block()
+                if _rel and _rel.strip():
+                    system_parts.append(_rel.strip())
+        except Exception:  # noqa: BLE001
+            pass
+
         # === Phase 4.1.2-B：user_meta + communication_profile ===
         # 放在身份声明之后、人格/情绪/记忆之前，保证关系信息优先于内部状态
         user_meta_text = self._format_user_meta_block(user_meta, communication_profile)
@@ -265,13 +288,37 @@ class ResponseEngine:
         # === 记忆 ===
         if chat_memories:
             mem_parts = []
-            for m in chat_memories[:5]:
+            # Phase B1c.1: 记忆时间标签（开关 temporal.memory_time_labels，默认 off=旧输出逐字节兼容）。
+            # 标签只来自 record["timestamp"]，禁止分析 content。
+            _mem_label_fn = None
+            try:
+                from src.config import get as _ml_cfg_get
+                if str(_ml_cfg_get("temporal.memory_time_labels", "off") or "off").strip().lower() == "on":
+                    from src.temporal.temporal_context import format_memory_time_label
+                    _mem_label_fn = format_memory_time_label
+            except Exception:  # noqa: BLE001
+                _mem_label_fn = None
+            # v1.5.5 Memory Recall Fix: 不再隐式重排/截断——
+            # 最终注入列表由 orchestrator 的 selection 层决定（semantic 优先 + recent 补足）。
+            # 此处仅保留硬预算兜底（防未来调用方传入超长列表导致 prompt 膨胀）。
+            _ordered_memories = chat_memories[:MEMORY_INJECTION_HARD_CAP]
+            for m in _ordered_memories:
                 if isinstance(m, dict):
                     role = "用户" if m.get("role") == "user" else "羽依"
                     content = m.get("content", "")[:150]
-                    mem_parts.append(f"  {role}: {content}")
+                    _time_label = _mem_label_fn(m.get("timestamp")) if _mem_label_fn is not None else ""
+                    mem_parts.append(f"  {_time_label}{role}: {content}")
             if mem_parts:
                 system_parts.append(f"【相关记忆】\n" + "\n".join(mem_parts))
+        else:
+            # M1-4: 检索为空时的防历史幻觉约束（认知约束，非人格改写）。
+            # 若检索没有提供证据，不得凭模型先验补写具体历史细节。
+            system_parts.append(
+                "【相关记忆】\n"
+                "  本次没有检索到相关历史记忆。若用户问起过去的具体细节"
+                "（第一次见面、某次对话、过去说过的话、发生过的事），"
+                "请只依据上方已有明确信息回答；不确定的部分请直接说明不确定，不要编造具体历史。"
+            )
 
         # === 重要经历 ===
         if life_events:
@@ -394,6 +441,14 @@ class ResponseEngine:
 
         if memory_summary:
             system_parts.append(f"【相关记忆】\n{memory_summary}")
+        else:
+            # M1-4: 检索为空时的防历史幻觉约束（与 original 模式一致）。
+            system_parts.append(
+                "【相关记忆】\n"
+                "  本次没有检索到相关历史记忆。若用户问起过去的具体细节"
+                "（第一次见面、某次对话、过去说过的话、发生过的事），"
+                "请只依据上方已有明确信息回答；不确定的部分请直接说明不确定，不要编造具体历史。"
+            )
 
         # === P4.4-D4：重要经历（与 original 同一数据契约与格式）===
         if life_events:

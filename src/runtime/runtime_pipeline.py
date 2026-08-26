@@ -842,6 +842,11 @@ class RuntimePipeline:
             runtime_inputs: Dict[str, Any] = {"user_message": user_message}
             if user_id:
                 runtime_inputs["user_id"] = user_id
+            # v1.5.5 Governance C1: frontend provenance（api_server 判定注入，
+            # 经 input_data 到达 InteractionRecorder；缺失 = unknown）
+            _fe = input_data.get("frontend") if isinstance(input_data, dict) else None
+            if _fe:
+                runtime_inputs["frontend"] = str(_fe)
             # ── V1.1.1 Context Continuity: 注入最近会话历史 ──
             # 从 orchestrator.get_recent_history（按 user_id 隔离）读取，
             # 经 inputs → _normalize_runtime_ctx → ctx.history 送达

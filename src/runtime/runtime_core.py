@@ -5369,9 +5369,54 @@ class RuntimeCore(ModuleBase):
                 # 替代 Phase 4.1 的纯 get_by_user 精确过滤。
                 if uid:
                     from src.memory.memory_scope import collect_allowed_records
-                    ctx.retrieved_memories = collect_allowed_records(  # type: ignore[attr-defined]
-                        ms, uid, owner_limit=20
-                    )
+                    # v1.5.5 Memory Recall Fix: 全部候选 → selection 决定最终注入。
+                    # 原 owner_limit=20 直接截断（无 semantic、无相关排序）已被
+                    # selection 取代：semantic（vector 召回，带 relevance）优先 +
+                    # recent 补足，≤ injection_max_total 条。
+                    all_records = collect_allowed_records(ms, uid, owner_limit=None)
+                    semantic_candidates = []
+                    try:
+                        vm = self.get_vector_memory() if hasattr(self, "get_vector_memory") else None
+                        if vm is not None and callable(getattr(vm, "search", None)):
+                            query = _build_memory_query(
+                                str(getattr(ctx, "user_message", "") or ""),
+                                getattr(ctx, "history", None),
+                            )
+                            results = vm.search(query, top_k=5, user_id=uid)
+                            for res in results or []:
+                                full = None
+                                try:
+                                    full = ms.get_by_id(res.get("mem_id"))
+                                except Exception:  # noqa: BLE001
+                                    full = None
+                                semantic_candidates.append({
+                                    "record": full if full else res,
+                                    "relevance": float(res.get("relevance") or 0.0),
+                                })
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("[RuntimeCore] semantic 检索失败（已隔离）: %s", exc)
+                        semantic_candidates = []
+                    # v1.5.5 Recall Fix v5: 时间短语召回（"昨天凌晨"等）——
+                    # 语义检索对时间词弱，纯规则按 timestamp 过滤补充候选。
+                    try:
+                        from src.memory.memory_selection import recall_by_time
+                        time_hits = recall_by_time(
+                            all_records,
+                            str(getattr(ctx, "user_message", "") or ""),
+                        )
+                        if time_hits:
+                            semantic_candidates = time_hits + semantic_candidates
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("[RuntimeCore] 时间召回失败（已隔离）: %s", exc)
+                    try:
+                        from src.memory.memory_selection import select_injection_memories
+                        ctx.retrieved_memories = select_injection_memories(  # type: ignore[attr-defined]
+                            all_records, semantic_candidates,
+                            query=str(getattr(ctx, "user_message", "") or ""),
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("[RuntimeCore] memory selection 失败（回落全部）: %s", exc)
+                        ctx.retrieved_memories = all_records[:6]  # type: ignore[attr-defined]
                 elif callable(getattr(ms, "get_recent", None)):
                     ctx.retrieved_memories = ms.get_recent(limit=20)  # type: ignore[attr-defined]
             except Exception as exc:
