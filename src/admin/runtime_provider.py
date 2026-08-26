@@ -227,6 +227,12 @@ class RuntimeProvider:
             current = None
             try:
                 current = resolver.resolve()
+                # P1 治理面板修复：resolve() 返回 PersonalityVector（普通类，
+                # 含 _data dict，无 to_dict）——JSON 序列化前转 dict，否则
+                # governance personality 端点 500（PersonalityVector is not
+                # JSON serializable）。真实数据、无 mock、无静默吞错。
+                if current is not None and hasattr(current, "_data"):
+                    current = dict(getattr(current, "_data") or {})
             except Exception as e:
                 logger.debug(f"RuntimeProvider: resolve() 失败: {e}")
 

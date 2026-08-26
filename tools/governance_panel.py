@@ -130,14 +130,52 @@ class GovernancePanel(QMainWindow):
         split_v.addWidget(split_h)
         self._set_actions_enabled(False)
 
-        # 下：标签页（审计 / 关系核心 / 自我模型）
+        # 下：治理视角标签页（羽依状态 / 审计 / 关系核心 / 自我模型 / 共同生活 / Growth）
         self.tabs = QTabWidget()
-        self.tab_audit = QTextBrowser()
-        self.tab_rc = QTextBrowser()
-        self.tab_sm = QTextBrowser()
+
+        # Overview —— 羽依当前状态（只读聚合，全部来自真实 API）
+        self.tab_overview = QTextBrowser()
+        self.tabs.addTab(self.tab_overview, "羽依状态")
+
+        # 审计日志（平铺 + entity/action 过滤）
+        self.tab_audit = QWidget()
+        audit_v = QVBoxLayout(self.tab_audit)
+        audit_f = QHBoxLayout()
+        self.ed_audit_filter = QLineEdit()
+        self.ed_audit_filter.setPlaceholderText("按 object_id / object_type / action 过滤（如 night_companionship）")
+        self.ed_audit_filter.textChanged.connect(self._render_audit)
+        audit_f.addWidget(self.ed_audit_filter, 1)
+        audit_v.addLayout(audit_f)
+        self.tab_audit_view = QTextBrowser()
+        audit_v.addWidget(self.tab_audit_view, 1)
         self.tabs.addTab(self.tab_audit, "审计日志")
+
+        # 关系核心（列表 + 详情 + supersede —— 唯一 canonical 关系事实层）
+        self.tab_rc = QWidget()
+        rc_v = QVBoxLayout(self.tab_rc)
+        rc_row = QSplitter(Qt.Horizontal)
+        self.rc_list = QListWidget()
+        self.rc_list.currentItemChanged.connect(self._on_rc_select)
+        self.rc_detail = QTextBrowser()
+        rc_row.addWidget(self.rc_list)
+        rc_row.addWidget(self.rc_detail)
+        rc_row.setSizes([360, 560])
+        rc_v.addWidget(rc_row, 1)
+        rc_ops = QHBoxLayout()
+        self.btn_rc_supersede = QPushButton("🔄 取代 (supersede)")
+        self.ed_rc_note = QLineEdit()
+        self.ed_rc_note.setPlaceholderText("supersede 理由")
+        rc_ops.addWidget(self.btn_rc_supersede)
+        rc_ops.addWidget(self.ed_rc_note, 1)
+        rc_v.addLayout(rc_ops)
+        self.btn_rc_supersede.clicked.connect(self._do_rc_supersede)
         self.tabs.addTab(self.tab_rc, "关系核心")
+        self.btn_rc_supersede.setEnabled(False)
+
+        # 自我模型（只读 + 诚实标注 downstream/effective）
+        self.tab_sm = QTextBrowser()
         self.tabs.addTab(self.tab_sm, "自我模型")
+
         # Phase 2 Shared-Life：生活模式治理 tab（列表 + 详情 + 人工审核操作）
         self.tab_pat = QWidget()
         pat_v = QVBoxLayout(self.tab_pat)
@@ -154,19 +192,50 @@ class GovernancePanel(QMainWindow):
         self.btn_pat_reject = QPushButton("❌ 拒绝")
         self.btn_pat_modify = QPushButton("✏️ 修改描述")
         self.btn_pat_evidence = QPushButton("🔍 看证据")
+        self.btn_pat_supersede = QPushButton("🔄 取代")
+        self.btn_pat_archive = QPushButton("📦 归档")
         self.ed_pat_note = QLineEdit()
         self.ed_pat_note.setPlaceholderText("审核备注（confirm/reject 建议给理由）")
         for b in (self.btn_pat_confirm, self.btn_pat_reject,
-                  self.btn_pat_modify, self.btn_pat_evidence):
+                  self.btn_pat_modify, self.btn_pat_evidence,
+                  self.btn_pat_supersede, self.btn_pat_archive):
             pat_ops.addWidget(b)
         self.btn_pat_confirm.clicked.connect(lambda: self._do_pat_review("confirm"))
         self.btn_pat_reject.clicked.connect(lambda: self._do_pat_review("reject"))
         self.btn_pat_modify.clicked.connect(self._do_pat_modify)
         self.btn_pat_evidence.clicked.connect(self._show_pat_evidence)
+        self.btn_pat_supersede.clicked.connect(lambda: self._do_pat_review("supersede"))
+        self.btn_pat_archive.clicked.connect(lambda: self._do_pat_review("archive"))
         pat_ops.addWidget(self.ed_pat_note, 1)
         pat_v.addLayout(pat_ops)
         self.tabs.addTab(self.tab_pat, "共同生活模式")
         self._set_pat_actions_enabled(False)
+
+        # Growth —— 人格成长提案（PENDING → APPROVED → APPLIED 三阶段语义）
+        self.tab_growth = QWidget()
+        gr_v = QVBoxLayout(self.tab_growth)
+        gr_row = QSplitter(Qt.Horizontal)
+        self.grow_list = QListWidget()
+        self.grow_list.currentItemChanged.connect(self._on_grow_select)
+        self.grow_detail = QTextBrowser()
+        gr_row.addWidget(self.grow_list)
+        gr_row.addWidget(self.grow_detail)
+        gr_row.setSizes([360, 560])
+        gr_v.addWidget(gr_row, 1)
+        gr_ops = QHBoxLayout()
+        self.btn_grow_approve = QPushButton("✅ 批准")
+        self.btn_grow_reject = QPushButton("❌ 拒绝")
+        self.ed_grow_note = QLineEdit()
+        self.ed_grow_note.setPlaceholderText("审批备注")
+        gr_ops.addWidget(self.btn_grow_approve)
+        gr_ops.addWidget(self.btn_grow_reject)
+        gr_ops.addWidget(self.ed_grow_note, 1)
+        gr_v.addLayout(gr_ops)
+        self.btn_grow_approve.clicked.connect(lambda: self._do_grow_review("approve"))
+        self.btn_grow_reject.clicked.connect(lambda: self._do_grow_review("reject"))
+        self.tabs.addTab(self.tab_growth, "Growth")
+        self._set_grow_actions_enabled(False)
+
         split_v.addWidget(self.tabs)
         split_v.setSizes([520, 210])
         root.addWidget(split_v, 1)
@@ -228,49 +297,279 @@ class GovernancePanel(QMainWindow):
         )
 
     def _load_tabs(self):
-        def fmt_entries(entries, keys):
-            rows = []
-            for e in entries:
-                lines = [f"<div><b>{status_meta(e.get('current_status') or e.get('status'))[0]}</b> "
-                         f"{_esc(str(e.get('fact') or e.get('content') or ''))}</div>"]
-                for k in keys:
-                    v = e.get(k)
-                    if v:
-                        lines.append(f"<div style='color:#666;margin-left:14px'>{k}: {_esc(str(v)[:300])}</div>")
-                rows.append("".join(lines))
-            return "<hr>".join(rows) or "<i>（空）</i>"
-
-        try:
-            audit = self._api("/audit-log?limit=200").get("entries", [])
-        except Exception:  # noqa: BLE001
-            audit = []
-        audit_rows = []
-        for e in audit:
-            audit_rows.append(
-                f"<div><b>{_esc(e.get('ts', ''))}</b> [{_esc(e.get('action', ''))}] "
-                f"{_esc(e.get('reviewer', ''))} → <code>{_esc(str(e.get('object_id', '')))}</code></div>"
-                f"<div style='color:#666;margin-left:14px'>{_esc(str(e.get('reason', '')))}</div>"
-            )
-        self.tab_audit.setHtml("<hr>".join(audit_rows[-120:]) or "<i>（空）</i>")
-
-        try:
-            rc = self._api("/relationship-core").get("facts", [])
-        except Exception:  # noqa: BLE001
-            rc = []
-        self.tab_rc.setHtml(fmt_entries(rc, ["fact_id", "confirmed_at", "confirmed_by"]))
-
-        try:
-            sm = self._api("/self-model-statements").get("statements", [])
-        except Exception:  # noqa: BLE001
-            sm = []
-        self.tab_sm.setHtml(fmt_entries(sm, ["statement_id", "status", "confirmed_at"]))
-
+        self._load_overview()
+        self._render_audit()
+        self._render_rc()
+        self._render_sm()
+        self._render_growth()
         # Phase 2: Shared-Life Patterns（candidate/confirmed 全展示 + 人工审核）
         try:
             self.patterns = self._api("/patterns").get("patterns", [])
         except Exception:  # noqa: BLE001
             self.patterns = []
         self._render_patterns()
+
+    # ---------- Overview：羽依当前状态（只读聚合，全部真实 API） ----------
+    def _load_overview(self):
+        blocks = ["<h3>羽依 · 当前治理状态</h3>"]
+        try:
+            from src.identity.yui_core_profile import YUI_CORE_FACTS
+            blocks.append("<b>身份（STATIC · YUI_CORE）</b>")
+            for f in YUI_CORE_FACTS:
+                blocks.append(f"<div style='color:#444;margin-left:10px'>· {_esc(f)}</div>")
+        except Exception:  # noqa: BLE001
+            pass
+        # 人格（Personality endpoint 修复后 200）
+        try:
+            p = self._api("/admin/api/admin/governance/personality")
+            if p.get("available"):
+                data = p.get("data") or {}
+                cur = data.get("current") or {}
+                blocks.append("<b>人格（DERIVED · PersonalityResolver）</b>")
+                if isinstance(cur, dict) and cur:
+                    traits = " · ".join(f"{_esc(k)}={v}" for k, v in list(cur.items())[:8])
+                    blocks.append(f"<div style='margin-left:10px'>{traits}</div>")
+                else:
+                    blocks.append("<div style='margin-left:10px'>初始状态 / 尚无真实 evolution</div>")
+            else:
+                blocks.append("<b>人格（DERIVED）</b><div style='margin-left:10px'>暂不可用</div>")
+        except Exception as exc:  # noqa: BLE001
+            blocks.append(f"<b>人格（DERIVED）</b><div style='color:#c62828;margin-left:10px'>读取失败: {_esc(str(exc)[:120])}</div>")
+        # 关系 / 共同生活 / 待审 / Growth / 最近治理
+        try:
+            rc = self._api("/relationship-core").get("facts", [])
+            blocks.append(f"<b>关系核心（CANONICAL）</b><div style='margin-left:10px'>{len(rc)} 条 confirmed 事实</div>")
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            pats = self._api("/patterns/active").get("patterns", [])
+            if pats:
+                titles = " · ".join(str(p.get("title") or p.get("pattern_id")) for p in pats)
+                blocks.append(f"<b>共同生活（CONFIRMED/ACTIVE）</b><div style='margin-left:10px'>{_esc(titles)}</div>")
+            else:
+                blocks.append("<b>共同生活</b><div style='margin-left:10px'>无 active 模式</div>")
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            cands = self.candidates
+            pending = sum(1 for c in cands if (c.get("current_status") or "") == "candidate" and not c.get("reviewed"))
+            blocks.append(f"<b>待审</b><div style='margin-left:10px'>候选 {pending} · 模式 {sum(1 for p in self.patterns if (p.get('status') or '') == 'candidate')}</div>")
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            g = self._api("/admin/api/admin/governance/growth")
+            blocks.append(f"<b>Growth（B-store 治理）</b><div style='margin-left:10px'>"
+                          f"pending {g.get('pending')} · approved {g.get('approved')} · applied {g.get('applied')}</div>")
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            audit = self._api("/audit-log?limit=8").get("entries", [])
+            if audit:
+                blocks.append("<b>最近治理变化</b>")
+                for e in audit[-8:]:
+                    blocks.append(f"<div style='color:#666;margin-left:10px'>{_esc(e.get('ts', ''))} "
+                                  f"[{_esc(e.get('action', ''))}] {_esc(str(e.get('object_id', '')))}</div>")
+        except Exception:  # noqa: BLE001
+            pass
+        blocks.append("<hr><div style='color:#888'>数据源：真实 API 聚合 · STATIC=代码常量 / CONFIRMED=人工确认 / DERIVED=系统计算 / PENDING=待审</div>")
+        self.tab_overview.setHtml("".join(blocks))
+
+    # ---------- 审计日志（entity/action 过滤） ----------
+    def _render_audit(self):
+        try:
+            audit = self._api("/audit-log?limit=500").get("entries", [])
+        except Exception:  # noqa: BLE001
+            audit = []
+        f = self.ed_audit_filter.text().strip().lower()
+        if f:
+            audit = [e for e in audit if f in str(e.get("object_id", "")).lower()
+                     or f in str(e.get("object_type", "")).lower()
+                     or f in str(e.get("action", "")).lower()]
+        rows = []
+        for e in audit:
+            rows.append(
+                f"<div><b>{_esc(e.get('ts', ''))}</b> [{_esc(e.get('action', ''))}] "
+                f"{_esc(e.get('reviewer', ''))} → <code>{_esc(str(e.get('object_id', '')))}</code></div>"
+                f"<div style='color:#666;margin-left:14px'>{_esc(str(e.get('reason', '')))}</div>"
+            )
+        self.tab_audit_view.setHtml("<hr>".join(rows[-200:]) or "<i>（空）</i>")
+
+    # ---------- 关系核心（列表 + 详情 + supersede） ----------
+    def _render_rc(self):
+        try:
+            rc = self._api("/relationship-core").get("facts", [])
+        except Exception:  # noqa: BLE001
+            rc = []
+        self.rc_facts = rc
+        self.rc_list.blockSignals(True)
+        self.rc_list.clear()
+        for f in rc:
+            ag = (f.get("agreements") or [])
+            item = QListWidgetItem(str(ag[0])[:60] if ag else str(f.get("fact_id") or ""))
+            item.setToolTip(str(f.get("fact_id") or ""))
+            item.setData(Qt.UserRole, f)
+            self.rc_list.addItem(item)
+        self.rc_list.blockSignals(False)
+        if self.rc_list.count():
+            self.rc_list.setCurrentRow(0)
+        else:
+            self.rc_detail.setHtml("<i>（无 confirmed 关系事实）</i>")
+            self.btn_rc_supersede.setEnabled(False)
+
+    def _on_rc_select(self, item, _prev=None):
+        if item is None:
+            return
+        f = item.data(Qt.UserRole)
+        ag = (f.get("agreements") or [])
+        html = [
+            f"<h3>关系事实 <code>{_esc(str(f.get('fact_id') or ''))}</code></h3>",
+            f"<p style='font-size:15px'>{_esc(str(ag[0] if ag else ''))}</p>",
+            "<hr>",
+            f"<div>状态: {_esc(str(f.get('status') or 'confirmed'))}（CANONICAL）</div>",
+            f"<div>确认人: {_esc(str(f.get('confirmed_by') or ''))} · {_esc(str(f.get('confirmed_at') or ''))}</div>",
+            f"<div>来源: RelationshipCoreStore（data/relationship_core/relationship_core.jsonl）</div>",
+            f"<div>影响: 【你们的关系】Prompt 块（常驻）</div>",
+            "<div style='color:#888'>注：Runtime relationship state = DERIVED；System C = LEGACY_FROZEN（不显示、不可操作）</div>",
+        ]
+        self.rc_detail.setHtml("".join(html))
+        self.btn_rc_supersede.setEnabled(True)
+        self.rc_current = f
+
+    def _do_rc_supersede(self):
+        f = getattr(self, "rc_current", None)
+        if not f:
+            return
+        fid = str(f.get("fact_id") or "")
+        note = self.ed_rc_note.text().strip()
+        self.btn_rc_supersede.setEnabled(False)
+        try:
+            data = self._api(f"/relationship-core/{fid}/supersede", "POST", {
+                "reviewer": "admin", "note": note or "supersede via console",
+            })
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "supersede 失败", str(exc))
+            self.btn_rc_supersede.setEnabled(True)
+            return
+        self.statusBar().showMessage(f"已 supersede → {fid}")
+        self.ed_rc_note.clear()
+        self.refresh_all()
+
+    # ---------- 自我模型（诚实标注 downstream/effective） ----------
+    def _render_sm(self):
+        try:
+            sm = self._api("/self-model-statements").get("statements", [])
+        except Exception:  # noqa: BLE001
+            sm = []
+        rows = []
+        for s in sm:
+            st = s.get("status") or "candidate"
+            rows.append(
+                f"<div><b>{status_meta(st)[0]}</b> <code>{_esc(str(s.get('statement_id') or ''))}</code></div>"
+                f"<div style='margin-left:14px'>{_esc(str(s.get('fact') or ''))}</div>"
+                f"<div style='color:#666;margin-left:14px'>"
+                f"downstream = {'NONE' if st == 'confirmed' else '—'} · "
+                f"effective = {'NO' if st == 'confirmed' else '—'}（确认 ≠ 生效；当前无消费者）</div>"
+            )
+        self.tab_sm.setHtml("<hr>".join(rows) or "<i>（空）</i>")
+
+    # ---------- Growth（PENDING → APPROVED → APPLIED 三阶段语义） ----------
+    def _render_growth(self):
+        try:
+            props = self._api("/admin/api/admin/governance/proposals?type=personality&limit=50").get("proposals", [])
+        except Exception as exc:  # noqa: BLE001
+            props = []
+            self.grow_detail.setHtml(f"<div style='color:#c62828'>Growth 读取失败: {_esc(str(exc)[:150])}</div>")
+        self.growth_props = props
+        self.grow_list.blockSignals(True)
+        self.grow_list.clear()
+        for p in props:
+            st = p.get("status") or "?"
+            label = {"pending": "🟡 PENDING", "approved": "🔵 APPROVED",
+                     "applied": "🟢 APPLIED", "rejected": "🔴 REJECTED"}.get(st, st)
+            item = QListWidgetItem(f"{label}  {str(p.get('proposal_id') or '')}  "
+                                   f"conf={p.get('confidence')}")
+            item.setData(Qt.UserRole, p)
+            self.grow_list.addItem(item)
+        self.grow_list.blockSignals(False)
+        if self.grow_list.count():
+            self.grow_list.setCurrentRow(0)
+        else:
+            self.grow_detail.setHtml("<i>（无 personality 提案——真实 Growth 等待自然出现）</i>")
+            self._set_grow_actions_enabled(False)
+
+    def _on_grow_select(self, item, _prev=None):
+        if item is None:
+            return
+        p = item.data(Qt.UserRole)
+        self.grow_current = p
+        self._render_grow_detail(p)
+        st = p.get("status") or ""
+        self.btn_grow_approve.setEnabled(st in ("pending",))
+        self.btn_grow_reject.setEnabled(st in ("pending",))
+
+    def _render_grow_detail(self, p):
+        st = p.get("status") or "?"
+        stage_hint = {
+            "pending": "PENDING REVIEW → 等待人工审核",
+            "approved": "APPROVED → 等待 Runtime Drain（≠ 已生效）",
+            "applied": "APPLIED → 已写入 PersonalityState + SelfHistory",
+            "rejected": "REJECTED → 终态",
+        }.get(st, st)
+        before = p.get("before_state") or {}
+        after = p.get("after_state") or {}
+        delta_rows = []
+        for k in sorted(set(before) | set(after)):
+            bv = before.get(k)
+            av = after.get(k)
+            if bv is not None and av is not None:
+                delta_rows.append(f"<div style='margin-left:14px'>{_esc(k)}: {bv} → {av}（Δ {float(av) - float(bv):+.4f}）</div>")
+        ev = p.get("evidence") or []
+        html = [
+            f"<h3>Growth <code>{_esc(str(p.get('proposal_id') or ''))}</code></h3>",
+            f"<div>状态: <b>{_esc(st.upper())}</b> — {_esc(stage_hint)}</div>",
+            f"<div>类型: {_esc(str(p.get('proposal_type') or ''))} · 置信: {p.get('confidence')} · 创建: {_esc(str(p.get('created_at') or '')[:19])}</div>",
+            "<hr><b>BEFORE</b>",
+        ]
+        if before:
+            html.append("<br>".join(f"<div style='margin-left:14px'>{_esc(k)} = {v}</div>" for k, v in before.items()))
+        else:
+            html.append("<div style='margin-left:14px'>（无 before 记录）</div>")
+        html.append("<b>PROPOSED / AFTER</b>")
+        html.append("<br>".join(delta_rows) if delta_rows else "<div style='margin-left:14px'>（无变化明细）</div>")
+        html.append(f"<b>WHY</b><div style='margin-left:14px'>{_esc(str(p.get('reason') or '—'))}</div>")
+        html.append(f"<b>EVIDENCE</b><div style='margin-left:14px'>{len(ev)} 条 · "
+                    f"{_esc(', '.join(str(x) for x in ev[:8]))}</div>")
+        html.append(f"<b>影响</b><div style='margin-left:14px'>PersonalityState → SelfHistory → Personality Prompt；"
+                    f"需 Runtime Drain 才最终生效</div>")
+        self.grow_detail.setHtml("".join(html))
+
+    def _do_grow_review(self, decision: str):
+        p = getattr(self, "grow_current", None)
+        if not p:
+            return
+        pid = str(p.get("proposal_id") or "")
+        note = self.ed_grow_note.text().strip()
+        for b in (self.btn_grow_approve, self.btn_grow_reject):
+            b.setEnabled(False)
+        try:
+            data = self._api("/admin/api/admin/governance/growth/review", "POST", {
+                "proposal_id": pid, "action": decision, "reason": note,
+            })
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "审批失败", str(exc))
+            self._on_grow_select(self.grow_list.currentItem(), None)
+            return
+        ok = bool(data.get("success"))
+        if ok:
+            self.statusBar().showMessage(f"{decision} → {pid}（状态变化 ≠ 已生效，等待 drain）")
+        else:
+            self.statusBar().showMessage(f"⚠️ {decision} 未成功: {data.get('error') or data}")
+        self.ed_grow_note.clear()
+        self.refresh_all()
+
+    def _set_grow_actions_enabled(self, enabled: bool):
+        self.btn_grow_approve.setEnabled(enabled)
+        self.btn_grow_reject.setEnabled(enabled)
 
     # ---------- 列表渲染 ----------
     def _render_list(self):
@@ -320,7 +619,17 @@ class GovernancePanel(QMainWindow):
             f"<div>证据 memory: {', '.join(_esc(str(x)) for x in (c.get('source_memory_ids') or [])) or '—'}</div>",
             f"<div>证据摘要: {_esc(str(c.get('evidence_summary') or ''))}</div>",
             f"<div>来源前端: {_esc(str(c.get('frontend') or ''))}</div>",
+            "<hr><b>如果确认（Impact Preview，真实语义）</b>",
         ]
+        tgt = c.get("target")
+        if tgt == "relationship_core":
+            html.append("<div style='margin-left:14px'>✅ 将影响: 【你们的关系】Prompt 块（RelationshipCoreStore）</div>")
+        elif tgt == "self_model":
+            html.append("<div style='margin-left:14px'>✅ 将影响: SelfModel Statements（⚠️ 当前无消费者 → effective=NO）</div>")
+        else:
+            html.append("<div style='margin-left:14px'>⚠️ 目标层待定（resolve_confirmation_target 未命中）</div>")
+        html.append("<div style='margin-left:14px'>❌ 不影响: PersonalityState / Memory / Emotion</div>")
+        html.append("<div style='color:#666;margin-left:14px'>确认 = 候选 confirmed + 目标层写入（幂等）；若目标层写入失败会显示 PARTIAL</div>")
         if c.get("reviewed"):
             html.append("<hr>")
             html.append(f"<div>审核时间: {_esc(str(c.get('reviewed_at') or ''))}</div>")
@@ -344,12 +653,14 @@ class GovernancePanel(QMainWindow):
             note = self.ed_note.text().strip() or "暂缓观察"
         else:
             note = self.ed_note.text().strip()
+        self._set_actions_enabled(False)  # 请求期间禁用，防重复点击
         try:
             data = self._api(f"/candidates/{cid}/review", "POST", {
                 "decision": decision, "reviewer": "admin", "note": note,
             })
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "审核失败", str(exc))
+            self._set_actions_enabled(True)
             return
         if data.get("status", "").startswith("already_"):
             QMessageBox.information(self, "提示", "该候选已审核过（幂等命中），无需重复操作。")
@@ -376,10 +687,24 @@ class GovernancePanel(QMainWindow):
             QMessageBox.information(self, "提示", "该候选已审核过，修改未生效（幂等命中）。")
         self.refresh_all()
 
+    def _clean_evidence_ids(self, raw_ids) -> list:
+        """统一 Evidence 解析：剥离 memory:/event: 等前缀，仅保留可回跳的 memory id。"""
+        out = []
+        for x in raw_ids or []:
+            s = str(x).strip()
+            if s.startswith("memory:"):
+                s = s[len("memory:"):]
+            elif s.startswith("event:"):
+                # 事件 id 无 memory 回跳路径 → 跳过（UI 不显示假回跳）
+                continue
+            if s:
+                out.append(s)
+        return out
+
     def show_evidence(self):
         if not self.current:
             return
-        ids = [str(x) for x in (self.current.get("source_memory_ids") or [])]
+        ids = self._clean_evidence_ids(self.current.get("source_memory_ids") or [])
         if not ids:
             QMessageBox.information(self, "看证据", "该候选没有关联 memory_id。")
             return
@@ -447,17 +772,24 @@ class GovernancePanel(QMainWindow):
             f"<div>置信度: {int(float(p.get('confidence') or 0) * 100)}%</div>",
             f"<div>证据 memory: {len(p.get('source_memory_ids') or [])} 条</div>",
             f"<div>证据摘要: {_esc(str(p.get('evidence_summary') or ''))}</div>",
+            "<hr><b>如果确认（Impact Preview，真实语义）</b>",
+            "<div style='margin-left:14px'>✅ 将影响: 【我们共同的生活】Prompt 块（常驻，query-independent）</div>",
+            "<div style='margin-left:14px'>❌ 不影响: PersonalityState / Memory / Emotion / RelationshipCore</div>",
+            "<div style='color:#666;margin-left:14px'>确认 = 状态 confirmed → 下轮 prompt 可见（≠ 立即生效于当前回复）</div>",
         ]
         if p.get("reviewed_by"):
             html.append("<hr>")
             html.append(f"<div>审核: {_esc(str(p.get('reviewed_by')))} "
                         f"{_esc(str(p.get('reviewed_at') or ''))}</div>")
             html.append(f"<div>备注: {_esc(str(p.get('review_note') or ''))}</div>")
+        if p.get("lineage"):
+            html.append(f"<div>lineage: {_esc(str(p.get('lineage')))}</div>")
         self.pat_detail.setHtml("".join(html))
 
     def _set_pat_actions_enabled(self, enabled: bool):
         for b in (self.btn_pat_confirm, self.btn_pat_reject,
-                  self.btn_pat_modify, self.btn_pat_evidence):
+                  self.btn_pat_modify, self.btn_pat_evidence,
+                  self.btn_pat_supersede, self.btn_pat_archive):
             b.setEnabled(enabled)
 
     def _do_pat_review(self, decision: str):
@@ -465,12 +797,14 @@ class GovernancePanel(QMainWindow):
         if not p:
             return
         note = self.ed_pat_note.text().strip()
+        self._set_pat_actions_enabled(False)  # 请求期间禁用，防重复点击
         try:
             data = self._api(f"/patterns/{p['pattern_id']}/review", "POST", {
                 "decision": decision, "reviewer": "admin", "note": note,
             })
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "审核失败", str(exc))
+            self._set_pat_actions_enabled(True)
             return
         if data.get("status", "").startswith("already_"):
             QMessageBox.information(self, "提示", "该模式已审核过（幂等命中），无需重复操作。")
@@ -504,7 +838,7 @@ class GovernancePanel(QMainWindow):
         p = self.pat_current
         if not p:
             return
-        ids = [str(x) for x in (p.get("source_memory_ids") or [])]
+        ids = self._clean_evidence_ids(p.get("source_memory_ids") or [])
         if not ids:
             QMessageBox.information(self, "看证据", "该模式没有关联 memory_id。")
             return
