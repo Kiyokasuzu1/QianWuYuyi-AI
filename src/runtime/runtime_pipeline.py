@@ -164,8 +164,14 @@ def _runtime_path_audit_finalize(
     reply_source: Optional[str],
     reply_empty: bool,
     duration_ms: int,
+    failure_reason: str = "",
 ) -> Dict[str, Any]:
     """R2.1：运行结束时最终确定 reply_source / path / fallback / reply_empty / duration_ms。
+
+    P1 稳定性修复（2026-08-27）：reply_empty 时写入 failure_reason
+    （llm_empty_content / llm_timeout / llm_connection / llm_http_<code>
+    / malformed_response / guard_rejection / engine_exception / unknown），
+    使最终兜底的原因可审计、可区分。
 
     路径判定优先级（R2.1 冻结逻辑，R2.2+ 才改执行路径，本函数只改审计的"判定"，不改执行）：
     1. reply_empty=True                                   → path="empty_reply"
@@ -178,6 +184,8 @@ def _runtime_path_audit_finalize(
     audit["reply_empty"] = bool(reply_empty)
     if reply_source:
         audit["reply_source"] = reply_source
+    if reply_empty and failure_reason:
+        audit["failure_reason"] = str(failure_reason)[:64]
     # 判定 path（只基于审计状态，不影响执行）
     if reply_empty:
         audit["path"] = "empty_reply"
@@ -1078,6 +1086,7 @@ class RuntimePipeline:
                 reply_source=audit_reply_source,
                 reply_empty=not (reply and reply.strip()),
                 duration_ms=duration_ms,
+                failure_reason=getattr(context, "_llm_failure_reason", "") or "",
             )
             # 同步写回 context.metadata["runtime_path_audit"]（用户 review 明确要求保留该命名）
             try:
@@ -1188,6 +1197,7 @@ class RuntimePipeline:
                     reply_source=None,
                     reply_empty=True,
                     duration_ms=duration_ms,
+                    failure_reason="engine_exception",
                 )
                 md = context.metadata or {}
                 md["runtime_path_audit"] = audit

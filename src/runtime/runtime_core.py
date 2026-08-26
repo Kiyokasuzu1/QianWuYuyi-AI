@@ -20,6 +20,7 @@ RuntimeCore —— 羽依的生命循环系统
 
 import json
 import logging
+import re
 import threading
 import time
 from dataclasses import asdict, field
@@ -489,6 +490,15 @@ class RuntimeCore(ModuleBase):
         self.relationship_model_runtime: Optional[RelationshipModel] = None
         self.relationship_intelligence_engine: Optional[RelationshipIntelligenceEngine] = None
         self._relationship_enabled: bool = self.config.get("relationship_enabled", False)
+        # v1.5-T5: 关系状态按用户分桶开关（false=旧单例路径，行为等价）。
+        # 兼容平铺键（relationship_per_user_buckets）与嵌套键（relationship.per_user_buckets）。
+        self._relationship_per_user_buckets: bool = bool(
+            self.config.get("relationship_per_user_buckets", False)
+            or (self.config.get("relationship", {}) or {}).get("per_user_buckets", False)
+        )
+        # v1.5-T5: 每用户关系桶注册表（懒加载缓存）与线程锁
+        self._relationship_user_runtimes: Dict[str, tuple] = {}
+        self._relationship_registry_lock = threading.RLock()
         # Phase 4.2-B: C.5 只读 Adapter（懒创建，复用其输出形态做 ctx.relationship_snapshot）
         self._relationship_read_adapter: Any = None
         self.emotion_manager: Optional[EmotionManager] = None
@@ -3474,11 +3484,85 @@ class RuntimeCore(ModuleBase):
             return self.relationship_state_runtime.to_dict()
         return None
 
-    def get_relationship_model_snapshot(self) -> Optional[Dict[str, Any]]:
-        """获取当前关系模型快照。"""
-        if self.relationship_model_runtime:
-            return self.relationship_model_runtime.get_snapshot()
+    def get_relationship_model_snapshot(self, user_id: str = "") -> Optional[Dict[str, Any]]:
+        """获取当前关系模型快照。
+
+        v1.5-T5: 新增可选 user_id——按桶返回；缺省 "" 在 per_user_buckets=False
+        时等价旧行为（默认单例），True 时回落 creator 桶。
+        """
+        _triple = self._get_relationship_runtimes(user_id)
+        if _triple is not None:
+            _model = _triple[2]
+            if _model:
+                return _model.get_snapshot()
         return None
+
+    # ============================================================
+    # v1.5-T5: 关系状态按用户分桶（桶路由）
+    # ============================================================
+    _RELATIONSHIP_BUCKET_RE = re.compile(r"^[A-Za-z0-9_\-]{1,64}$")
+
+    def _relationship_bucket_user(self, user_id: str = "") -> str:
+        """把 user_id 归一为关系桶名。
+
+        规则：合法（^[A-Za-z0-9_-]{1,64}$）原样使用；空/非法一律回落
+        creator 桶 366648462（fail-closed，不猜测、不修正）。
+        """
+        uid = str(user_id or "")
+        if uid and self._RELATIONSHIP_BUCKET_RE.match(uid):
+            return uid
+        return "366648462"
+
+    def _resolve_bucket_triple(self, user_id: str = "") -> Optional[tuple]:
+        """解析 (repo, state, model) 三元组（fail-soft）。
+
+        外部绑定方法的假对象可能没有 _get_relationship_runtimes 属性
+        （既有测试契约），此时回落旧单例三元组，保持向后兼容。
+        """
+        getter = getattr(self, "_get_relationship_runtimes", None)
+        if getter is None:
+            return (
+                self.relationship_repository,
+                self.relationship_state_runtime,
+                self.relationship_model_runtime,
+            )
+        return getter(user_id)
+
+    def _get_relationship_runtimes(self, user_id: str = "") -> Optional[tuple]:
+        """按 user_id 返回 (repo, state, model) 三元组。
+
+        - per_user_buckets=False → 默认单例（旧路径，字节等价）。
+        - per_user_buckets=True → 每用户独立桶（懒加载 + 缓存 + 锁）。
+        - 桶构建失败 → 回落默认单例（fail-soft，绝不影响主链）。
+        """
+        if not self._relationship_per_user_buckets:
+            return (
+                self.relationship_repository,
+                self.relationship_state_runtime,
+                self.relationship_model_runtime,
+            )
+        bucket = self._relationship_bucket_user(user_id)
+        with self._relationship_registry_lock:
+            cached = self._relationship_user_runtimes.get(bucket)
+            if cached is not None:
+                return cached
+            try:
+                repo = RelationshipRepository(
+                    data_dir=str(self._state_file.parent),
+                    user_id=bucket,
+                )
+                state = repo.load_state()
+                model = repo.load_relationship_model()
+                triple = (repo, state, model)
+                self._relationship_user_runtimes[bucket] = triple
+                return triple
+            except Exception as _e:  # noqa: BLE001
+                logger.warning(f"关系桶构建失败（回落默认单例）: {_e}")
+                return (
+                    self.relationship_repository,
+                    self.relationship_state_runtime,
+                    self.relationship_model_runtime,
+                )
 
     def record_relationship_interaction(
         self,
@@ -3486,17 +3570,34 @@ class RuntimeCore(ModuleBase):
         user_message: str,
         evidence_id: str = "",
         emotion_tag: str = "",
+        user_id: str = "",
     ) -> Optional[Dict[str, Any]]:
         """
         记录一次关系互动，更新 RelationshipState + RelationshipModel。
 
         仅更新关系系统，不影响人格审批边界。
+
+        v1.5-T5: 新增 user_id 参数——按 user_id 路由到独立桶（repo/state/model）；
+        per_user_buckets=False 时回落默认单例，与旧行为逐字节等价。
         """
+        # v1.5-T5: 桶路由——先解析三元组，再以三元组做存在性判断（fail-soft）
+        try:
+            _bucket_triple = self._resolve_bucket_triple(user_id)
+        except AttributeError:  # noqa: BLE001
+            # 外部绑定方法的假对象缺新方法 → 回落旧单例（既有测试契约）
+            _bucket_triple = (
+                self.relationship_repository,
+                self.relationship_state_runtime,
+                self.relationship_model_runtime,
+            )
+        if _bucket_triple is None:
+            return None
+        _bucket_repo, _bucket_state, _bucket_model = _bucket_triple
         if (
             not self.relationship_intelligence_engine
-            or not self.relationship_repository
-            or not self.relationship_state_runtime
-            or not self.relationship_model_runtime
+            or not _bucket_repo
+            or not _bucket_state
+            or not _bucket_model
         ):
             return None
         try:
@@ -3511,16 +3612,17 @@ class RuntimeCore(ModuleBase):
                     user_message=user_message,
                     evidence_id=evidence_id,
                     emotion_tag=emotion_tag,
+                    user_id=user_id,
                 )
             result = self.relationship_intelligence_engine.process_interaction(
-                state=self.relationship_state_runtime,
-                model=self.relationship_model_runtime,
+                state=_bucket_state,
+                model=_bucket_model,
                 user_message=user_message,
                 evidence_id=evidence_id,
                 emotion_tag=emotion_tag,
             )
-            self.relationship_repository.save_state(self.relationship_state_runtime)
-            self.relationship_repository.save_relationship_model(self.relationship_model_runtime)
+            _bucket_repo.save_state(_bucket_state)
+            _bucket_repo.save_relationship_model(_bucket_model)
             # Phase 4.2-D：关系事件 → Growth 证据链（薄转换器，fail-soft）
             # 仅在提取出 RelationshipEvent 时触发；评估/审批红线全在 Growth 侧既有组件。
             growth_evidence_state = self._forward_relationship_event_to_growth(
@@ -3554,6 +3656,7 @@ class RuntimeCore(ModuleBase):
         user_message: str,
         evidence_id: str = "",
         emotion_tag: str = "",
+        user_id: str = "",
     ) -> Optional[Dict[str, Any]]:
         """P2.3-B.9（flag=True）：关系互动经 MutationGateway 单入口治理。
 
@@ -3574,6 +3677,18 @@ class RuntimeCore(ModuleBase):
         任何异常 fail-soft（返回 None，不影响主链）。
         """
         try:
+            # v1.5-T5: 桶路由（与 record_relationship_interaction 同源）
+            try:
+                _bucket_triple = self._resolve_bucket_triple(user_id)
+            except AttributeError:  # noqa: BLE001
+                _bucket_triple = (
+                    self.relationship_repository,
+                    self.relationship_state_runtime,
+                    self.relationship_model_runtime,
+                )
+            if _bucket_triple is None:
+                return None
+            _bucket_repo, _bucket_state, _bucket_model = _bucket_triple
             engine = self.relationship_intelligence_engine
             adapter = self._get_relationship_mutation_adapter()
 
@@ -3618,15 +3733,15 @@ class RuntimeCore(ModuleBase):
             # allowed_dimensions=None → 与旧路径行为完全一致）
             allowed_dimensions = set(accepted_dims) if planned else None
             result = engine.process_interaction(
-                state=self.relationship_state_runtime,
-                model=self.relationship_model_runtime,
+                state=_bucket_state,
+                model=_bucket_model,
                 user_message=user_message,
                 evidence_id=evidence_id,
                 emotion_tag=emotion_tag,
                 allowed_dimensions=allowed_dimensions,
             )
-            self.relationship_repository.save_state(self.relationship_state_runtime)
-            self.relationship_repository.save_relationship_model(self.relationship_model_runtime)
+            _bucket_repo.save_state(_bucket_state)
+            _bucket_repo.save_relationship_model(_bucket_model)
             growth_evidence_state = self._forward_relationship_event_to_growth(
                 result.get("event")
             )
@@ -5788,6 +5903,8 @@ class RuntimeCore(ModuleBase):
                         user_message=user_message,
                         evidence_id=evidence_id,
                         emotion_tag=emotion_tag,
+                        # v1.5-T5: 透传请求方 user_id（缺省时桶路由回落 creator）
+                        user_id=str(getattr(ctx, "user_id", "") or ""),
                     )
 
             # ---- 读路径：C.5 只读输出形态 → ctx.relationship_snapshot ----
@@ -7202,6 +7319,14 @@ class RuntimeCore(ModuleBase):
                     ctx._final_reply = reply  # type: ignore[attr-defined]
                     return
             except Exception as exc:
+                # P1 稳定性修复：LLM 层失败原因透传（LLMError.category），
+                # 供 pipeline fallback audit 记录（failure_reason）。
+                try:
+                    from src.response.llm import LLMError as _LLMErr
+                    if isinstance(exc, _LLMErr):
+                        ctx._llm_failure_reason = exc.category  # type: ignore[attr-defined]
+                except Exception:  # noqa: BLE001
+                    pass
                 logger.warning(
                     "[RuntimeCore.process] ResponseAdapter.generate 失败（降级）: %s", exc,
                 )
@@ -7222,6 +7347,47 @@ class RuntimeCore(ModuleBase):
                     prompt_blocks.append({"role": "system", "content": behavior_guidance_block})
                 if relationship_core_block:
                     prompt_blocks.append({"role": "system", "content": relationship_core_block})
+
+                # Phase B1b: temporal_context（三态开关；生产回复链 Stage 14 接入点）。
+                # last_interaction 只复用本链路已有的 ctx.retrieved_memories，禁止新增 IO。
+                # 异常全部隔离：降级 None = 旧时间行行为不变。
+                _temporal_inject = None
+                try:
+                    from src.config import get as _tc_cfg_get
+                    _tc_mode = str(
+                        _tc_cfg_get("temporal.temporal_context_mode", "off") or "off"
+                    ).strip().lower()
+                    if _tc_mode in ("shadow", "active"):
+                        from src.temporal.temporal_context import resolve_temporal_context
+                        from src.temporal.temporal_core import normalize_time as _tc_normalize
+                        from datetime import datetime as _tc_dt
+                        from datetime import timezone as _tc_tz
+
+                        _last_ts = None
+                        for _m in getattr(ctx, "retrieved_memories", []) or []:
+                            if isinstance(_m, dict):
+                                _ts = _tc_normalize(_m.get("timestamp"))
+                                if _ts is not None and (_last_ts is None or _ts > _last_ts):
+                                    _last_ts = _ts
+                        _tc_budget = int(_tc_cfg_get("temporal.temporal_context_budget", 400) or 400)
+                        _tc_inject, _tc_shadow = resolve_temporal_context(
+                            _tc_mode, _tc_dt.now(_tc_tz.utc), _last_ts, budget=_tc_budget,
+                        )
+                        if _tc_shadow:
+                            logger.info(
+                                "[TemporalContext][shadow] mode=%s chars=%d last_source=%s "
+                                "last_interaction=%s budget=%d text=%r",
+                                _tc_mode,
+                                len(_tc_shadow),
+                                "memory" if _last_ts is not None else "none",
+                                _last_ts.isoformat() if _last_ts is not None else "none",
+                                _tc_budget,
+                                _tc_shadow,
+                            )
+                        _temporal_inject = _tc_inject
+                except Exception as exc_tc:  # noqa: BLE001
+                    logger.warning("[TemporalContext] 计算失败（已隔离，降级旧时间行）: %s", exc_tc)
+
                 reply = engine.generate(
                     user_message=user_msg,
                     history=list(getattr(ctx, "history", []) or []),
@@ -7242,6 +7408,8 @@ class RuntimeCore(ModuleBase):
                     context_prompt_blocks=prompt_blocks or None,
                     # Phase 3.7.1: 近期经历上下文（使羽依在回复时感知最近发生的重要事件）
                     experience_context=experience_context,
+                    # Phase B1b: temporal_context（None=旧行为逐字节兼容）
+                    temporal_context=_temporal_inject,
                 )
                 if isinstance(reply, str) and reply.strip():
                     ctx._final_reply = reply  # type: ignore[attr-defined]
