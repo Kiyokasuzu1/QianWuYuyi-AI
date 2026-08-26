@@ -1,5 +1,8 @@
 import os
 
+#: 记忆注入硬预算（引擎层兜底；与 selection 的 injection_max_total 语义一致）
+MEMORY_INJECTION_HARD_CAP = 6
+
 # R2.7.6-DEPLOY: OpenAI SDK 延迟 import —— 环境没装 openai 包时不崩溃（mock 模式正常工作）
 # 之前顶层 from openai import OpenAI → 一 import engine.py 就 ModuleNotFoundError，
 # 导致 api_server 里即使 orchestrator_import_error 也无法 graceful（engine 先炸）。
