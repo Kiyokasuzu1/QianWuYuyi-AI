@@ -18,10 +18,10 @@ import requests
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QDialog, QDialogButtonBox, QHBoxLayout, QInputDialog,
-    QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMessageBox,
-    QPushButton, QSplitter, QTabWidget, QTextBrowser, QTextEdit, QVBoxLayout,
-    QWidget,
+    QApplication, QCheckBox, QDialog, QDialogButtonBox, QFileDialog, QHBoxLayout,
+    QInputDialog, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
+    QMessageBox, QPushButton, QSplitter, QTabWidget, QTextBrowser, QTextEdit,
+    QVBoxLayout, QWidget,
 )
 
 API_BASE_DEFAULT = "http://100.114.143.47:8000"
@@ -229,6 +229,10 @@ class GovernancePanel(QMainWindow):
         self.btn_clear_cred = QPushButton("清除凭据")
         self.btn_clear_cred.clicked.connect(self._clear_credential)
         top.addWidget(self.btn_clear_cred)
+        # Phase 2B.5：Snapshot 只读导出（仅用户主动触发）
+        self.btn_export_snap = QPushButton("导出 Snapshot")
+        self.btn_export_snap.clicked.connect(self._export_snapshot)
+        top.addWidget(self.btn_export_snap)
         self.chk_auto.toggled.connect(self._toggle_auto)
         top.addWidget(self.chk_auto)
         # Phase 2B.1：连接徽标（状态 + 数据截至时间 + token 来源，仅尾 4 位）
@@ -1041,6 +1045,122 @@ class GovernancePanel(QMainWindow):
         btns.rejected.connect(dlg.reject)
         lay.addWidget(btns)
         dlg.exec()
+
+    # ---------- Snapshot 只读导出（Phase 2B.5） ----------
+    def _export_snapshot(self):
+        """收集当前 GET 数据 → 用户主动选择路径 → 导出 JSON。
+
+        每块独立收集，失败安全占位（快照含缺块时状态栏提示，不中断）。
+        无自动保存、无后台保存、无上传。
+        """
+        snap = _panel_import("governance_snapshot")
+        incomplete = []
+
+        conn_block = {"status": self._conn.status, "token_source": self._token_source(),
+                      "last_success_at": self._conn.last_success_at,
+                      "last_error": self._conn.last_error}
+
+        subjects: dict = {}
+        try:
+            conf = [f.get("fact") for f in getattr(self, "sm_families", [])
+                    if (f.get("status") or "") == "confirmed"]
+            subjects["self_model_confirmed"] = [f for f in conf if f]
+        except Exception:  # noqa: BLE001
+            subjects["self_model_confirmed"] = []
+        try:
+            rc = self._api("/relationship-core").get("facts", [])
+            subjects["relationship_core"] = [
+                {"agreements": f.get("agreements"), "confirmed_at": f.get("confirmed_at")}
+                for f in rc]
+        except Exception:  # noqa: BLE001
+            subjects["relationship_core"] = []
+            incomplete.append("relationship-core")
+        try:
+            act = self._api("/patterns/active").get("patterns", [])
+            subjects["patterns_active"] = [
+                {"pattern_id": p.get("pattern_id"), "title": p.get("title"),
+                 "status": p.get("status")} for p in act]
+        except Exception:  # noqa: BLE001
+            subjects["patterns_active"] = []
+            incomplete.append("patterns")
+        try:
+            g = self._api("/admin/api/admin/governance/growth")
+            gd = g.get("data") or {}
+            subjects["growth_counts"] = {
+                "pending": len(gd.get("pending") or []),
+                "approved": len(gd.get("approved") or []),
+                "applied": len(gd.get("applied") or [])}
+        except Exception:  # noqa: BLE001
+            subjects["growth_counts"] = {}
+            incomplete.append("growth")
+        try:
+            props = getattr(self, "growth_props", []) or []
+            subjects["proposals"] = [
+                {"proposal_id": p.get("proposal_id"), "status": p.get("status"),
+                 "proposal_type": p.get("proposal_type"), "created_at": p.get("created_at")}
+                for p in props[:20]]
+        except Exception:  # noqa: BLE001
+            subjects["proposals"] = []
+
+        timeline: list = []
+        try:
+            audit = self._api("/audit-log?limit=500").get("entries", [])
+            entity = _panel_import("governance_entity")
+            timeline = entity.collect_timeline_events(
+                project_pattern_families(self.patterns),
+                getattr(self, "sm_families", []), audit,
+                getattr(self, "growth_props", []))[:200]
+        except Exception:  # noqa: BLE001
+            timeline = []
+            incomplete.append("audit-log")
+
+        health_block: list = []
+        try:
+            g2 = self._api("/admin/api/admin/governance/growth")
+            gd2 = g2.get("data") or {}
+            counts = {"pending": len(gd2.get("pending") or []),
+                      "approved": len(gd2.get("approved") or []),
+                      "applied": len(gd2.get("applied") or [])}
+            health_block = _panel_import("governance_health").health_facts(
+                counts, self._conn.status, self._token_source(),
+                self._conn.last_success_at, self._conn.last_error)
+        except Exception:  # noqa: BLE001
+            health_block = []
+            incomplete.append("growth")
+
+        # Explain context：当前选中对象（固定映射的受影响字段）
+        ctx: dict = {}
+        for kind, obj in (("candidate", self.current),
+                          ("pattern", self.pat_current),
+                          ("growth", self.grow_current)):
+            if not obj:
+                continue
+            rid = str(obj.get("candidate_id") or obj.get("pattern_id")
+                      or obj.get("proposal_id") or "")
+            expl = _panel_import("governance_explain")
+            affected = []
+            for op in expl.OPERATIONS_BY_KIND.get(kind, []):
+                affected.extend(expl.ACTION_FIELD_MAP.get(op, []))
+            ctx = {"object_id": rid, "kind": kind,
+                   "current_status": str(obj.get("status")
+                                         or obj.get("current_status") or ""),
+                   "affected_fields": sorted(set(affected))}
+            break
+
+        snap_dict = snap.collect(conn_block, subjects, timeline,
+                                 health_block, ctx)
+        path, _ = QFileDialog.getSaveFileName(
+            self, "导出 Snapshot", "yui_governance_snapshot.json", "JSON (*.json)")
+        if not path:
+            return
+        ok = snap.export(snap_dict, path)
+        if ok:
+            msg = f"✅ Snapshot 已导出: {path}"
+            if incomplete:
+                msg += f"（部分数据获取失败: {', '.join(incomplete)}，快照不完整）"
+            self.statusBar().showMessage(msg)
+        else:
+            QMessageBox.critical(self, "导出失败", "无法写入文件")
 
     # ---------- 列表渲染 ----------
     def _render_list(self):
