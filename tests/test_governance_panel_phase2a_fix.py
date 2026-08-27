@@ -84,10 +84,15 @@ def _make_fake_api(personality="ok"):
 
 
 def _new_panel(monkeypatch, tmp_path, qapp):
-    """实例化面板（_api 为 fake；凭据注入临时路径）。"""
+    """实例化面板（_api 为 fake；凭据注入临时路径 + 清空内存 stored）。
+
+    隔离本机真实凭据（%LOCALAPPDATA%/QianWuYuyi/governance_cred.bin）：
+    任何测试流程都不得读取或写入默认凭据路径。
+    """
     monkeypatch.setattr(GovernancePanel, "_api", _make_fake_api())
     panel = GovernancePanel()
     panel._cred = CredentialStore(tmp_path / "cred.bin")
+    panel._stored_token = ""
     return panel
 
 
@@ -207,9 +212,10 @@ def test_t7_personality_url_matches_route(monkeypatch, tmp_path, qapp, qbox):
     panel._api("/admin/api/admin/governance/personality")
     panel._api("/candidates")
     base = panel.ed_base.text().strip().rstrip("/")
-    assert captured["urls"][0] == base + "/admin/api/admin/governance/personality", \
+    # 断言本次测试发起的最后两次请求（实例化时 refresh_all 的请求在前，不影响）
+    assert captured["urls"][-2] == base + "/admin/api/admin/governance/personality", \
         "Personality URL 必须与 admin_bp 真实 route 一致（无前缀重复）"
-    assert captured["urls"][1] == base + "/admin/api/governance/candidates", \
+    assert captured["urls"][-1] == base + "/admin/api/governance/candidates", \
         "gov_bp 端点仍应使用 /admin/api/governance 前缀"
 
 

@@ -28,6 +28,14 @@ API_BASE_DEFAULT = "http://100.114.143.47:8000"
 API_PREFIX = "/admin/api/governance"
 HTTP_TIMEOUT = (3, 10)
 
+
+def _panel_import(name: str):
+    """面板辅助模块双路径导入：直接运行（sys.path[0]=tools/）与 pytest（项目根）。"""
+    try:
+        return __import__(f"tools.{name}", fromlist=["*"])
+    except ImportError:
+        return __import__(name, fromlist=["*"])
+
 STATUS_META = {
     "candidate":  ("🐣 待审核", "#b8860b"),
     "confirmed":  ("🟢 已确认", "#2e7d32"),
@@ -64,6 +72,8 @@ class GovernancePanel(QMainWindow):
         # Phase 2A：本机凭据（DPAPI）。save 后不再逐次输入。
         self._cred = None  # CredentialStore 实例（懒创建，测试可注入）
         self._stored_token = ""  # 已保存的 token（内存，仅 _api 使用，不打印）
+        # Phase 2B.1：连接可见性（三态 + 数据新鲜度，纯记录）
+        self._conn = _panel_import("connection_state").ConnectionState()
         self._build_ui()
         self._load_stored_credential()
         self.refresh_all()
@@ -105,6 +115,40 @@ class GovernancePanel(QMainWindow):
         if manual:
             return manual
         return self._stored_token
+
+    def _token_source(self) -> str:
+        """token 来源（Phase 2B.1 显示用）：DPAPI / ENV / MANUAL / NONE。"""
+        if os.environ.get("YUYI_ADMIN_TOKEN", "").strip():
+            return "ENV"
+        if self.ed_token.text().strip():
+            return "MANUAL"
+        if self._stored_token:
+            return "DPAPI"
+        return "NONE"
+
+    def _update_conn_label(self) -> None:
+        """连接徽标：状态 + 数据截至时间 + token 来源（仅尾 4 位）。"""
+        c = self._conn
+        src = {"ENV": "环境变量", "MANUAL": "手动输入", "DPAPI": "DPAPI",
+               "NONE": "未设置"}.get(self._token_source(), "?")
+        tok = self._effective_token()
+        tail = f"({tok[-4:]})" if tok else ""
+        stale = " · 数据可能陈旧" if c.is_stale else ""
+        if c.status is None:
+            text, color = "○ 未探测", "#757575"
+        elif c.status == c.CONNECTED:
+            text, color = f"● 已连接 · 数据截至 {c.last_success_at}", "#2e7d32"
+        elif c.status == c.UNAUTHORIZED:
+            text, color = (f"● 未授权(401/403) · 数据截至 {c.last_success_at or '—'}{stale}",
+                           "#c62828")
+        else:
+            text, color = (f"● 连接失败 · 数据截至 {c.last_success_at or '—'}{stale}",
+                           "#c62828")
+        self.lbl_conn.setText(f"{text} · 🔑 {src}{tail}")
+        self.lbl_conn.setStyleSheet(f"color:{color};font-weight:bold;")
+        if c.last_error:
+            e = c.last_error
+            self.lbl_conn.setToolTip(f"上次失败({e['at']}): [{e['kind']}] {e['detail']}")
 
     def _prompt_save_credential(self, token: str) -> bool:
         """验证成功后询问保存（默认保存；不做任何降级明文）。"""
@@ -187,6 +231,10 @@ class GovernancePanel(QMainWindow):
         top.addWidget(self.btn_clear_cred)
         self.chk_auto.toggled.connect(self._toggle_auto)
         top.addWidget(self.chk_auto)
+        # Phase 2B.1：连接徽标（状态 + 数据截至时间 + token 来源，仅尾 4 位）
+        self.lbl_conn = QLabel("○ 未探测")
+        self.lbl_conn.setToolTip("连接状态：由治理端点真实请求结果驱动")
+        top.addWidget(self.lbl_conn)
         top.addStretch(1)
         root.addLayout(top)
 
@@ -377,21 +425,37 @@ class GovernancePanel(QMainWindow):
                 "（生产 token 由部署方提供）"
             )
         headers["X-Admin-Token"] = tok
-        if method == "GET":
-            resp = requests.get(url, headers=headers, timeout=HTTP_TIMEOUT)
-        else:
-            resp = requests.post(url, headers=headers, json=body or {}, timeout=HTTP_TIMEOUT)
+        try:
+            if method == "GET":
+                resp = requests.get(url, headers=headers, timeout=HTTP_TIMEOUT)
+            else:
+                resp = requests.post(url, headers=headers, json=body or {}, timeout=HTTP_TIMEOUT)
+        except requests.RequestException as exc:
+            # Phase 2B.1：网络异常/超时 → FAILED（旁路记录，不改变异常语义）
+            self._conn.record_failure("network", str(exc))
+            self._update_conn_label()
+            raise
         try:
             data = resp.json()
         except ValueError:
             data = {}
         if resp.status_code == 401:
             # 401：不自动删凭据；提示重新输入（短暂网络/服务端问题不破坏本地配置）
+            self._conn.record_failure("unauthorized",
+                                      f"HTTP 401: 未授权（已保存凭据可能失效，重新输入可覆盖）" if self._stored_token
+                                      else "HTTP 401: 缺失或无效的管理 token")
+            self._update_conn_label()
             raise RuntimeError(
                 f"HTTP 401: 未授权（{'已保存的管理凭据可能已失效，可重新输入后覆盖' if self._stored_token else '缺失或无效的管理 token'}）"
             )
         if resp.status_code >= 400:
+            # 非认证 HTTP 错误（如 403/500）→ FAILED（403 亦按认证失败处理）
+            kind = "unauthorized" if resp.status_code == 403 else "http"
+            self._conn.record_failure(kind, f"HTTP {resp.status_code}: {data.get('error') or resp.text[:120]}")
+            self._update_conn_label()
             raise RuntimeError(f"HTTP {resp.status_code}: {data.get('error') or resp.text[:120]}")
+        self._conn.record_success()
+        self._update_conn_label()
         return data
 
     def test_connect(self):
