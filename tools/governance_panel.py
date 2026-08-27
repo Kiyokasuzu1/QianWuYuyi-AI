@@ -297,6 +297,10 @@ class GovernancePanel(QMainWindow):
         self.tab_health = QTextBrowser()
         self.tabs.addTab(self.tab_health, "治理健康")
 
+        # Phase 2C.1：事实差异 —— 候选与已确认事实的文本关系（只读，无按钮）
+        self.tab_diff = QTextBrowser()
+        self.tabs.addTab(self.tab_diff, "事实差异")
+
         # 审计日志（时间线 segment + 平铺 + entity/action 过滤）
         self.tab_audit = QWidget()
         audit_v = QVBoxLayout(self.tab_audit)
@@ -529,6 +533,8 @@ class GovernancePanel(QMainWindow):
         # Phase 2B.3：Subject View + Health（事实观察，零判断）
         self._render_subject_view()
         self._render_health()
+        # Phase 2C.1：事实差异（只读文本关系）
+        self._render_diff()
 
     # ---------- Subject View：事实观察窗口（Phase 2B.3） ----------
     def _render_subject_view(self):
@@ -1162,6 +1168,71 @@ class GovernancePanel(QMainWindow):
             self.statusBar().showMessage(msg)
         else:
             QMessageBox.critical(self, "导出失败", "无法写入文件")
+
+    # ---------- Fact Differences（Phase 2C.1：只读文本关系） ----------
+    def _render_diff(self):
+        """候选 vs 已确认事实的文本关系（equal/contains/contained）。
+
+        只读展示，无按钮、无审核入口；关系来自可验证的文本比较。
+        """
+        try:
+            cands = self.candidates
+        except Exception:  # noqa: BLE001
+            cands = []
+        confirmed: list = []
+        try:
+            rc = self._api("/relationship-core").get("facts", [])
+            for f in rc:
+                ag = (f.get("agreements") or [])
+                if ag:
+                    confirmed.append((f"RC:{_family_root(str(f.get('fact_id') or ''))}",
+                                      str(ag[0])))
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            sm = self._api("/self-model-statements").get("statements", [])
+            for s in sm:
+                if (s.get("status") or "") == "confirmed" and s.get("fact"):
+                    confirmed.append((f"SM:{_family_root(str(s.get('statement_id') or ''))}",
+                                      str(s.get("fact"))))
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            pats = self._api("/patterns").get("patterns", [])
+            seen = set()
+            # 倒序遍历：每家族先看到最新状态行（append-only 语义）
+            for p in reversed(pats):
+                root = _family_root(str(p.get("pattern_id") or ""))
+                if not root or root in seen:
+                    continue
+                seen.add(root)
+                if (p.get("status") or "") == "confirmed":
+                    txt = p.get("summary") or p.get("title") or ""
+                    if txt:
+                        confirmed.append((f"PAT:{root}", str(txt)))
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            rows = _panel_import("governance_diff").compare_facts(cands, confirmed)
+        except Exception as exc:  # noqa: BLE001
+            self.tab_diff.setHtml(
+                f"<div style='color:#c62828'>事实差异读取失败: {_esc(str(exc)[:120])}</div>")
+            return
+        if not rows:
+            self.tab_diff.setHtml("<i>（暂无文本关系）</i>")
+            return
+        kind_label = {"RC": "关系核心", "SM": "自我模型", "PAT": "共同生活模式"}
+        blocks = []
+        for r in rows:
+            mid = str(r.get("matched_id") or "")
+            prefix, _, rest = mid.partition(":")
+            blocks.append(
+                f"<div><b>候选事实</b>: {_esc(r.get('candidate_text') or '')}</div>"
+                f"<div style='margin-left:14px'>匹配对象: <code>{_esc(mid)}</code>"
+                f"（{_esc(kind_label.get(prefix, ''))}）</div>"
+                f"<div style='margin-left:14px'>确认事实: {_esc(r.get('matched_text') or '')}</div>"
+                f"<div style='margin-left:14px'>文本关系: <b>{_esc(r.get('relation') or '')}</b></div><hr>")
+        self.tab_diff.setHtml("".join(blocks))
 
     # ---------- 列表渲染 ----------
     def _render_list(self):
