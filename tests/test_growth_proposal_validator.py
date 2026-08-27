@@ -15,6 +15,14 @@ from src.growth.proposal_ledger import reduce_events  # noqa: E402
 from src.growth.proposal_validator import (  # noqa: E402
     validate_proposal, validator_rejection_event,
 )
+from src.growth.snapshot_hash import calculate_snapshot_hash  # noqa: E402
+
+
+def _snap(path="self_state.initiative", value=0.5, source="growth_state.json"):
+    return {"schema_version": 1, "path": path, "old_value": value,
+            "captured_at": "2026-08-27T12:00:00", "source": source,
+            "hash": calculate_snapshot_hash(path, value, source),
+            "provenance": "system_state_read"}
 
 
 def _valid_proposal():
@@ -25,10 +33,7 @@ def _valid_proposal():
         "evaluator_meta": {"insight_type": "pattern",
                            "pattern_detected": "high_frequency_proactive",
                            "pattern_frequency": 5, "used_llm": False},
-        "before_snapshot": [
-            {"path": "self_state.initiative", "old_value": 0.5,
-             "captured_at": "2026-08-27T12:00:00", "source": "growth_state.json",
-             "hash": "abc123"}],
+        "before_snapshot": [_snap()],
         "proposed_changes": [{"path": "self_state.initiative", "after": 0.4,
                               "reason": "高频主动行为"}],
     }

@@ -70,6 +70,8 @@ class GrowthProposal:
     # - 旧数据反序列化：缺省时填 "1.0"（视为兼容 v1.0）
     # - legacy schema 不增加此字段（保持 legacy schema 不变）
     schema_version: str = CANONICAL_SCHEMA_VERSION
+    # T1-B: before_snapshot（七字段快照列表，生成阶段冻结；旧数据缺省空列表兼容）
+    before_snapshot: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)

@@ -138,10 +138,14 @@ class SelfHistoryTimelineStore:
         evidence_ids: Optional[List[str]] = None,
         reason: str = "",
         applied_at: Optional[str] = None,
+        before_snapshot: Optional[List[dict]] = None,
+        experience_trace_ids: Optional[List[str]] = None,
     ) -> Optional[str]:
         """追加一条真实人格变化记录（幂等：proposal_id 已存在则跳过）。
 
         返回 record_id；幂等命中 / 写入失败返回 None（fail-soft）。
+        T1-B：追加 before_snapshot / experience_trace_ids / schema_version
+        （只追加，不改历史；旧记录 .get 兼容）。
         """
         if not proposal_id:
             return None
@@ -162,6 +166,9 @@ class SelfHistoryTimelineStore:
             "approval_id": str(approval_id or ""),
             "evidence_ids": [str(x) for x in (evidence_ids or [])],
             "reason": str(reason or "")[:500],
+            "schema_version": 1,
+            "before_snapshot": list(before_snapshot or []),
+            "experience_trace_ids": [str(x) for x in (experience_trace_ids or [])],
         }
         return record_id if self._append(rec) else None
 

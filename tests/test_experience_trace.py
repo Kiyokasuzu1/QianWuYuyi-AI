@@ -19,6 +19,25 @@ from src.growth.experience_trace import (  # noqa: E402
     new_experience_id, resolve_trace_ids,
 )
 from src.growth.proposal_validator import validate_proposal  # noqa: E402
+from src.growth.snapshot_hash import calculate_snapshot_hash  # noqa: E402
+
+
+def _snap(path="self_state.initiative", value=0.5):
+    return {"schema_version": 1, "path": path, "old_value": value,
+            "captured_at": "t", "source": "growth_state.json",
+            "hash": calculate_snapshot_hash(path, value, "growth_state.json"),
+            "provenance": "system_state_read"}
+
+
+def _base_proposal(tid):
+    return {
+        "schema_version": 1, "proposal_id": "prop_t1a",
+        "evidence_trace_ids": [tid],
+        "evaluator_meta": {"pattern_detected": "high_frequency_proactive",
+                           "pattern_frequency": 5, "used_llm": False},
+        "before_snapshot": [_snap()],
+        "proposed_changes": [{"path": "self_state.initiative", "after": 0.4}],
+    }
 
 
 @pytest.fixture()
@@ -58,15 +77,7 @@ def test_constraint1_trace_before_proposal(trace_path):
     """未固化的 evidence 引用 → Validator 拒绝（trace_resolver 实装）。"""
     from src.growth.experience_trace import resolve_trace_ids
     tid = new_experience_id()
-    proposal = {
-        "schema_version": 1, "proposal_id": "prop_t1a",
-        "evidence_trace_ids": [tid],
-        "evaluator_meta": {"pattern_detected": "high_frequency_proactive",
-                           "pattern_frequency": 5, "used_llm": False},
-        "before_snapshot": [{"path": "self_state.initiative", "old_value": 0.5,
-                             "captured_at": "t", "source": "growth_state.json", "hash": "h"}],
-        "proposed_changes": [{"path": "self_state.initiative", "after": 0.4}],
-    }
+    proposal = _base_proposal(tid)
     # 先固化（Trace 先于 Proposal）
     tr = make_trace(tid, ["mem_001"], "runtime_pipeline", "高频主动消息 5 次", "high_frequency_proactive")
     append_trace(tr, trace_path)
@@ -105,15 +116,10 @@ def test_constraint3_mc_full_chain(trace_path):
     assert tr is not None
     append_trace(tr, trace_path)
     # Proposal 引用 MC trace → 校验通过（MC 与 QQ 同池同权）
-    proposal = {
-        "schema_version": 1, "proposal_id": "prop_mc_chain",
-        "evidence_trace_ids": [tid],
-        "evaluator_meta": {"pattern_detected": "join_pattern", "pattern_frequency": 3,
-                           "used_llm": False},
-        "before_snapshot": [{"path": "self_state.initiative", "old_value": 0.5,
-                             "captured_at": "t", "source": "growth_state.json", "hash": "h"}],
-        "proposed_changes": [{"path": "self_state.initiative", "after": 0.45}],
-    }
+    proposal = _base_proposal(tid)
+    proposal["evaluator_meta"] = {"pattern_detected": "join_pattern",
+                                  "pattern_frequency": 3, "used_llm": False}
+    proposal["proposed_changes"] = [{"path": "self_state.initiative", "after": 0.45}]
     from src.growth.experience_trace import resolve_trace_ids
     assert validate_proposal(proposal, lambda ids: resolve_trace_ids(ids, trace_path)) == []
     # trace 的 source_memory_ids 指向 MC 记忆（可追溯）

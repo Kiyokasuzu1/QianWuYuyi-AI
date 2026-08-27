@@ -21,7 +21,9 @@ from typing import Dict, List, Optional
 
 SCHEMA_VERSION = 1
 _SUPPORTED_SCHEMAS = (1,)
-_SNAPSHOT_FIELDS = ("path", "old_value", "captured_at", "source", "hash")
+_SNAPSHOT_FIELDS = ("schema_version", "path", "old_value", "captured_at",
+                    "source", "hash", "provenance")
+_HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _TRACE_ID_RE = re.compile(r"^(exp|trc)_[A-Za-z0-9]+$")
 
 
@@ -73,6 +75,13 @@ def _check_snapshot(proposal: dict, errors: list) -> None:
         for field in _SNAPSHOT_FIELDS:
             if field not in item:
                 errors.append(f"before_snapshot 条目缺字段: {field}")
+        h = item.get("hash") or ""
+        if not _HASH_RE.match(h):
+            errors.append(f"before_snapshot hash 格式非法: {h[:20]}")
+        if item.get("old_value") is None:
+            errors.append("before_snapshot old_value 为 null（不可证明状态）")
+        if item.get("provenance") not in ("system_state_read",):
+            errors.append("before_snapshot provenance 非法（必须为被动状态读取）")
         if item.get("path"):
             paths.add(item["path"])
     # 规则 8（加强版）：逐条断言 change.path 在 snapshot.paths 中

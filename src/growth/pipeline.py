@@ -221,6 +221,27 @@ class GrowthPipeline:
     # =================================================
     # Phase 3.8.2-B：从评估结果构建 GrowthProposal
     # =================================================
+    def _snapshot_state_reader(self, path: str) -> Optional[dict]:
+        """T1-B：只读唯一状态源（GrowthState metrics / PersonalityState traits）。
+
+        未知路径 → None → capture fail-closed（提案生成失败）。
+        """
+        gs = getattr(self, "growth_state", None)
+        if gs is not None:
+            try:
+                if path in (gs._state.get("metrics") or {}):
+                    return {"value": gs.get_metric(path), "source": "growth_state.json"}
+            except Exception:  # noqa: BLE001
+                pass
+        try:
+            from src.personality.personality_state import get_personality_state
+            ps = get_personality_state()
+            if path in (ps.traits or {}):
+                return {"value": ps.traits[path], "source": "personality_state.json"}
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+
     def _build_proposal_from_evaluated(self, evaluated: Dict, event: Dict) -> Optional[ContractProposal]:
         """从 GrowthEvaluator 的评估结果构建 GrowthProposal（权威 schema）。
 
@@ -281,6 +302,18 @@ class GrowthPipeline:
                 "confidence": experience_meaning.get("confidence", 0),
             }
 
+        # T1-B：生成阶段冻结 before_snapshot（被动捕获，只读唯一状态源）
+        # fail-closed：任一 affected path 不可证明 → 提案生成失败
+        from src.growth.before_snapshot import capture_snapshots
+        snapshots = capture_snapshots([c.path for c in changes], self._snapshot_state_reader)
+        if snapshots is None:
+            logging.getLogger(__name__).warning(
+                "[GrowthPipeline] before_snapshot 捕获失败（状态不可证明）——提案生成失败")
+            return None
+        snap_by_path = {s["path"]: s for s in snapshots}
+        for c in changes:
+            c.before = snap_by_path.get(c.path, {}).get("old_value")
+
         return ContractProposal(
             source_event_id=event.get("event_id", ""),
             proposed_changes=changes,
@@ -288,6 +321,7 @@ class GrowthPipeline:
             evidence_ids=evidence_ids,
             evaluator_meta=evaluator_meta,
             status="proposed",
+            before_snapshot=snapshots,
         )
 
     # =================================================
