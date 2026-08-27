@@ -288,8 +288,10 @@ class GovernancePanel(QMainWindow):
         self.btn_modify = QPushButton("✏️ 修改")
         self.btn_evidence = QPushButton("🔍 看证据")
         self.btn_explain = QPushButton("❔ 解释")
+        self.btn_detail = QPushButton("📋 详情")
         for b in (self.btn_confirm, self.btn_reject, self.btn_hold,
-                  self.btn_modify, self.btn_evidence, self.btn_explain):
+                  self.btn_modify, self.btn_evidence, self.btn_explain,
+                  self.btn_detail):
             ops.addWidget(b)
         self.btn_confirm.clicked.connect(lambda: self.do_review("confirm"))
         self.btn_reject.clicked.connect(lambda: self.do_review("reject"))
@@ -297,6 +299,7 @@ class GovernancePanel(QMainWindow):
         self.btn_modify.clicked.connect(self.do_modify)
         self.btn_evidence.clicked.connect(self.show_evidence)
         self.btn_explain.clicked.connect(lambda: self.show_explain("candidate"))
+        self.btn_detail.clicked.connect(lambda: self.show_detail("candidate"))
         rl.addLayout(ops)
 
         self.ed_note = QLineEdit()
@@ -325,6 +328,10 @@ class GovernancePanel(QMainWindow):
         # Phase 2C.1：事实差异 —— 候选与已确认事实的文本关系（只读，无按钮）
         self.tab_diff = QTextBrowser()
         self.tabs.addTab(self.tab_diff, "事实差异")
+
+        # Phase 2C.3：对象详情 —— 对象级事实浏览（只读）
+        self.tab_detail = QTextBrowser()
+        self.tabs.addTab(self.tab_detail, "对象详情")
 
         # 审计日志（时间线 segment + 平铺 + entity/action 过滤）
         self.tab_audit = QWidget()
@@ -360,12 +367,15 @@ class GovernancePanel(QMainWindow):
         rc_v.addWidget(rc_row, 1)
         rc_ops = QHBoxLayout()
         self.btn_rc_supersede = QPushButton("🔄 取代 (supersede)")
+        self.btn_rc_detail = QPushButton("📋 详情")
         self.ed_rc_note = QLineEdit()
         self.ed_rc_note.setPlaceholderText("supersede 理由")
         rc_ops.addWidget(self.btn_rc_supersede)
+        rc_ops.addWidget(self.btn_rc_detail)
         rc_ops.addWidget(self.ed_rc_note, 1)
         rc_v.addLayout(rc_ops)
         self.btn_rc_supersede.clicked.connect(self._do_rc_supersede)
+        self.btn_rc_detail.clicked.connect(lambda: self.show_detail("relationship_core"))
         self.tabs.addTab(self.tab_rc, "关系核心")
         self.btn_rc_supersede.setEnabled(False)
 
@@ -401,12 +411,13 @@ class GovernancePanel(QMainWindow):
         self.btn_pat_supersede = QPushButton("🔄 取代")
         self.btn_pat_archive = QPushButton("📦 归档")
         self.btn_pat_explain = QPushButton("❔ 解释")
+        self.btn_pat_detail = QPushButton("📋 详情")
         self.ed_pat_note = QLineEdit()
         self.ed_pat_note.setPlaceholderText("审核备注（confirm/reject 建议给理由）")
         for b in (self.btn_pat_confirm, self.btn_pat_reject,
                   self.btn_pat_modify, self.btn_pat_evidence,
                   self.btn_pat_supersede, self.btn_pat_archive,
-                  self.btn_pat_explain):
+                  self.btn_pat_explain, self.btn_pat_detail):
             pat_ops.addWidget(b)
         self.btn_pat_confirm.clicked.connect(lambda: self._do_pat_review("confirm"))
         self.btn_pat_reject.clicked.connect(lambda: self._do_pat_review("reject"))
@@ -415,6 +426,7 @@ class GovernancePanel(QMainWindow):
         self.btn_pat_supersede.clicked.connect(lambda: self._do_pat_review("supersede"))
         self.btn_pat_archive.clicked.connect(lambda: self._do_pat_review("archive"))
         self.btn_pat_explain.clicked.connect(lambda: self.show_explain("pattern"))
+        self.btn_pat_detail.clicked.connect(lambda: self.show_detail("pattern"))
         pat_ops.addWidget(self.ed_pat_note, 1)
         pat_v.addLayout(pat_ops)
         self.tabs.addTab(self.tab_pat, "共同生活模式")
@@ -435,16 +447,19 @@ class GovernancePanel(QMainWindow):
         self.btn_grow_approve = QPushButton("✅ 批准")
         self.btn_grow_reject = QPushButton("❌ 拒绝")
         self.btn_grow_explain = QPushButton("❔ 解释")
+        self.btn_grow_detail = QPushButton("📋 详情")
         self.ed_grow_note = QLineEdit()
         self.ed_grow_note.setPlaceholderText("审批备注")
         gr_ops.addWidget(self.btn_grow_approve)
         gr_ops.addWidget(self.btn_grow_reject)
         gr_ops.addWidget(self.btn_grow_explain)
+        gr_ops.addWidget(self.btn_grow_detail)
         gr_ops.addWidget(self.ed_grow_note, 1)
         gr_v.addLayout(gr_ops)
         self.btn_grow_approve.clicked.connect(lambda: self._do_grow_review("approve"))
         self.btn_grow_reject.clicked.connect(lambda: self._do_grow_review("reject"))
         self.btn_grow_explain.clicked.connect(lambda: self.show_explain("growth"))
+        self.btn_grow_detail.clicked.connect(lambda: self.show_detail("growth"))
         self.tabs.addTab(self.tab_growth, "Growth")
         self._set_grow_actions_enabled(False)
 
@@ -1042,6 +1057,7 @@ class GovernancePanel(QMainWindow):
         self.btn_grow_approve.setEnabled(enabled)
         self.btn_grow_reject.setEnabled(enabled)
         self.btn_grow_explain.setEnabled(enabled)
+        self.btn_grow_detail.setEnabled(enabled)
 
     # ---------- Explain Mode（Phase 2B.4：提交前人类确认视图，实时 GET） ----------
     def show_explain(self, kind: str):
@@ -1273,6 +1289,44 @@ class GovernancePanel(QMainWindow):
                 f"<div style='margin-left:14px'>文本关系: <b>{_esc(r.get('relation') or '')}</b></div><hr>")
         self.tab_diff.setHtml("".join(blocks))
 
+    # ---------- Detail Explorer（Phase 2C.3：对象级事实浏览，只读） ----------
+    def show_detail(self, kind: str):
+        """把已有数据放到一起（id/名称/状态/原始字段/相关事件/相关审计/影响字段）。"""
+        if kind == "candidate":
+            obj = self.current
+        elif kind == "pattern":
+            obj = self.pat_current
+        elif kind == "growth":
+            obj = self.grow_current
+        else:
+            obj = getattr(self, "rc_current", None)
+        if not obj:
+            return
+        audit: list = []
+        timeline: list = []
+        try:
+            audit = self._api("/audit-log?limit=500").get("entries", [])
+            entity = _panel_import("governance_entity")
+            timeline = entity.collect_timeline_events(
+                project_pattern_families(self.patterns),
+                getattr(self, "sm_families", []), audit,
+                getattr(self, "growth_props", []))
+        except Exception:  # noqa: BLE001
+            pass
+        affected: list = []
+        try:
+            expl = _panel_import("governance_explain")
+            for op in expl.OPERATIONS_BY_KIND.get(kind, []):
+                affected.extend(expl.ACTION_FIELD_MAP.get(op, []))
+            affected = sorted(set(affected))
+        except Exception:  # noqa: BLE001
+            pass
+        lines = _panel_import("governance_detail").build_detail(
+            obj, kind, timeline, audit, affected)
+        self.tab_detail.setHtml(
+            "<br>".join(f"<div>{_esc(l)}</div>" for l in lines))
+        self.tabs.setCurrentWidget(self.tab_detail)
+
     # ---------- 列表渲染 ----------
     def _render_list(self):
         # Phase 2C.2.1：过滤/排序只影响 UI 列表；self.candidates 保持全量（数据不变）
@@ -1312,7 +1366,8 @@ class GovernancePanel(QMainWindow):
 
     def _set_actions_enabled(self, enabled: bool):
         for b in (self.btn_confirm, self.btn_reject, self.btn_hold,
-                  self.btn_modify, self.btn_evidence, self.btn_explain):
+                  self.btn_modify, self.btn_evidence, self.btn_explain,
+                  self.btn_detail):
             b.setEnabled(enabled)
 
     def _render_detail(self):
@@ -1526,7 +1581,7 @@ class GovernancePanel(QMainWindow):
         for b in (self.btn_pat_confirm, self.btn_pat_reject,
                   self.btn_pat_modify, self.btn_pat_evidence,
                   self.btn_pat_supersede, self.btn_pat_archive,
-                  self.btn_pat_explain):
+                  self.btn_pat_explain, self.btn_pat_detail):
             b.setEnabled(enabled)
 
     def _do_pat_review(self, decision: str):
