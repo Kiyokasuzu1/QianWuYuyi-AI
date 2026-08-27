@@ -549,6 +549,31 @@ def _init_runtime_controller(config: dict) -> None:
         _runtime_controller = None
 
 
+def _detect_frontend() -> str:
+    """v1.5.5 Governance C1: 请求来源前端判定（IP 级，不猜测内容）。
+
+    规则：
+      - Tailscale 内网段 100.64.0.0/10 → mc（Mindcraft 身体）
+      - 其余 → qq（QQ 主前端；当前唯一生产入口）
+    无法可靠判断 → unknown。
+    """
+    try:
+        ip = _client_ip() or ""
+        if ip.startswith("100."):
+            # Tailscale CGNAT 段 100.64.0.0/10
+            try:
+                parts = ip.split(".")
+                if len(parts) == 4 and 64 <= int(parts[1]) <= 127:
+                    return "mc"
+            except Exception:  # noqa: BLE001
+                pass
+        if ip and ip not in ("unknown", ""):
+            return "qq"
+    except Exception:  # noqa: BLE001
+        pass
+    return "unknown"
+
+
 def _process_via_pipeline(user_message: str, user_id: str) -> dict:
     """通过 RuntimePipeline 处理一条消息,返回 OpenAI 兼容响应字典。
 
@@ -557,9 +582,11 @@ def _process_via_pipeline(user_message: str, user_id: str) -> dict:
     """
     with _pipeline_lock:
         # Phase 4.0.1 Step 02-A: user_id 透传 RuntimePipeline
+        # v1.5.5 Governance C1: frontend provenance（IP 判定，供 InteractionRecorder 写入）
         context = _pipeline.run({
             "user_message": user_message,
             "user_id": user_id,
+            "frontend": _detect_frontend(),
         })
     # 从 RuntimeContext.outputs.snapshot.reply 提取回复
     reply = ""
@@ -1078,6 +1105,108 @@ def initiative():
 @app.route('/v1/models', methods=['GET'])
 def list_models():
     return jsonify({"data": [{"id": "yuyi", "object": "model"}]})
+
+
+# ============================================================
+# v1.5.5-MC1: Minecraft 事件桥端点
+# 契约与代码标准见 docs/roadmap/V15_5_MC1_CODE_STANDARD.md
+# ============================================================
+_mc_events_lock = threading.Lock()
+_mc_seen_ids = set()  # 进程内幂等去重（持久幂等经 store 线性查）
+
+
+def _mc_events_enabled_token() -> str:
+    """读配置 mc_events.token；异常/缺失返回空串（端点关闭）。"""
+    try:
+        from src.config import get as _cfg_get
+        return str(_cfg_get("mc_events.token", "") or "")
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _mc_write_event_record(record: Dict[str, Any]) -> bool:
+    """写入记忆库并发布 MemoryCreatedEvent（复用既有权威；fail-soft）。"""
+    from src.memory.memory_provider import MemoryProvider
+
+    store = MemoryProvider.get_store()
+    if store is None:
+        return False
+    saved = store.add(record)
+    if saved is None:
+        return False
+    try:
+        from src.events.bus import publish_event
+        from src.events.events import MemoryCreatedEvent
+        publish_event(MemoryCreatedEvent(
+            memory_id=record["id"],
+            user_id=record["user_id"],
+            content=record["content"],
+        ))
+    except Exception:  # noqa: BLE001
+        pass  # 事件发布失败不影响写入结果
+    return True
+
+
+def _mc_event_exists(event_id: str) -> bool:
+    """持久幂等：store 中已存在同 source_event_id 的记录。"""
+    try:
+        from src.memory.memory_provider import MemoryProvider
+        store = MemoryProvider.get_store()
+        for mem in (store.load() or []):
+            if isinstance(mem, dict) and mem.get("source_event_id") == event_id:
+                return True
+    except Exception:  # noqa: BLE001
+        return False
+    return False
+
+
+@app.route('/mc/events', methods=['POST'])
+def mc_events():
+    """接收 Minecraft 身体桥的事件（死亡/进出/合成/拾取/成就），归一化后入记忆。
+
+    鉴权：Header X-MC-Token；token 空 = 端点关闭(503)；不匹配 = 403。
+    幂等：同 event_id 不重复写入。fail-soft：任何异常 200 + ok:false。
+    """
+    token = _mc_events_enabled_token()
+    if not token:
+        return jsonify({"ok": False, "error": "mc_events disabled"}), 503
+    if not hmac.compare_digest(request.headers.get("X-MC-Token", ""), token):
+        return jsonify({"ok": False, "error": "unauthorized"}), 403
+
+    try:
+        data = request.get_json(silent=True) or {}
+        event = data.get("event")
+        event_id = str(data.get("event_id") or "")
+        ts = str(data.get("ts") or "")
+        detail = data.get("detail") if isinstance(data.get("detail"), dict) else {}
+
+        from src.audit.mc_event_normalizer import normalize_mc_event
+        record, err = normalize_mc_event(event, detail, ts)
+        if err:
+            return jsonify({"ok": False, "error": err})
+
+        if not event_id:
+            import uuid as _uuid
+            event_id = f"mc_evt_{_uuid.uuid4().hex[:12]}"
+        from datetime import datetime as _dt
+        record["source_event_id"] = event_id
+        record["id"] = "mc_" + _dt.now().strftime("%Y%m%d%H%M%S") + "_" + event_id[-4:]
+
+        with _mc_events_lock:
+            if event_id in _mc_seen_ids or _mc_event_exists(event_id):
+                return jsonify({"ok": True, "duplicate": True})
+            wrote = _mc_write_event_record(record)
+            if wrote:
+                _mc_seen_ids.add(event_id)
+
+        if wrote:
+            logger.info("[MC_EVENTS] event=%s id=%s wrote=true", event, event_id)
+            return jsonify({"ok": True})
+        logger.warning("[MC_EVENTS] event=%s id=%s wrote=false", event, event_id)
+        return jsonify({"ok": False, "error": "store_write_failed"})
+    except Exception as _e:  # noqa: BLE001
+        logger.warning("[MC_EVENTS] 异常（已隔离）: %s", _e)
+        return jsonify({"ok": False, "error": "internal"})
 
 
 # ============================================================
