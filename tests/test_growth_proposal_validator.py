@@ -28,6 +28,7 @@ def _snap(path="self_state.initiative", value=0.5, source="growth_state.json"):
 def _valid_proposal():
     return {
         "schema_version": 1,
+        "provenance": "system_rule",
         "proposal_id": "prop_test_valid_001",
         "evidence_trace_ids": ["exp_aaa111", "exp_bbb222"],
         "evaluator_meta": {"insight_type": "pattern",

@@ -80,7 +80,7 @@ def test_hash_stability_and_tamper():
 def test_path_mismatch_rejected():
     snap = capture_snapshots(["self_state.initiative"], _reader(**{"self_state.initiative": 0.5}))[0]
     proposal = {
-        "schema_version": 1, "proposal_id": "prop_x",
+        "schema_version": 1, "provenance": "system_rule", "proposal_id": "prop_x",
         "evidence_trace_ids": ["exp_aaa111"],
         "evaluator_meta": {"pattern_detected": "p1", "pattern_frequency": 2, "used_llm": False},
         "before_snapshot": [snap],
@@ -99,7 +99,7 @@ def test_mc_chain_compatible():
     snaps = capture_snapshots(["self_state.initiative"], _reader(**{"self_state.initiative": 0.5}))
     assert snaps is not None
     proposal = {
-        "schema_version": 1, "proposal_id": "prop_mc",
+        "schema_version": 1, "provenance": "system_rule", "proposal_id": "prop_mc",
         "evidence_trace_ids": ["exp_mc001"],
         "evaluator_meta": {"pattern_detected": "join_pattern", "pattern_frequency": 3,
                            "used_llm": False},

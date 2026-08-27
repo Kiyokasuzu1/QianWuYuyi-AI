@@ -31,7 +31,7 @@ def _snap(path="self_state.initiative", value=0.5):
 
 def _base_proposal(tid):
     return {
-        "schema_version": 1, "proposal_id": "prop_t1a",
+        "schema_version": 1, "provenance": "system_rule", "proposal_id": "prop_t1a",
         "evidence_trace_ids": [tid],
         "evaluator_meta": {"pattern_detected": "high_frequency_proactive",
                            "pattern_frequency": 5, "used_llm": False},
