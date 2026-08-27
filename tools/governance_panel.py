@@ -258,14 +258,16 @@ class GovernancePanel(QMainWindow):
         self.btn_hold = QPushButton("⏸ 暂缓")
         self.btn_modify = QPushButton("✏️ 修改")
         self.btn_evidence = QPushButton("🔍 看证据")
+        self.btn_explain = QPushButton("❔ 解释")
         for b in (self.btn_confirm, self.btn_reject, self.btn_hold,
-                  self.btn_modify, self.btn_evidence):
+                  self.btn_modify, self.btn_evidence, self.btn_explain):
             ops.addWidget(b)
         self.btn_confirm.clicked.connect(lambda: self.do_review("confirm"))
         self.btn_reject.clicked.connect(lambda: self.do_review("reject"))
         self.btn_hold.clicked.connect(lambda: self.do_review("hold"))
         self.btn_modify.clicked.connect(self.do_modify)
         self.btn_evidence.clicked.connect(self.show_evidence)
+        self.btn_explain.clicked.connect(lambda: self.show_explain("candidate"))
         rl.addLayout(ops)
 
         self.ed_note = QLineEdit()
@@ -362,11 +364,13 @@ class GovernancePanel(QMainWindow):
         self.btn_pat_evidence = QPushButton("🔍 看证据")
         self.btn_pat_supersede = QPushButton("🔄 取代")
         self.btn_pat_archive = QPushButton("📦 归档")
+        self.btn_pat_explain = QPushButton("❔ 解释")
         self.ed_pat_note = QLineEdit()
         self.ed_pat_note.setPlaceholderText("审核备注（confirm/reject 建议给理由）")
         for b in (self.btn_pat_confirm, self.btn_pat_reject,
                   self.btn_pat_modify, self.btn_pat_evidence,
-                  self.btn_pat_supersede, self.btn_pat_archive):
+                  self.btn_pat_supersede, self.btn_pat_archive,
+                  self.btn_pat_explain):
             pat_ops.addWidget(b)
         self.btn_pat_confirm.clicked.connect(lambda: self._do_pat_review("confirm"))
         self.btn_pat_reject.clicked.connect(lambda: self._do_pat_review("reject"))
@@ -374,6 +378,7 @@ class GovernancePanel(QMainWindow):
         self.btn_pat_evidence.clicked.connect(self._show_pat_evidence)
         self.btn_pat_supersede.clicked.connect(lambda: self._do_pat_review("supersede"))
         self.btn_pat_archive.clicked.connect(lambda: self._do_pat_review("archive"))
+        self.btn_pat_explain.clicked.connect(lambda: self.show_explain("pattern"))
         pat_ops.addWidget(self.ed_pat_note, 1)
         pat_v.addLayout(pat_ops)
         self.tabs.addTab(self.tab_pat, "共同生活模式")
@@ -393,14 +398,17 @@ class GovernancePanel(QMainWindow):
         gr_ops = QHBoxLayout()
         self.btn_grow_approve = QPushButton("✅ 批准")
         self.btn_grow_reject = QPushButton("❌ 拒绝")
+        self.btn_grow_explain = QPushButton("❔ 解释")
         self.ed_grow_note = QLineEdit()
         self.ed_grow_note.setPlaceholderText("审批备注")
         gr_ops.addWidget(self.btn_grow_approve)
         gr_ops.addWidget(self.btn_grow_reject)
+        gr_ops.addWidget(self.btn_grow_explain)
         gr_ops.addWidget(self.ed_grow_note, 1)
         gr_v.addLayout(gr_ops)
         self.btn_grow_approve.clicked.connect(lambda: self._do_grow_review("approve"))
         self.btn_grow_reject.clicked.connect(lambda: self._do_grow_review("reject"))
+        self.btn_grow_explain.clicked.connect(lambda: self.show_explain("growth"))
         self.tabs.addTab(self.tab_growth, "Growth")
         self._set_grow_actions_enabled(False)
 
@@ -983,6 +991,56 @@ class GovernancePanel(QMainWindow):
     def _set_grow_actions_enabled(self, enabled: bool):
         self.btn_grow_approve.setEnabled(enabled)
         self.btn_grow_reject.setEnabled(enabled)
+        self.btn_grow_explain.setEnabled(enabled)
+
+    # ---------- Explain Mode（Phase 2B.4：提交前人类确认视图，实时 GET） ----------
+    def show_explain(self, kind: str):
+        """实时 GET 最新对象 → 固定影响映射展示（零判断、零推理）。
+
+        规则：解释依据必须来自实时请求；GET 失败或未命中 → 不降级用缓存。
+        """
+        if kind == "candidate":
+            obj = self.current
+            rid = str((obj or {}).get("candidate_id") or "")
+            path = "/candidates"
+            id_key = "candidate_id"
+        elif kind == "pattern":
+            obj = self.pat_current
+            rid = str((obj or {}).get("pattern_id") or "")
+            path = "/patterns"
+            id_key = "pattern_id"
+        else:
+            obj = self.grow_current
+            rid = str((obj or {}).get("proposal_id") or "")
+            path = "/admin/api/admin/governance/proposals?type=personality&limit=50"
+            id_key = "proposal_id"
+        if not rid:
+            return
+        try:
+            rows = self._api(path).get(
+                "candidates" if kind == "candidate"
+                else "patterns" if kind == "pattern" else "proposals", [])
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "解释读取失败", f"实时读取失败（不使用缓存状态）: {str(exc)[:120]}")
+            return
+        latest = next((r for r in rows if str(r.get(id_key) or "") == rid), None)
+        if latest is None:
+            QMessageBox.information(self, "治理解释", "实时数据中未找到该对象（可能已变更）")
+            return
+        from datetime import datetime
+        lines = _panel_import("governance_explain").build_explain(
+            latest, kind, datetime.now().strftime("%H:%M:%S"))
+        dlg = QDialog(self)
+        dlg.setWindowTitle("治理解释 · Explain")
+        dlg.resize(680, 460)
+        lay = QVBoxLayout(dlg)
+        view = QTextBrowser()
+        view.setHtml("<br>".join(f"<div>{_esc(l)}</div>" for l in lines))
+        lay.addWidget(view)
+        btns = QDialogButtonBox(QDialogButtonBox.Close)
+        btns.rejected.connect(dlg.reject)
+        lay.addWidget(btns)
+        dlg.exec()
 
     # ---------- 列表渲染 ----------
     def _render_list(self):
@@ -1014,7 +1072,7 @@ class GovernancePanel(QMainWindow):
 
     def _set_actions_enabled(self, enabled: bool):
         for b in (self.btn_confirm, self.btn_reject, self.btn_hold,
-                  self.btn_modify, self.btn_evidence):
+                  self.btn_modify, self.btn_evidence, self.btn_explain):
             b.setEnabled(enabled)
 
     def _render_detail(self):
@@ -1227,7 +1285,8 @@ class GovernancePanel(QMainWindow):
     def _set_pat_actions_enabled(self, enabled: bool):
         for b in (self.btn_pat_confirm, self.btn_pat_reject,
                   self.btn_pat_modify, self.btn_pat_evidence,
-                  self.btn_pat_supersede, self.btn_pat_archive):
+                  self.btn_pat_supersede, self.btn_pat_archive,
+                  self.btn_pat_explain):
             b.setEnabled(enabled)
 
     def _do_pat_review(self, decision: str):
