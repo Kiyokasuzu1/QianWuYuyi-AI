@@ -732,8 +732,9 @@ class GovernancePanel(QMainWindow):
             pass
         try:
             g = self._api("/admin/api/admin/governance/growth")
+            gd = g.get("data") or {}  # 契约：计数位于 data.{pending,approved,applied}（列表）
             blocks.append(f"<b>Growth（B-store 治理）</b><div style='margin-left:10px'>"
-                          f"pending {g.get('pending')} · approved {g.get('approved')} · applied {g.get('applied')}</div>")
+                          f"pending {len(gd.get('pending') or [])} · approved {len(gd.get('approved') or [])} · applied {len(gd.get('applied') or [])}</div>")
         except Exception:  # noqa: BLE001
             pass
         try:
