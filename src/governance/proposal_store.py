@@ -56,14 +56,21 @@ RECORD_REQUIRED_KEYS: tuple = (
 FILE_NAME: str = "proposals.jsonl"
 
 # 禁止落账的业务文件名（双保险：本 Store 永远不会写这些名字）
+# v1.5-T7: 追加 relationship_states_v06（v0.6 分桶目录下的状态文件）
 FORBIDDEN_FILE_NAMES: frozenset = frozenset({
     "relationship_state.json",
+    "relationship_states_v06",
     "emotion_state.json",
 })
 
-# 禁止落账的目录子树（data/users/* 用户业务数据）。
+# 禁止落账的目录子树（data/users/* 用户业务数据、data/relationship_states_v06/* 分桶状态）。
 # 用连续路径段匹配，避免误伤系统路径（如 Windows 的 C:\Users）。
+# v1.5-T7: 追加 relationship_states_v06 目录段
 FORBIDDEN_DIR_SEQUENCE: tuple = ("data", "users")
+FORBIDDEN_DIR_SEQUENCES: tuple = (
+    ("data", "users"),
+    ("data", "relationship_states_v06"),
+)
 
 
 def _now_iso() -> str:
@@ -132,14 +139,16 @@ class GovernanceProposalStore:
         base = Path(data_dir) if data_dir is not None else self.default_data_dir()
         resolved = base.resolve()
         parts = [part.lower() for part in resolved.parts]
-        sequence = tuple(p.lower() for p in FORBIDDEN_DIR_SEQUENCE)
-        for idx in range(len(parts) - len(sequence) + 1):
-            if tuple(parts[idx:idx + len(sequence)]) == sequence:
-                raise ValueError(
-                    f"GovernanceProposalStore 禁止落账到 {resolved}：命中 "
-                    f"禁止目录子树 {FORBIDDEN_DIR_SEQUENCE}"
-                    "（data/users/* 业务数据目录）"
-                )
+        # v1.5-T7: 遍历多组禁止目录序列（兼容旧 FORBIDDEN_DIR_SEQUENCE）
+        for forbidden in FORBIDDEN_DIR_SEQUENCES:
+            sequence = tuple(p.lower() for p in forbidden)
+            for idx in range(len(parts) - len(sequence) + 1):
+                if tuple(parts[idx:idx + len(sequence)]) == sequence:
+                    raise ValueError(
+                        f"GovernanceProposalStore 禁止落账到 {resolved}：命中 "
+                        f"禁止目录子树 {forbidden}"
+                        "（data/users/* 用户业务 / data/relationship_states_v06/* 分桶状态）"
+                    )
         return resolved
 
     def _file_path(self) -> Path:
@@ -268,4 +277,5 @@ __all__ = [
     "FILE_NAME",
     "FORBIDDEN_FILE_NAMES",
     "FORBIDDEN_DIR_SEQUENCE",
+    "FORBIDDEN_DIR_SEQUENCES",
 ]

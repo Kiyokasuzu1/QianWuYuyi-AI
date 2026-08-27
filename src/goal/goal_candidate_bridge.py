@@ -27,6 +27,9 @@ logger = logging.getLogger(__name__)
 
 BRIDGE_SOURCE = "goal_candidate_bridge"
 
+# v1.3 RC 7.1: 提案 source_refs 上限(防巨型候选膨胀到治理链下游)
+BRIDGE_MAX_SOURCE_REFS = 32
+
 _REQUIRED_CANDIDATE_FIELDS = ("id", "description", "evidence_refs")
 
 
@@ -63,6 +66,14 @@ def bridge_candidate_to_proposal(
         _sid = str(_r.get("source_id", "") or "").strip()
         if _st and _sid:
             _source_refs.append({"source_type": _st, "source_id": _sid})
+
+    # RC 7.1: 桥接层防膨胀(不改变治理流程, 仅限制进入提案的引用数)
+    if len(_source_refs) > BRIDGE_MAX_SOURCE_REFS:
+        logger.warning(
+            "[GoalCandidateBridge] candidate=%s source_refs 超上限(%d -> %d 截断)",
+            _goal_id, len(_source_refs), BRIDGE_MAX_SOURCE_REFS,
+        )
+        _source_refs = _source_refs[:BRIDGE_MAX_SOURCE_REFS]
 
     from src.goal.goal_source_validation import validate_goal_source_refs
 
@@ -118,5 +129,6 @@ def bridge_candidate_to_proposal(
 
 __all__ = [
     "BRIDGE_SOURCE",
+    "BRIDGE_MAX_SOURCE_REFS",
     "bridge_candidate_to_proposal",
 ]

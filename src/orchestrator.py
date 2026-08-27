@@ -1,6 +1,8 @@
 import os
 import random
 import logging
+import re
+import threading
 from pathlib import Path
 from datetime import datetime, timezone
 import uuid
@@ -20,7 +22,12 @@ if TYPE_CHECKING:
 from src.personality.self_model_store import SelfModelStore
 from src.memory.memory_store import MemoryStore
 from src.memory.memory_provider import MemoryProvider
-from src.memory.pollution_guard import sanitize_content
+# Phase B0: Memory Intake Layer——唯一写入管线（sanitize → classify → truncate）
+from src.memory.memory_intake import (
+    classify_source,
+    sanitize_memory_content,
+    truncate_memory_content,
+)
 from src.memory.vector import VectorMemory
 from src.identity.user_context import UserContext
 from src.identity.user_resolver import UserResolver
@@ -114,6 +121,10 @@ class RelationshipState:
             "important_events": state.get("important_events", []),
             "last_updated": state.get("last_updated", ""),
         }
+
+
+# v1.5-T6: v0.6 long-term 关系状态分桶的桶名校验（与 runtime 侧同规则）
+_V06_BUCKET_RE = re.compile(r"^[A-Za-z0-9_\-]{1,64}$")
 
 
 def _atomic_write_emotion_fallback(per_user_file: Path, em_manager) -> None:
@@ -394,6 +405,16 @@ class Orchestrator:
         self.relationship_profile = None
         # 关系状态（测试用）
         self.relationship_state = RelationshipState()
+
+        # v1.5-T6: v0.6 long-term 关系状态按用户分桶（懒加载注册表 + 锁）
+        self._v06_adapters: Dict[str, RelationshipState] = {}
+        self._v06_adapter_lock = threading.RLock()
+        # 开关：兼容平铺键（relationship_per_user_buckets）与嵌套键
+        # （relationship.per_user_buckets）；false=旧单例路径（字节等价）
+        self._relationship_per_user_buckets: bool = bool(
+            self.config.get("relationship_per_user_buckets", False)
+            or (self.config.get("relationship", {}) or {}).get("per_user_buckets", False)
+        )
 
         # ============================================================
         # Phase 3.8.2-B: GrowthPipeline 接入主循环
@@ -876,6 +897,35 @@ class Orchestrator:
     # P4.2-IMPL-C5: RelationshipSnapshot 构建
     # ============================================================
 
+    def _v06_bucket_user(self, user_id=None) -> str:
+        """把 user_id 归一为 v0.6 分桶名。
+
+        规则：合法（^[A-Za-z0-9_-]{1,64}$）原样使用；空/非法一律回落
+        creator 桶 366648462（fail-closed，不猜测、不修正）。
+        """
+        uid = str(user_id or "")
+        if uid and _V06_BUCKET_RE.match(uid):
+            return uid
+        return "366648462"
+
+    def _get_v06_adapter(self, user_id=None) -> "RelationshipState":
+        """按 user_id 懒加载 v0.6 关系状态适配器（带锁缓存）。
+
+        - per_user_buckets=False → 返回旧单例 self.relationship_state（字节等价）。
+        - True → 每用户独立适配器，路径 data/relationship_states_v06/{user_id}.json。
+        """
+        if not self._relationship_per_user_buckets:
+            return self.relationship_state
+        bucket = self._v06_bucket_user(user_id)
+        with self._v06_adapter_lock:
+            adapter = self._v06_adapters.get(bucket)
+            if adapter is None:
+                adapter = RelationshipState(
+                    state_path=f"data/relationship_states_v06/{bucket}.json"
+                )
+                self._v06_adapters[bucket] = adapter
+            return adapter
+
     def _build_relationship_snapshot(self) -> Optional["RelationshipSnapshot"]:
         """从当前 relationship_state 构建 RelationshipSnapshot。
 
@@ -891,8 +941,16 @@ class Orchestrator:
         try:
             from src.relationship.snapshot_builder import RelationshipSnapshotBuilder
 
+            # v1.5-T6: 按 target_user_id 选择 v0.6 适配器（false=旧单例）；
+            # 外部绑定方法对象缺新属性时回落旧实例（既有测试契约）
+            try:
+                _adapter = self._get_v06_adapter(
+                    self.target_user_id if hasattr(self, "target_user_id") else None
+                )
+            except AttributeError:  # noqa: BLE001
+                _adapter = self.relationship_state
             # 获取真实 v0.6 RelationshipState 实例
-            rs = self.relationship_state._impl if hasattr(self.relationship_state, "_impl") else None
+            rs = _adapter._impl if hasattr(_adapter, "_impl") else None
             if rs is None:
                 return None
 
@@ -1629,6 +1687,38 @@ class Orchestrator:
             except Exception:
                 communication_profile = None
 
+            # Phase B1b: temporal_context（三态开关；off=零变化零开销路径）
+            # last_interaction 只复用本链路已取回的 chat_memories，禁止新增 IO。
+            _temporal_inject = None
+            try:
+                from src.config import get as _cfg_get
+                _tc_mode = str(_cfg_get("temporal.temporal_context_mode", "off") or "off").strip().lower()
+                if _tc_mode in ("shadow", "active"):
+                    from src.temporal.temporal_context import resolve_temporal_context
+                    from src.temporal.temporal_core import normalize_time as _tc_normalize
+                    _last_ts = None
+                    for _m in chat_memories or []:
+                        if isinstance(_m, dict):
+                            _ts = _tc_normalize(_m.get("timestamp"))
+                            if _ts is not None and (_last_ts is None or _ts > _last_ts):
+                                _last_ts = _ts
+                    from datetime import datetime as _dt
+                    from datetime import timezone as _tz_utc
+                    _tc_inject, _tc_shadow = resolve_temporal_context(
+                        _tc_mode, _dt.now(_tz_utc.utc), _last_ts,
+                        budget=int(_cfg_get("temporal.temporal_context_budget", 400) or 400),
+                    )
+                    if _tc_shadow:
+                        logger.info(
+                            "[TemporalContext][shadow] mode=%s chars=%d last_source=%s text=%r",
+                            _tc_mode, len(_tc_shadow),
+                            "memory" if _last_ts is not None else "none",
+                            _tc_shadow,
+                        )
+                    _temporal_inject = _tc_inject
+            except Exception as _tc_exc:  # noqa: BLE001
+                logger.warning("[TemporalContext] 计算失败（已隔离，不注入）: %s", _tc_exc)
+
             reply = self.engine.generate(
                 user_message=user_message,
                 history=self.history,
@@ -1655,11 +1745,29 @@ class Orchestrator:
                 communication_profile=communication_profile,
                 # v1.3 Phase 2: GoalContext（默认关闭；只读 GoalState；失败降级为空）
                 goal_context=self._get_goal_context(),
+                # Phase B1b: temporal_context（None=旧行为逐字节兼容）
+                temporal_context=_temporal_inject,
             )
             if not isinstance(reply, str) or not reply.strip():
+                # Phase B1e P0: fallback 原因结构化日志（保留原行为与原用户文案）
+                # v1.5-T4: 追加 authored=false —— 兜底文案非羽依署名
+                logger.warning(
+                    "[FALLBACK_TRIGGER] stage=legacy_generate reason=%s user_id=%s request_id=%s authored=false",
+                    "invalid_response" if not isinstance(reply, str) else "empty_llm_content",
+                    self.target_user_id or "default",
+                    conversation_id or "",
+                )
                 reply = "抱歉，我遇到了一些问题，请稍后再试。"
             return reply
         except Exception as exc:  # noqa: BLE001
+            # Phase B1e P0: fallback 原因结构化日志（保留原 stdout 输出与审计行为）
+            # v1.5-T4: 追加 authored=false —— 异常兜底非羽依署名
+            logger.warning(
+                "[FALLBACK_TRIGGER] stage=legacy_generate reason=exception user_id=%s request_id=%s exception=%s authored=false",
+                self.target_user_id or "default",
+                conversation_id or "",
+                repr(exc),
+            )
             print(f"[Orchestrator] legacy_generate 失败: {exc}")
             try:
                 record_audit_log(
@@ -1694,6 +1802,13 @@ class Orchestrator:
                 prompt_blocks=[],
             )
         except Exception as exc:  # noqa: BLE001
+            # Phase B1e P0: fallback 原因结构化日志（保留原 stdout 输出与返回文案）
+            # v1.5-T4: 追加 authored=false —— 兜底文案非羽依署名
+            logger.warning(
+                "[FALLBACK_TRIGGER] stage=legacy_response reason=exception user_id=%s exception=%s authored=false",
+                self.target_user_id or "default",
+                repr(exc),
+            )
             print(f"[Orchestrator] legacy_response 失败: {exc}")
             return "抱歉，我遇到了一些问题，请稍后再试。"
 

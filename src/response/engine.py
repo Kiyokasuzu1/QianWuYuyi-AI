@@ -44,6 +44,7 @@ class ResponseEngine:
         user_meta: Optional[Dict[str, Any]] = None,  # Phase 4.0.4-Pre：对方是谁/怎么称呼
         communication_profile: Optional[Any] = None,  # Phase 4.1.2-B：CommunicationStyle 表达倾向
         goal_context: Optional[str] = None,  # v1.3 Phase 2：GoalContext（只读关注方向，默认 None）
+        temporal_context: Optional[str] = None,  # B1b：非空时替换"当前时间"裸行（None=旧行为逐字节兼容）
     ) -> str:
         messages = self.prompt_builder.build_messages(
             user_message=user_message,
@@ -63,5 +64,6 @@ class ResponseEngine:
             user_meta=user_meta,
             communication_profile=communication_profile,
             goal_context=goal_context,
+            temporal_context=temporal_context,
         )
         return self.llm.generate(messages)

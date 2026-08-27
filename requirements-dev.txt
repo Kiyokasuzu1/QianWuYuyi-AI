@@ -1,0 +1,4 @@
+# 开发/工具依赖（v0.5.1）：治理面板（tools/governance_panel.py）与 offscreen 测试
+pyside6>=6.6.0
+pytest>=7.4.0
+pytest-anyio>=0.0.1

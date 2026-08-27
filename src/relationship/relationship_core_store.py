@@ -83,7 +83,18 @@ class RelationshipCoreStore:
             return False
         with self._lock:
             try:
-                if self.get(relationship_id) is not None:
+                # v1.5.5 Governance C2-b: 去重优先按 fact_id（一条事实一个 id，
+                # 同一 relationship 分组可共存多条事实）；无 fact_id 时按
+                # relationship_id（旧语义，向后兼容）。
+                fact_id = str(data.get("fact_id") or "")
+                if fact_id:
+                    exists = any(
+                        str(r.get("fact_id") or "") == fact_id
+                        for r in self.load()
+                    )
+                else:
+                    exists = self.get(relationship_id) is not None
+                if exists:
                     return False
                 parent = os.path.dirname(self.path)
                 if parent:

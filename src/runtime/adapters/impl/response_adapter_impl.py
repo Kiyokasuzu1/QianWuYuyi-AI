@@ -204,6 +204,47 @@ class ResponseAdapterImpl(ResponseAdapter):
                 )
                 communication_profile = None
 
+            # Phase B1b: temporal_context（三态开关）。
+            # off = 不计算不日志不注入；shadow = 计算+日志但不注入；active = 计算+注入。
+            # last_interaction 仅复用 request.chat_memories（本链路已有数据），禁止新增 IO。
+            # 任何 temporal 异常全部隔离，降级为 None（旧时间行行为不变）。
+            _temporal_inject = None
+            try:
+                from src.config import get as _tc_cfg_get
+                _tc_mode = str(
+                    _tc_cfg_get("temporal.temporal_context_mode", "off") or "off"
+                ).strip().lower()
+                if _tc_mode in ("shadow", "active"):
+                    from src.temporal.temporal_context import resolve_temporal_context
+                    from src.temporal.temporal_core import normalize_time as _tc_normalize
+                    from datetime import datetime as _tc_dt
+                    from datetime import timezone as _tc_tz
+
+                    _last_ts = None
+                    for _m in request.chat_memories or []:
+                        if isinstance(_m, dict):
+                            _ts = _tc_normalize(_m.get("timestamp"))
+                            if _ts is not None and (_last_ts is None or _ts > _last_ts):
+                                _last_ts = _ts
+                    _tc_budget = int(_tc_cfg_get("temporal.temporal_context_budget", 400) or 400)
+                    _tc_inject, _tc_shadow = resolve_temporal_context(
+                        _tc_mode, _tc_dt.now(_tc_tz.utc), _last_ts, budget=_tc_budget,
+                    )
+                    if _tc_shadow:
+                        logger.info(
+                            "[TemporalContext][shadow] mode=%s chars=%d last_source=%s "
+                            "last_interaction=%s budget=%d text=%r",
+                            _tc_mode,
+                            len(_tc_shadow),
+                            "memory" if _last_ts is not None else "none",
+                            _last_ts.isoformat() if _last_ts is not None else "none",
+                            _tc_budget,
+                            _tc_shadow,
+                        )
+                    _temporal_inject = _tc_inject
+            except Exception as exc_tc:  # noqa: BLE001
+                logger.warning("[TemporalContext] 计算失败（已隔离，降级旧时间行）: %s", exc_tc)
+
             reply = self._response_engine.generate(
                 user_message=request.user_input or "",
                 history=list(request.history or []),
@@ -248,6 +289,8 @@ class ResponseAdapterImpl(ResponseAdapter):
                 communication_profile=communication_profile,
                 # v1.3 Phase 2: GoalContext（未注入 → None, 不进入 Prompt）
                 goal_context=goal_context_text,
+                # Phase B1b: temporal_context（None=旧行为逐字节兼容）
+                temporal_context=_temporal_inject,
             )
             self._last_reply = reply
             self._generate_count += 1

@@ -57,6 +57,16 @@ class RelationshipCore:
     - boundaries        可以影响行为的边界
     - anchor_memory_ids 核心记忆锚点(跨会话可见的白名单来源)
     - visibility        relationship_only(默认) / global(显式)
+
+    v1.5.5 Governance C2-b 生命周期扩展:
+    - fact_id            单条事实独立标识（一条事实一个 id，可逐条治理）
+    - status             candidate / confirmed / rejected / held / superseded
+    - source_type        user_confirmed / yui_stated / historical_fact /
+                         relational_agreement / system_observed
+    - source_memory_ids  证据链（confirmed 必填）
+    - evidence_summary   证据简述
+    - confirmed_by/at   治理确认人/时间
+    - supersedes / superseded_by  冲突解决（append-only，不物理覆盖）
     """
 
     relationship_id: str = ""
@@ -70,6 +80,17 @@ class RelationshipCore:
     visibility: str = DEFAULT_VISIBILITY
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
+    # ── v1.5.5 Governance C2-b ──
+    fact_id: str = ""
+    status: str = "confirmed"          # 默认 confirmed（旧数据兼容）
+    source_type: str = "historical_fact"
+    source_memory_ids: List[str] = field(default_factory=list)
+    evidence_summary: str = ""
+    confirmed_by: str = ""
+    confirmed_at: str = ""
+    rejected_at: str = ""
+    supersedes: str = ""
+    superseded_by: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -84,6 +105,17 @@ class RelationshipCore:
             "visibility": self.visibility,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+            # v1.5.5 Governance C2-b
+            "fact_id": self.fact_id,
+            "status": self.status,
+            "source_type": self.source_type,
+            "source_memory_ids": list(self.source_memory_ids),
+            "evidence_summary": self.evidence_summary,
+            "confirmed_by": self.confirmed_by,
+            "confirmed_at": self.confirmed_at,
+            "rejected_at": self.rejected_at,
+            "supersedes": self.supersedes,
+            "superseded_by": self.superseded_by,
         }
 
     @classmethod
@@ -110,6 +142,17 @@ class RelationshipCore:
             visibility=visibility,
             created_at=str(data.get("created_at") or now),
             updated_at=str(data.get("updated_at") or now),
+            # v1.5.5 Governance C2-b（全 Optional 容错，旧数据可读）
+            fact_id=str(data.get("fact_id") or ""),
+            status=str(data.get("status") or "confirmed"),
+            source_type=str(data.get("source_type") or "historical_fact"),
+            source_memory_ids=_safe_str_list(data.get("source_memory_ids")),
+            evidence_summary=str(data.get("evidence_summary") or ""),
+            confirmed_by=str(data.get("confirmed_by") or ""),
+            confirmed_at=str(data.get("confirmed_at") or ""),
+            rejected_at=str(data.get("rejected_at") or ""),
+            supersedes=str(data.get("supersedes") or ""),
+            superseded_by=str(data.get("superseded_by") or ""),
         )
 
 

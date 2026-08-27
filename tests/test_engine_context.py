@@ -136,7 +136,11 @@ class TestBuildMessagesOriginal:
         assert "原神" in system_content
 
     def test_includes_behavior_principles(self, engine):
-        """行为原则必须出现在系统提示中"""
+        """人格原则必须出现在系统提示中（v1.5-T2：断言对齐 P4.4-D3 收敛后的实际 prompt）。
+
+        旧断言查找的【行为原则】块头已被收敛移除；当前系统提示由身份段、
+        【核心价值观】、【核心原则】块构成。测试适配真实输出，不改代码。
+        """
         messages = engine._build_messages_original(
             user_message="你好",
             history=[],
@@ -149,8 +153,14 @@ class TestBuildMessagesOriginal:
             context_prompt_blocks=[],
         )
         system_content = messages[0]["content"]
-        assert "行为原则" in system_content
-        assert "真实比完美重要" in system_content
+        # 身份段：羽依自我定位
+        assert "浅雾羽依" in system_content
+        # 核心价值观块（身份层声明）
+        assert "核心价值观" in system_content
+        assert "真实比完美更重要" in system_content
+        # 【核心原则】块（行为原则的现载体）
+        assert "【核心原则】" in system_content
+        assert "不确定就说不知道" in system_content
 
     def test_user_message_is_last(self, engine):
         """用户消息必须是最后一条"""

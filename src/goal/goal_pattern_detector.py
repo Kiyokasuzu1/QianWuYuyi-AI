@@ -49,6 +49,8 @@ MAX_CANDIDATE_BYTES = 32 * 1024 * 1024  # 容量保护(与 journal 同惯例)
 
 MIN_EVIDENCE = 2
 DEFAULT_SIMILARITY_THRESHOLD = 0.25
+# v1.3 RC 7.1: 候选证据引用上限(不改变聚类算法, 仅限制存储进候选的引用数)
+MAX_EVIDENCE_REFS_PER_CANDIDATE = 32
 
 # fail-closed: 这些来源类型一律不作为证据(叙事/反思文本)
 FORBIDDEN_SOURCE_TYPES = frozenset({
@@ -355,6 +357,13 @@ def detect_candidates(
         _refs = sorted(
             _cluster, key=lambda e: (str(e.get("timestamp", "") or ""), str(e["source_id"]))
         )
+        _total_refs = len(_refs)
+        _stored_refs = _refs[:MAX_EVIDENCE_REFS_PER_CANDIDATE]
+        if _total_refs > MAX_EVIDENCE_REFS_PER_CANDIDATE:
+            logger.warning(
+                "[GoalPatternDetector] 候选证据超上限(%d -> %d 截断, 总数保留, 聚类算法不变)",
+                _total_refs, MAX_EVIDENCE_REFS_PER_CANDIDATE,
+            )
         _description = _pick_description(_refs)
         _confidence = _compute_confidence(_refs, _min)
         _fp = _fingerprint_of(_refs)
@@ -367,8 +376,9 @@ def detect_candidates(
                     "source_id": e["source_id"],
                     "timestamp": e["timestamp"],
                 }
-                for e in _refs
+                for e in _stored_refs
             ],
+            "evidence_total_count": _total_refs,
             "confidence": _confidence,
             "created_at": _utc_now_iso(),
             "detector_version": str(detector_version or DETECTOR_VERSION),

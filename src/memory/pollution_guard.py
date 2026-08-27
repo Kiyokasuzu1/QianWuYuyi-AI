@@ -28,6 +28,17 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, Optional, Tuple
 
+# Phase B0: 宿主模板正则的单一事实来源在 Memory Intake Layer。
+# pollution_guard 保持「最后一层防线」定位：
+#   - sanitize_content 委托给 intake（行为与 v1.3 system_reminder 语义逐字节一致，
+#     并追加 RAG / extra_instruction 完整宿主模板剥离）
+#   - check() 新增 RAG 完整模板检测（仅完整模板拒绝；纯标签提及放行，
+#     保证用户文本「我看到<RAG-Faiss-Memory>…」不被误拒）
+from src.memory.memory_intake import (
+    RAG_HOST_BLOCK_RE,
+    sanitize_memory_content as _intake_sanitize,
+)
+
 # ============================================================
 # 规则配置
 # ============================================================
@@ -98,6 +109,9 @@ INJECTION_PATTERNS: tuple = (
     re.compile(r"\[Debug\]", re.IGNORECASE),
     re.compile(r"^SYSTEM:\s", re.IGNORECASE | re.MULTILINE),
     re.compile(r"^ASSISTANT:\s", re.IGNORECASE | re.MULTILINE),
+    # Phase B0: RAG 宿主完整模板（open/close + BEGIN/END 齐全）——
+    # 只拒绝完整模板；纯标签提及不放行拒绝（保护用户文本）
+    RAG_HOST_BLOCK_RE,
 )
 
 # 长度上限
@@ -245,43 +259,18 @@ def get_reason(memory: Dict[str, Any]) -> Optional[str]:
 # ============================================================
 # 职责边界(与 check() 严格分离):
 # - 只负责写入前处理,不参与任何检测/拒绝判断
-# - 只清理 system_reminder 标签(支持属性/多行/大小写)
-# - 不处理 system_prompt / extra_instruction / RuntimeExperience 等
-#   其它 INJECTION_PATTERNS——那些仍由 check() 检测拒绝
-
-_SYSTEM_REMINDER_BLOCK_RE = re.compile(
-    r"<system_reminder[^>]*>.*?</system_reminder>",
-    re.IGNORECASE | re.DOTALL,
-)
-_SYSTEM_REMINDER_OPEN_RE = re.compile(r"<system_reminder[^>]*>", re.IGNORECASE)
-_SYSTEM_REMINDER_CLOSE_RE = re.compile(r"</system_reminder>", re.IGNORECASE)
+# - Phase B0: 委托 Memory Intake Layer（单一事实来源），
+#   语义 = v1.3 system_reminder 剥离（完整块 + 孤立标签）
+#   + RAG / extra_instruction 完整宿主模板剥离
 
 
 def sanitize_content(content: object) -> str:
-    """写入前清洗:移除 <system_reminder> 注入块,返回干净文本。
+    """写入前清洗:移除 system_reminder / RAG / extra_instruction 完整宿主模板。
 
-    处理步骤:
-    1. None -> ""
-    2. 非字符串 -> str()
-    3. 删除完整注入块 <system_reminder>...</system_reminder>
-    4. 删除残留孤立标签 <system_reminder> / </system_reminder>
-    5. strip()
-
-    Args:
-        content: 原始内容(object)
-
-    Returns:
-        清洗后的字符串(可能为空字符串)
+    返回干净文本（可能为空字符串）。语义与 Memory Intake Layer 的
+    sanitize_memory_content 完全一致（不含 flags）。
     """
-    if content is None:
-        return ""
-    if not isinstance(content, str):
-        content = str(content)
-
-    text = _SYSTEM_REMINDER_BLOCK_RE.sub("", content)
-    text = _SYSTEM_REMINDER_OPEN_RE.sub("", text)
-    text = _SYSTEM_REMINDER_CLOSE_RE.sub("", text)
-    return text.strip()
+    return _intake_sanitize(content)[0]
 
 
 # ============================================================

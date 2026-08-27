@@ -8,6 +8,7 @@ venv/
 
 # 数据
 data/
+data/measure/   # v1.5-T11: 测量报告输出区（基线不进 git）
 *.db
 *.sqlite3
 
@@ -62,3 +63,13 @@ migration/__pycache__/
 *.zip
 *.rar
 backup_p7211_*/
+
+# v0.5.1: 运行数据与敏感配置（恢复靠独立基线，禁止入库）
+data/
+logs/
+.cache/
+.env
+config.yaml
+YUI_*_BACKUP.json
+YUI_VERIFY_BASELINE.json
+YUI_*_OBSERVATION_BASELINE.json

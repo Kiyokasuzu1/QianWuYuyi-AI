@@ -142,6 +142,7 @@ class PromptBuilder:
         communication_profile: Optional[Any] = None,  # Phase 4.1.2-B 新增：CommunicationStyle 表达倾向
         context_prompt_blocks: Optional[List[str]] = None,  # P4.4-D5 新增：已生成提示块，每块独立成节
         goal_context: Optional[str] = None,  # v1.3 Phase 2 新增：GoalContext（只读关注方向，默认 None）
+        temporal_context: Optional[str] = None,  # B1b：非空时替换"当前时间"裸行（None=旧行为逐字节兼容）
     ) -> List[Dict]:
         # Phase 4.0.2-P1：核心身份不再硬编码，统一由 IDENTITY_CORE 驱动（章程阶段一）
         # Phase 4.4-D2：canonical 组装移至 src/response/prompt_sections.py
@@ -249,7 +250,11 @@ class PromptBuilder:
 
         # 原则块：与 legacy engine.py 共用统一文本（src/response/principles.py）
         sections.append(build_principles_block())
-        sections.append(f"当前时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}")
+        # B1b：temporal_context 非空时注入标准块；None 保持旧裸时间行（逐字节兼容）
+        if temporal_context:
+            sections.append(temporal_context)
+        else:
+            sections.append(f"当前时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}")
 
         system_prompt = "\n\n".join(sections)
         messages = [{"role": "system", "content": system_prompt.strip()}]
@@ -257,4 +262,28 @@ class PromptBuilder:
             for item in history[-20:]:
                 messages.append(item)
         messages.append({"role": "user", "content": user_message})
+        # v1.5-T3: 注入台账——逐 section 记账字符数（fail-soft，异常绝不影响主链）。
+        # 只读 section 长度，不改组装逻辑；enabled=false 时零开销。
+        try:
+            from src.audit.injection_ledger import record_injection
+            record_injection(
+                {
+                    "yui_core": len(yui_core_text),
+                    "identity": len(identity_text),
+                    "user_meta": len(user_meta_text),
+                    "agreement": len(agreement_text),
+                    "personality": len(personality_text),
+                    "behavior": len(behavior_text),
+                    "self_model": len(self_model_text),
+                    "goal": len(goal_text),
+                    "experience": len(experience_text),
+                    "relationship": len(relationship_context or ""),
+                    "emotion": len(emotion_context or ""),
+                    "temporal": len(temporal_context or ""),
+                    "context_blocks": sum(len(b) for b in (context_prompt_blocks or []) if isinstance(b, str)),
+                    "chat_memories": len(chat_memories_text),
+                }
+            )
+        except Exception:  # noqa: BLE001
+            pass  # 台账失败绝不影响主链路
         return messages
