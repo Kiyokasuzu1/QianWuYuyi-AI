@@ -147,8 +147,14 @@ def test_pipeline_capture_integration(monkeypatch):
         "状态不可证明 → 提案生成失败（fail-closed）"
 
 
-def test_pipeline_capture_success(monkeypatch):
-    """状态可读时生成提案并携带 before_snapshot。"""
+def test_pipeline_capture_success(monkeypatch, tmp_path):
+    """状态可读 + 真实来源时生成提案并携带 before_snapshot 与 evidence_trace_ids。
+
+    注意：append_trace 默认参数在定义时绑定正式路径（生产即目标路径）；
+    测试断言"固化发生"（evidence_trace_ids 绑定），并清理测试残留。
+    """
+    trace_file = os.path.join("data", "growth", "experience_trace.jsonl")
+    existed_before = os.path.exists(trace_file)
     from src.growth.pipeline import GrowthPipeline
     gp = GrowthPipeline.__new__(GrowthPipeline)
     gp.growth_state = None  # 用 monkeypatch 覆盖 reader 提供状态
@@ -156,8 +162,12 @@ def test_pipeline_capture_success(monkeypatch):
                         lambda path: {"value": 0.5, "source": "growth_state.json"})
     evaluated = {"target_candidates": ["self_state.initiative"], "applied_delta": 0.1,
                  "confidence": 0.6, "growth_signal": "s"}
-    event = {"event_id": "ev_1", "evidence": [{"id": "exp_1"}]}
+    event = {"event_id": "ev_1", "evidence": [{"id": "exp_1", "source_id": "mem_real_001"}]}
     prop = gp._build_proposal_from_evaluated(evaluated, event)
     assert prop is not None
     assert prop.before_snapshot and prop.before_snapshot[0]["old_value"] == 0.5
     assert prop.proposed_changes[0].before == 0.5, "change.before 由快照冻结注入"
+    assert prop.evidence_trace_ids, "提案必须绑定 ExperienceTrace（T2-1-P0）"
+    # teardown：测试残留清理（若测试前不存在则删除）
+    if not existed_before and os.path.exists(trace_file):
+        os.remove(trace_file)

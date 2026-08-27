@@ -68,8 +68,10 @@ class ReplayEngine:
             return []
 
     def _adapt_proposal(self, prop: dict) -> dict:
-        """适配层：evidence_ids（schema 旧名）→ evidence_trace_ids（validator 期待名）。"""
+        """适配层：evidence_ids（schema 旧名）→ evidence_trace_ids；id → proposal_id。"""
         d = dict(prop)
+        if "proposal_id" not in d or not d.get("proposal_id"):
+            d["proposal_id"] = d.get("id") or ""
         if "evidence_trace_ids" not in d or not d.get("evidence_trace_ids"):
             d["evidence_trace_ids"] = d.get("evidence_ids") or []
         return d
@@ -115,9 +117,12 @@ class ReplayEngine:
             return
         replayed = reduce_events(events).get(prop.get("proposal_id"))
         original = prop.get("status")
+        # 归一化：提案记录 "proposed" 与 ledger 状态 "pending" 同义（历史契约）
+        def norm(s):
+            return "pending" if s in ("pending", "proposed") else s
         replay_result.original_state = original
         replay_result.replayed_state = replayed
-        ok = replayed == original
+        ok = norm(replayed) == norm(original)
         if not ok:
             replay_result.mismatch.append(f"状态不一致: 记录={original} 重放={replayed}")
         checks.append(CheckResult("ledger_state", ok,

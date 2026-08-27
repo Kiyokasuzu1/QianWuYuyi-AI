@@ -242,6 +242,31 @@ class GrowthPipeline:
             pass
         return None
 
+    def _build_experience_trace(self, event: Dict) -> Optional[dict]:
+        """T2-1-P0：从真实事件证据固化 ExperienceTrace（事实来源）。
+
+        source_memory_ids 只取真实记忆引用（ev.source_id）；
+        无真实来源 → None（fail-closed：无来源不允许生成提案）。
+        禁止 LLM 补充 / 禁止 meaning 类字段。
+        """
+        try:
+            from src.growth.experience_trace import (
+                append_trace, make_trace, new_experience_id,
+            )
+            source_memory_ids = [str(ev.get("source_id")) for ev in event.get("evidence", [])
+                                 if ev.get("source_id")]
+            if not source_memory_ids:
+                return None
+            summary = str(event.get("event_id") or "")[:100] or "pipeline 经历摘要"
+            tid = new_experience_id()
+            tr = make_trace(tid, source_memory_ids, "runtime_pipeline",
+                            summary, "growth_pipeline", "system_rule")
+            if tr is None or not append_trace(tr):
+                return None
+            return tr
+        except Exception:  # noqa: BLE001
+            return None
+
     def _build_proposal_from_evaluated(self, evaluated: Dict, event: Dict) -> Optional[ContractProposal]:
         """从 GrowthEvaluator 的评估结果构建 GrowthProposal（权威 schema）。
 
@@ -288,10 +313,14 @@ class GrowthPipeline:
             ))
 
         # 构建 evaluator_meta（含 meaning 信息）
+        # T2-1-P0：注入 pattern 字段（validator 规则 3/4 依赖；无频率数据时诚实用 1）
         evaluator_meta = {
             "growth_signal": growth_signal,
             "growth_level": evaluated.get("growth_level", ""),
             "growth_domain": evaluated.get("growth_domain", ""),
+            "pattern_detected": str(evaluated.get("pattern_detected")
+                                    or growth_signal or "growth_pipeline"),
+            "pattern_frequency": int(evaluated.get("pattern_frequency") or 1),
             "_governance_origin": "GrowthPipeline.incremental_update",
             "_source_schema": "growth_evaluator",
         }
@@ -314,11 +343,23 @@ class GrowthPipeline:
         for c in changes:
             c.before = snap_by_path.get(c.path, {}).get("old_value")
 
+        # T2-1-P0：ExperienceTrace 固化（先于 proposal 绑定；无真实来源 → fail-closed）
+        trace = self._build_experience_trace(event)
+        if trace is None:
+            logging.getLogger(__name__).warning(
+                "[GrowthPipeline] ExperienceTrace 固化失败（无真实 memory 来源）——提案生成失败")
+            return None
+        evidence_trace_ids = [trace["experience_id"]]
+        # 兼容：旧字段 evidence_ids 同步（历史 schema 读取不受影响）
+        if evidence_ids and evidence_trace_ids:
+            evidence_trace_ids = list(dict.fromkeys(evidence_trace_ids + evidence_ids[:0]))
+
         return ContractProposal(
             source_event_id=event.get("event_id", ""),
             proposed_changes=changes,
             confidence=confidence,
             evidence_ids=evidence_ids,
+            evidence_trace_ids=evidence_trace_ids,
             evaluator_meta=evaluator_meta,
             status="proposed",
             before_snapshot=snapshots,

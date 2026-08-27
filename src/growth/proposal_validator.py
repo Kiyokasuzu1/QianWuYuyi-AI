@@ -20,7 +20,7 @@ import re
 from typing import Dict, List, Optional
 
 SCHEMA_VERSION = 1
-_SUPPORTED_SCHEMAS = (1,)
+_SUPPORTED_SCHEMAS = (1, "1.0")  # 兼容 dataclass 字符串 "1.0" 与整数 1
 _SNAPSHOT_FIELDS = ("schema_version", "path", "old_value", "captured_at",
                     "source", "hash", "provenance")
 _HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")

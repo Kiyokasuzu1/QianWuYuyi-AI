@@ -60,6 +60,8 @@ class GrowthProposal:
     proposed_changes: List[ChangeItem] = field(default_factory=list)
     confidence: float = 0.0
     evidence_ids: List[str] = field(default_factory=list)
+    # T2-1-P0: ExperienceTrace 引用（旧数据缺省空列表兼容；validator 规则 2 要求非空）
+    evidence_trace_ids: List[str] = field(default_factory=list)
     evaluator_meta: Dict[str, Any] = field(default_factory=dict)
     timestamp: str = field(default_factory=now_iso)
     status: str = "proposed"
