@@ -283,6 +283,14 @@ class GovernancePanel(QMainWindow):
         self.tab_overview = QTextBrowser()
         self.tabs.addTab(self.tab_overview, "羽依状态")
 
+        # Phase 2B.3：Subject View —— 事实观察窗口（她是谁 / 她和用户 / 最近成长 / 治理状态观察）
+        self.tab_subject = QTextBrowser()
+        self.tabs.addTab(self.tab_subject, "主体状态")
+
+        # Phase 2B.3：Health —— 机械事实（数量 / 状态 / API / 时间），零判断
+        self.tab_health = QTextBrowser()
+        self.tabs.addTab(self.tab_health, "治理健康")
+
         # 审计日志（时间线 segment + 平铺 + entity/action 过滤）
         self.tab_audit = QWidget()
         audit_v = QVBoxLayout(self.tab_audit)
@@ -506,6 +514,125 @@ class GovernancePanel(QMainWindow):
         self._render_patterns()
         # Phase 2B.2：时间线（依赖 patterns/sm_families/growth_props 就绪）
         self._render_timeline()
+        # Phase 2B.3：Subject View + Health（事实观察，零判断）
+        self._render_subject_view()
+        self._render_health()
+
+    # ---------- Subject View：事实观察窗口（Phase 2B.3） ----------
+    def _render_subject_view(self):
+        """四卡：她是谁 / 她和用户 / 最近成长 / 治理状态观察。
+
+        全部展示原文字段（fact/agreements/proposal 字段），禁止总结、评价、推测。
+        """
+        blocks = []
+
+        # ① 她是谁：self-model confirmed 原文 + personality traits 原样
+        blocks.append("<h3>① 她是谁</h3>")
+        try:
+            conf = [f for f in getattr(self, "sm_families", [])
+                    if (f.get("status") or "") == "confirmed"]
+            if conf:
+                for f in conf[:10]:
+                    blocks.append(
+                        f"<div style='margin-left:10px'>· {_esc(f.get('fact') or '')}</div>")
+            else:
+                blocks.append("<div style='margin-left:10px;color:#888'>（无 confirmed 自我陈述）</div>")
+        except Exception:  # noqa: BLE001
+            blocks.append("<div style='margin-left:10px;color:#888'>（自我陈述读取失败）</div>")
+        try:
+            p = self._api("/admin/api/admin/governance/personality")
+            if p.get("available"):
+                traits = (p.get("data") or {}).get("current") or {}
+                if isinstance(traits, dict) and traits:
+                    rows = " · ".join(
+                        f"{_esc(k)}={_esc(str(v))}" for k, v in list(traits.items())[:8])
+                    blocks.append(f"<div style='margin-left:10px'>personality traits（原样）: {rows}</div>")
+                else:
+                    blocks.append("<div style='margin-left:10px;color:#888'>（personality 数据存在，无 current traits）</div>")
+            else:
+                blocks.append("<div style='margin-left:10px;color:#888'>（personality 数据不可用）</div>")
+        except Exception as exc:  # noqa: BLE001
+            blocks.append(f"<div style='margin-left:10px;color:#c62828'>personality 读取失败: {_esc(str(exc)[:80])}</div>")
+
+        # ② 她和用户：关系核心原文（agreements + 时间）+ 共同生活（title + status）
+        blocks.append("<h3>② 她和用户</h3>")
+        try:
+            rc = self._api("/relationship-core").get("facts", [])
+            if rc:
+                for f in rc[:10]:
+                    ag = (f.get("agreements") or [])
+                    when = str(f.get("confirmed_at") or "")[:10]
+                    blocks.append(
+                        f"<div style='margin-left:10px'>· {_esc(str(ag[0] if ag else ''))} "
+                        f"<span style='color:#888'>({_esc(when)})</span></div>")
+            else:
+                blocks.append("<div style='margin-left:10px;color:#888'>（无关系核心事实）</div>")
+        except Exception:  # noqa: BLE001
+            blocks.append("<div style='margin-left:10px;color:#888'>（关系核心读取失败）</div>")
+        try:
+            active = self._api("/patterns/active").get("patterns", [])
+            for pat in active[:5]:
+                blocks.append(
+                    f"<div style='margin-left:10px'>· 共同生活: "
+                    f"{_esc(str(pat.get('title') or pat.get('pattern_id') or ''))} "
+                    f"<span style='color:#888'>{_esc(str(pat.get('status') or ''))}</span></div>")
+        except Exception:  # noqa: BLE001
+            pass
+
+        # ③ 最近成长：proposal 事实字段（type/status/created_at）
+        blocks.append("<h3>③ 最近成长</h3>")
+        try:
+            props = getattr(self, "growth_props", []) or []
+            if props:
+                for p in props[:10]:
+                    blocks.append(
+                        f"<div style='margin-left:10px'>· {_esc(str(p.get('proposal_type') or '?'))}"
+                        f" · {_esc(str(p.get('status') or '?'))}"
+                        f" · {_esc(str(p.get('created_at') or ''))[:19]}</div>")
+            else:
+                blocks.append("<div style='margin-left:10px;color:#888'>（无 growth 提案——等待自然出现）</div>")
+        except Exception:  # noqa: BLE001
+            pass
+
+        # ④ 治理状态观察：approved/applied/pending 数量 + 连接状态 + 更新时间
+        blocks.append("<h3>④ 治理状态观察</h3>")
+        try:
+            g = self._api("/admin/api/admin/governance/growth")
+            gd = g.get("data") or {}
+            blocks.append(
+                f"<div style='margin-left:10px'>approved: {len(gd.get('approved') or [])}"
+                f" · applied: {len(gd.get('applied') or [])}"
+                f" · pending: {len(gd.get('pending') or [])}</div>")
+        except Exception:  # noqa: BLE001
+            blocks.append("<div style='margin-left:10px;color:#888'>（growth 计数读取失败）</div>")
+        c = self._conn
+        blocks.append(
+            f"<div style='margin-left:10px'>connection: {c.status or '未探测'}"
+            f" · token: {self._token_source()}"
+            f" · last refresh: {c.last_success_at or '—'}</div>")
+        if c.last_error:
+            blocks.append(
+                f"<div style='margin-left:10px'>last error: "
+                f"[{_esc(c.last_error.get('kind') or '')}] "
+                f"{_esc(c.last_error.get('detail') or '')}</div>")
+        self.tab_subject.setHtml("".join(blocks))
+
+    # ---------- Health：机械事实（Phase 2B.3） ----------
+    def _render_health(self):
+        try:
+            g = self._api("/admin/api/admin/governance/growth")
+            gd = g.get("data") or {}
+            counts = {"pending": len(gd.get("pending") or []),
+                      "approved": len(gd.get("approved") or []),
+                      "applied": len(gd.get("applied") or [])}
+        except Exception:  # noqa: BLE001
+            counts = {}
+        c = self._conn
+        facts = _panel_import("governance_health").health_facts(
+            counts, c.status, self._token_source(),
+            c.last_success_at, c.last_error)
+        self.tab_health.setHtml(
+            "<br>".join(f"<div>{_esc(f)}</div>" for f in facts))
 
     # ---------- Timeline：事实时间线（Phase 2B.2，最近优先，零解释） ----------
     def _render_timeline(self):
