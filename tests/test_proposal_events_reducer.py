@@ -40,7 +40,11 @@ def test_state_machine_transitions():
     assert apply_event("", _ev("proposal_generated", "p")) == "pending"
     assert apply_event("pending", _ev("proposal_generated", "p")) == "pending", "生成不覆盖既有状态"
     assert apply_event("pending", _ev("proposal_approved", "p")) == "approved"
-    assert apply_event("approved", _ev("proposal_applied", "p")) == "applied"
+    # 执行轨迹预留：approved → executing → applied（无 execution_started 不得 applied）
+    assert apply_event("approved", _ev("growth_execution_started", "p")) == "executing"
+    assert apply_event("executing", _ev("proposal_applied", "p")) == "applied"
+    assert apply_event("approved", _ev("proposal_applied", "p")) == "approved", \
+        "approved 不可直接 applied（须经 execution_started）"
     assert apply_event("pending", _ev("proposal_rejected", "p")) == "rejected"
     assert apply_event("approved", _ev("proposal_rejected", "p")) == "approved", "已批准不可被拒绝覆盖"
     assert apply_event("rejected", _ev("proposal_approved", "p")) == "rejected", "终态不可逆转"
@@ -85,5 +89,5 @@ def test_append_only_contract():
 # ---------- 全生命周期 ----------
 def test_lifecycle_generated_to_applied():
     events = [_ev("proposal_generated", "x"), _ev("proposal_approved", "x"),
-              _ev("proposal_applied", "x")]
+              _ev("growth_execution_started", "x"), _ev("proposal_applied", "x")]
     assert reduce_events(events) == {"x": "applied"}

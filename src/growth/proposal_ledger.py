@@ -12,13 +12,14 @@ import json
 from typing import Dict, List, Optional
 
 SCHEMA_VERSION = 1
-EVENT_TYPES = ("proposal_generated", "proposal_approved", "proposal_applied",
-               "proposal_rejected", "proposal_validator_rejected")
+EVENT_TYPES = ("proposal_generated", "proposal_approved", "growth_execution_started",
+               "proposal_applied", "proposal_rejected", "proposal_validator_rejected")
 
 _TRANSITIONS = {
     "proposal_generated": (None, "pending"),            # 生成：无状态 → pending
     "proposal_approved": ("pending", "approved"),
-    "proposal_applied": ("approved", "applied"),
+    "growth_execution_started": ("approved", "executing"),  # 执行轨迹：approved → executing
+    "proposal_applied": ("executing", "applied"),       # 必须经 execution_started（防无轨迹 apply）
     "proposal_rejected": ("pending", "rejected"),
     # validator 拒绝发生在提案入库前（从未存活）→ 无条件终态 rejected
     "proposal_validator_rejected": ("*", "rejected"),
