@@ -140,6 +140,7 @@ class SelfHistoryTimelineStore:
         applied_at: Optional[str] = None,
         before_snapshot: Optional[List[dict]] = None,
         experience_trace_ids: Optional[List[str]] = None,
+        provenance: str = "system_rule",
     ) -> Optional[str]:
         """追加一条真实人格变化记录（幂等：proposal_id 已存在则跳过）。
 
@@ -169,6 +170,7 @@ class SelfHistoryTimelineStore:
             "schema_version": 1,
             "before_snapshot": list(before_snapshot or []),
             "experience_trace_ids": [str(x) for x in (experience_trace_ids or [])],
+            "provenance": str(provenance or "system_rule"),
         }
         return record_id if self._append(rec) else None
 

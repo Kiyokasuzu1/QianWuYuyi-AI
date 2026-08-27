@@ -98,6 +98,17 @@ def _check_llm(proposal: dict, errors: list) -> None:
         errors.append("used_llm=true 但无 llm_source/llm_prompt_id 标注（禁止凭空意义）")
 
 
+def _check_provenance(proposal: dict, errors: list) -> None:
+    """T1-D 规则 9：provenance 合法枚举；llm_candidate 必须带 llm_source 标注。"""
+    prov = proposal.get("provenance")
+    if prov not in ("system_rule", "llm_candidate", "system_state_read"):
+        errors.append(f"provenance 非法: {prov}")
+    if prov == "llm_candidate":
+        meta = proposal.get("evaluator_meta") or {}
+        if not (meta.get("llm_source") or meta.get("llm_prompt_id")):
+            errors.append("provenance=llm_candidate 但无 llm_source 标注")
+
+
 def validate_proposal(proposal: Optional[dict], trace_resolver=None) -> List[str]:
     """校验提案。通过 → []; 拒绝 → 原因列表（fail-closed，只拒绝不批准）。
 
@@ -108,6 +119,7 @@ def validate_proposal(proposal: Optional[dict], trace_resolver=None) -> List[str
         return ["proposal 非对象"]
     errors: List[str] = []
     _check_schema(proposal, errors)
+    _check_provenance(proposal, errors)
     _check_evidence(proposal, errors, trace_resolver)
     _check_pattern(proposal, errors)
     _check_snapshot(proposal, errors)

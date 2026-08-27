@@ -72,6 +72,8 @@ class GrowthProposal:
     schema_version: str = CANONICAL_SCHEMA_VERSION
     # T1-B: before_snapshot（七字段快照列表，生成阶段冻结；旧数据缺省空列表兼容）
     before_snapshot: List[Dict[str, Any]] = field(default_factory=list)
+    # T1-D: provenance（来源链统一：system_rule | llm_candidate | system_state_read）
+    provenance: str = "system_rule"
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
