@@ -30,7 +30,7 @@ def _check_schema(proposal: dict, errors: list) -> None:
         errors.append(f"schema_version 缺失或不受支持: {proposal.get('schema_version')}")
 
 
-def _check_evidence(proposal: dict, errors: list) -> None:
+def _check_evidence(proposal: dict, errors: list, trace_resolver=None) -> None:
     ids = proposal.get("evidence_trace_ids") or []
     if not ids:
         errors.append("evidence_trace_ids 为空")
@@ -42,6 +42,12 @@ def _check_evidence(proposal: dict, errors: list) -> None:
             errors.append(f"evidence id 疑似测试数据: {eid}")
     if len(set(ids)) != len(ids):
         errors.append("evidence_trace_ids 存在重复（不增加证据强度）")
+    # T1-A：trace 解析实装——证据必须已固化（Trace 早于 Proposal）
+    if trace_resolver is not None:
+        resolved = trace_resolver(ids)
+        for eid in ids:
+            if not resolved.get(eid):
+                errors.append(f"evidence trace 未固化（Trace 必须早于 Proposal）: {eid}")
 
 
 def _check_pattern(proposal: dict, errors: list) -> None:
@@ -83,13 +89,17 @@ def _check_llm(proposal: dict, errors: list) -> None:
         errors.append("used_llm=true 但无 llm_source/llm_prompt_id 标注（禁止凭空意义）")
 
 
-def validate_proposal(proposal: Optional[dict]) -> List[str]:
-    """校验提案。通过 → []; 拒绝 → 原因列表（fail-closed，只拒绝不批准）。"""
+def validate_proposal(proposal: Optional[dict], trace_resolver=None) -> List[str]:
+    """校验提案。通过 → []; 拒绝 → 原因列表（fail-closed，只拒绝不批准）。
+
+    trace_resolver: 可选，callable(ids) -> {id: trace_or_None}；
+    T1-A 后传入 experience_trace.resolve_trace_ids 实装"证据必须已固化"。
+    """
     if not isinstance(proposal, dict):
         return ["proposal 非对象"]
     errors: List[str] = []
     _check_schema(proposal, errors)
-    _check_evidence(proposal, errors)
+    _check_evidence(proposal, errors, trace_resolver)
     _check_pattern(proposal, errors)
     _check_snapshot(proposal, errors)
     _check_llm(proposal, errors)
