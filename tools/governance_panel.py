@@ -283,7 +283,7 @@ class GovernancePanel(QMainWindow):
         self.tab_overview = QTextBrowser()
         self.tabs.addTab(self.tab_overview, "羽依状态")
 
-        # 审计日志（平铺 + entity/action 过滤）
+        # 审计日志（时间线 segment + 平铺 + entity/action 过滤）
         self.tab_audit = QWidget()
         audit_v = QVBoxLayout(self.tab_audit)
         audit_f = QHBoxLayout()
@@ -292,8 +292,13 @@ class GovernancePanel(QMainWindow):
         self.ed_audit_filter.textChanged.connect(self._render_audit)
         audit_f.addWidget(self.ed_audit_filter, 1)
         audit_v.addLayout(audit_f)
+        # Phase 2B.2：生命周期时间线（事实聚合 · 最近优先 · 零解释）
+        audit_v.addWidget(QLabel("<b>时间线（事实事件 · 最近优先）</b>"))
+        self.tab_timeline_view = QTextBrowser()
+        audit_v.addWidget(self.tab_timeline_view, 3)
+        audit_v.addWidget(QLabel("<b>审计日志（平铺）</b>"))
         self.tab_audit_view = QTextBrowser()
-        audit_v.addWidget(self.tab_audit_view, 1)
+        audit_v.addWidget(self.tab_audit_view, 2)
         self.tabs.addTab(self.tab_audit, "审计日志")
 
         # 关系核心（列表 + 详情 + supersede —— 唯一 canonical 关系事实层）
@@ -499,6 +504,45 @@ class GovernancePanel(QMainWindow):
         except Exception:  # noqa: BLE001
             self.patterns = []
         self._render_patterns()
+        # Phase 2B.2：时间线（依赖 patterns/sm_families/growth_props 就绪）
+        self._render_timeline()
+
+    # ---------- Timeline：事实时间线（Phase 2B.2，最近优先，零解释） ----------
+    def _render_timeline(self):
+        try:
+            audit = self._api("/audit-log?limit=500").get("entries", [])
+        except Exception:  # noqa: BLE001
+            audit = []
+        try:
+            entity = _panel_import("governance_entity")
+            events = entity.collect_timeline_events(
+                # 契约：patterns/sm 需为已投影 family（sm_families 来自 _render_sm）
+                project_pattern_families(self.patterns),
+                getattr(self, "sm_families", []), audit,
+                getattr(self, "growth_props", []))
+        except Exception as exc:  # noqa: BLE001
+            self.tab_timeline_view.setHtml(
+                f"<div style='color:#c62828'>时间线读取失败: {_esc(str(exc)[:120])}</div>")
+            return
+        kind_label = {"pattern": "模式", "self_model": "自我模型",
+                      "relationship_core": "关系核心", "growth": "Growth"}
+        if not events:
+            self.tab_timeline_view.setHtml("<i>（暂无治理事件）</i>")
+            return
+        rows = []
+        for e in events[:200]:
+            rows.append(
+                f"<div><b>{_esc(e.get('ts') or '—')}</b> "
+                f"[{_esc(kind_label.get(e.get('kind'), str(e.get('kind'))))}] "
+                f"{_esc(e.get('action'))} → <code>{_esc(e.get('object_id'))}</code>"
+                f"<span style='color:#666'> · {_esc(e.get('status'))}</span></div>")
+            if e.get("reason"):
+                rows.append(
+                    f"<div style='color:#777;margin-left:14px'>{_esc(e.get('reason'))}</div>")
+        rows.append("<hr><div style='color:#888'>数据源：Pattern=patterns 家族记录 · "
+                    "SelfModel=statements history · RelationshipCore=audit-log · "
+                    "Growth=proposals。不同数据源未合并，跨源事件链可能不完整（部分历史）。</div>")
+        self.tab_timeline_view.setHtml("".join(rows))
 
     # ---------- Overview：羽依当前状态（只读聚合，全部真实 API） ----------
     def _load_overview(self):
