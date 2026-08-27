@@ -18,10 +18,10 @@ import requests
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QDialog, QDialogButtonBox, QFileDialog, QHBoxLayout,
-    QInputDialog, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
-    QMessageBox, QPushButton, QSplitter, QTabWidget, QTextBrowser, QTextEdit,
-    QVBoxLayout, QWidget,
+    QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
+    QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget, QListWidgetItem,
+    QMainWindow, QMessageBox, QPushButton, QSplitter, QTabWidget, QTextBrowser,
+    QTextEdit, QVBoxLayout, QWidget,
 )
 
 API_BASE_DEFAULT = "http://100.114.143.47:8000"
@@ -246,9 +246,34 @@ class GovernancePanel(QMainWindow):
 
         # 上：候选列表 | 详情
         split_h = QSplitter(Qt.Horizontal)
+        left = QWidget()
+        ll = QVBoxLayout(left)
+        ll.setContentsMargins(0, 0, 0, 0)
+        # Phase 2C.2.1：Queue UX —— 状态过滤 / 机械排序 / 数量计数（纯展示层）
+        qf = QHBoxLayout()
+        qf.addWidget(QLabel("状态"))
+        self.cmb_status = QComboBox()
+        self.cmb_status.addItem("全部", "")
+        for st in ("candidate", "confirmed", "rejected", "held"):
+            self.cmb_status.addItem(st, st)
+        self.cmb_status.currentIndexChanged.connect(self._render_list)
+        qf.addWidget(self.cmb_status)
+        qf.addWidget(QLabel("排序"))
+        self.cmb_sort = QComboBox()
+        self.cmb_sort.addItem("默认", "")
+        self.cmb_sort.addItem("confidence 降序", "confidence")
+        self.cmb_sort.addItem("created_at 降序", "created_at")
+        self.cmb_sort.currentIndexChanged.connect(self._render_list)
+        qf.addWidget(self.cmb_sort)
+        qf.addWidget(QLabel("计数"))
+        self.lbl_queue_counts = QLabel("")
+        qf.addWidget(self.lbl_queue_counts)
+        qf.addStretch(1)
+        ll.addLayout(qf)
         self.list = QListWidget()
         self.list.currentItemChanged.connect(self._on_select)
-        split_h.addWidget(self.list)
+        ll.addWidget(self.list, 1)
+        split_h.addWidget(left)
 
         right = QWidget()
         rl = QVBoxLayout(right)
@@ -310,6 +335,9 @@ class GovernancePanel(QMainWindow):
         self.ed_audit_filter.textChanged.connect(self._render_audit)
         audit_f.addWidget(self.ed_audit_filter, 1)
         audit_v.addLayout(audit_f)
+        # Phase 2C.2.2：Audit 聚合统计行（纯计数，只读）
+        self.lbl_audit_stats = QLabel("")
+        audit_v.addWidget(self.lbl_audit_stats)
         # Phase 2B.2：生命周期时间线（事实聚合 · 最近优先 · 零解释）
         audit_v.addWidget(QLabel("<b>时间线（事实事件 · 最近优先）</b>"))
         self.tab_timeline_view = QTextBrowser()
@@ -761,6 +789,17 @@ class GovernancePanel(QMainWindow):
             audit = self._api("/audit-log?limit=500").get("entries", [])
         except Exception:  # noqa: BLE001
             audit = []
+        # Phase 2C.2.2：Audit 聚合统计（纯计数，基于全量拉取）
+        try:
+            stats = _panel_import("governance_audit_stats")
+            ac = stats.action_counts(audit)
+            oc = stats.object_type_counts(audit)
+            self.lbl_audit_stats.setText(
+                "action: " + " · ".join(f"{k}: {v}" for k, v in list(ac.items())[:8])
+                + "   |   type: "
+                + " · ".join(f"{k}: {v}" for k, v in list(oc.items())[:8]))
+        except Exception:  # noqa: BLE001
+            pass
         f = self.ed_audit_filter.text().strip().lower()
         if f:
             audit = [e for e in audit if f in str(e.get("object_id", "")).lower()
@@ -1236,9 +1275,18 @@ class GovernancePanel(QMainWindow):
 
     # ---------- 列表渲染 ----------
     def _render_list(self):
+        # Phase 2C.2.1：过滤/排序只影响 UI 列表；self.candidates 保持全量（数据不变）
+        try:
+            queue = _panel_import("governance_queue")
+            rows = queue.filter_candidates(self.candidates, self.cmb_status.currentData())
+            rows = queue.sort_candidates(rows, self.cmb_sort.currentData())
+            self.lbl_queue_counts.setText(
+                " · ".join(f"{k}: {v}" for k, v in queue.status_counts(self.candidates).items()))
+        except Exception:  # noqa: BLE001
+            rows = self.candidates
         self.list.blockSignals(True)
         self.list.clear()
-        for c in self.candidates:
+        for c in rows:
             status = c.get("current_status") or "candidate"
             label, color = status_meta(status)
             fact = str(c.get("fact") or "")
