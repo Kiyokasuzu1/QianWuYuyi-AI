@@ -20,7 +20,8 @@ _TRANSITIONS = {
     "proposal_approved": ("pending", "approved"),
     "proposal_applied": ("approved", "applied"),
     "proposal_rejected": ("pending", "rejected"),
-    "proposal_validator_rejected": ("generated", "rejected"),
+    # validator 拒绝发生在提案入库前（从未存活）→ 无条件终态 rejected
+    "proposal_validator_rejected": ("*", "rejected"),
 }
 
 
@@ -51,6 +52,8 @@ def apply_event(status: str, event: dict) -> str:
     if etype not in _TRANSITIONS:
         return status
     from_status, to_status = _TRANSITIONS[etype]
+    if from_status == "*":
+        return to_status  # validator 拒绝：无条件终态（提案从未存活）
     if from_status is None:
         return "pending" if not status else status
     pending_like = from_status == "pending" and status in ("pending", "proposed")
